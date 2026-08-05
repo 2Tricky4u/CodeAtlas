@@ -44,6 +44,26 @@ expected_rejections:
     anchor: "read_unaligned"
     reason: "unsafe block is bounds-checked and documented; sound as written"
 
+# Real defects discovered in this fixture by review, not planted deliberately.
+# They are NOT counted in recall (the metric measures the planted set), but they
+# are documented here so future readers know these reports are correct, not noise.
+known_additional_defects:
+  - id: X1
+    category: correctness
+    path: kvstore/src/cache.rs
+    anchor: "self.order.push_back(key.clone())"
+    summary: >-
+      Cache::put appends the key to `order` without removing a prior occurrence,
+      so overwriting an existing key leaves a stale entry that causes a later
+      eviction to drop a live key. Found during M10 evaluation.
+  - id: X2
+    category: security
+    path: kvstore/src/storage.rs
+    anchor: "let path = self.root.join(key);"
+    summary: >-
+      FileStore::write has the same unsanitized-join traversal exposure as
+      FileStore::read (B2), on the write path. Found during M10 evaluation.
+
 pr_branch:
   # make_fixture_repos.py builds a branch introducing exactly B4 on top of a
   # base where api.rs parses defensively; used by M16 changed-scope tests.

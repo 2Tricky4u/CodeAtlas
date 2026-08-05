@@ -49,6 +49,8 @@ def main(skill_id: str) -> int:
     if skill_id == "intent-reconstructor":
         sources = collect_intent_sources(checkout)
         inputs = {"documents": cas.put_json([s.path for s in sources])}
+    elif skill_id.startswith("reviewer-"):
+        inputs = _reviewer_inputs(checkout, cas)
     else:
         inputs = {}
 
@@ -64,6 +66,44 @@ def main(skill_id: str) -> int:
     print(f"recorded cassette for {skill_id}@{skill.version}")
     print(f"fixture sha (cassette is keyed on it): {sha}")
     return 0
+
+
+def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:  # type: ignore[name-defined] # noqa: F821
+    """The evidence bundle reviewers receive, built exactly as the pipeline does."""
+    import json
+
+    from codeatlas.extractors.rust.cargo_meta import CargoMetadataExtractor
+    from codeatlas.extractors.rust.ra_scip import RaScipExtractor
+    from codeatlas.graph.merge import merge_fragments
+    from codeatlas.models.intent import IntentPackage
+    from codeatlas.review.reviewers import build_reviewer_inputs, slice_graph_for_review
+    from codeatlas.vcs.git import GitClient
+
+    sha = GitClient().resolve_sha(checkout, "HEAD")
+    cargo_fragment, _ = CargoMetadataExtractor().extract(checkout, sha)
+    scip_fragment, _ = RaScipExtractor().extract(checkout, sha)
+    graph = merge_fragments(
+        repository_id="local/kvstore", head_sha=sha, fragments=[cargo_fragment, scip_fragment]
+    )
+    source_paths = sorted(
+        p.relative_to(checkout).as_posix()
+        for p in checkout.rglob("*.rs")
+        if "target" not in p.parts
+    )
+
+    cassette = next((REPO_ROOT / "tests" / "cassettes").glob("intent-reconstructor-*.json"), None)
+    if cassette is None:
+        raise SystemExit("record the intent-reconstructor cassette first")
+    intent = IntentPackage.model_validate(
+        json.loads(cassette.read_text(encoding="utf-8"))["result"]["output"]
+    )
+
+    return build_reviewer_inputs(
+        cas=cas,
+        intent=intent,
+        source_paths=source_paths,
+        graph_slice=slice_graph_for_review(graph, source_paths),
+    )
 
 
 if __name__ == "__main__":
