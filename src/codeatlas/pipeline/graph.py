@@ -286,11 +286,17 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         return {"manifest_sha256": manifest_sha}
 
     builder = StateGraph(PipelineState)
-    builder.add_node("source_lock", _wrap(deps, "source_lock", source_lock))
-    builder.add_node("extract", _wrap(deps, "extract", extract))
-    builder.add_node("build_graph", _wrap(deps, "build_graph", build_graph))
-    builder.add_node("export_cytoscape", _wrap(deps, "export_cytoscape", export_cytoscape))
-    builder.add_node("finalize", _wrap(deps, "finalize", finalize))
+    stages: dict[str, NodeFn] = {
+        "source_lock": source_lock,
+        "extract": extract,
+        "build_graph": build_graph,
+        "export_cytoscape": export_cytoscape,
+        "finalize": finalize,
+    }
+    for stage_name, stage_fn in stages.items():
+        # LangGraph's add_node overloads don't accept plain (TypedDict) -> dict
+        # callables under strict mypy; runtime behavior is the documented one.
+        builder.add_node(stage_name, _wrap(deps, stage_name, stage_fn))  # type: ignore[call-overload]
     builder.add_edge(START, "source_lock")
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")

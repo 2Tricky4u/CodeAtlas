@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from codeatlas.core.logging import configure_logging
+
+if TYPE_CHECKING:
+    from codeatlas.pipeline.deps import PipelineDeps
 
 app = typer.Typer(name="codeatlas", no_args_is_help=True, pretty_exceptions_enable=False)
 
 _DEFAULT_WORKDIR = Path("var")
 
 
-def _deps(workdir: Path, test_db: bool) -> PipelineDeps:  # noqa: F821 - forward ref
+def _deps(workdir: Path, test_db: bool) -> PipelineDeps:
     from codeatlas.artifacts.store import ArtifactStore
     from codeatlas.db.session import app_engine
     from codeatlas.pipeline.deps import PipelineDeps
