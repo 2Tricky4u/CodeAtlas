@@ -1,0 +1,50 @@
+# Ground truth for the kvstore evaluation fixture. Recall/precision assertions in
+# M10/M11 test against this file. Line ranges are approximate anchors (±5 lines
+# tolerated by the evaluator) — re-check after any fixture edit.
+
+expected_findings:
+  - id: B1
+    category: correctness
+    path: kvstore/src/cache.rs
+    anchor: "for _ in 0..=n"
+    summary: "evict_oldest evicts n+1 entries (inclusive range off-by-one)"
+    min_severity: medium
+  - id: B2
+    category: security
+    path: kvstore/src/storage.rs
+    anchor: "self.root.join(key)"
+    summary: "unsanitized join lets untrusted keys escape the store root (path traversal)"
+    min_severity: high
+  - id: B3
+    category: correctness
+    path: kvstore/src/cache.rs
+    anchor: "contains_key(key)"
+    summary: "check-then-use across two lock acquisitions; unwrap can panic under contention"
+    min_severity: medium
+  - id: B4
+    category: correctness
+    path: kvstore/src/api.rs
+    anchor: "parts.next().unwrap().parse().unwrap()"
+    summary: "handler panics on malformed untrusted wire input (unwrap on parse)"
+    min_severity: high
+  - id: B5
+    category: architecture
+    path: kvstore/src/storage.rs
+    anchor: "use crate::api::Response"
+    summary: "storage layer imports the api layer, violating accepted ADR-0001 layering"
+    min_severity: medium
+
+expected_rejections:
+  - id: D1
+    path: kvstore/src/cache.rs
+    anchor: "saturating_sub"
+    reason: "saturating arithmetic is intentional and documented; not an underflow bug"
+  - id: D2
+    path: kvstore/src/storage.rs
+    anchor: "read_unaligned"
+    reason: "unsafe block is bounds-checked and documented; sound as written"
+
+pr_branch:
+  # make_fixture_repos.py builds a branch introducing exactly B4 on top of a
+  # base where api.rs parses defensively; used by M16 changed-scope tests.
+  introduces: [B4]
