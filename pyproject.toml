@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
     "jsonschema>=4.26.0",
+    "protobuf>=7.35.1",
     "pydantic>=2.13.4",
     "python-ulid>=4.0.1",
 ]
@@ -20,6 +21,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "poethepoet>=0.30",
+    "grpcio-tools>=1.83.0",
 ]
 
 [build-system]
@@ -45,6 +47,7 @@ markers = [
 target-version = "py312"
 line-length = 100
 src = ["src", "tests", "scripts"]
+extend-exclude = ["src/codeatlas/extractors/rust/scip_pb2/scip_pb2.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "PTH", "S"]
@@ -60,6 +63,11 @@ mypy_path = "src"
 packages = ["codeatlas"]
 warn_unreachable = true
 show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = "codeatlas.extractors.rust.scip_pb2.*"
+ignore_errors = true
+disallow_untyped_defs = false
 
 [tool.poe.tasks]
 lint = "ruff check src tests scripts"
