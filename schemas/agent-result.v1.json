@@ -37,6 +37,11 @@
         "modelId": { "type": "string", "minLength": 1 }
       }
     },
+    "permissionDenials": {
+      "description": "Tool calls refused by the permission gate — audit evidence that the task stayed inside its declared capabilities.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "transcriptRef": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
     "error": { "type": ["string", "null"] }
   }

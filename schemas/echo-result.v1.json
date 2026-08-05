@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/echo-result.v1.json",
+  "title": "Echo Skill Result",
+  "description": "Output contract for the adapter-validation skill (M8).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fileCount", "revision"],
+  "properties": {
+    "fileCount": { "type": "integer", "minimum": 0 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+  }
+}

@@ -1,0 +1,20 @@
+# Trusted skill registry (ADR-0008).
+#
+# Every skill is pinned by content hash: the loader recomputes the hash over all
+# files in the skill directory and refuses to run on mismatch. Regenerate hashes
+# deliberately when changing a skill, and bump its version so cassettes invalidate.
+
+skills:
+  - id: echo-skill
+    version: "1.0.0"
+    path: echo-skill/
+    content_sha256: "sha256:3d69f538c6c69805196d17afdcc18610fdcf62b8b558521ea9a1c380e7c8056f"
+    purpose: "Adapter validation: count Rust files and echo the revision"
+    output_schema: echo-result.v1
+    permissions:
+      commands: ["rg --files"]
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"

@@ -66,5 +66,6 @@ class AgentResult(ContractModel):
     output: dict[str, Any] | None = None
     command_receipts: list[CommandReceipt]
     usage: UsageStats
+    permission_denials: list[str] = Field(default_factory=list)
     transcript_ref: str | None = Field(default=None, pattern=SHA256_PATTERN)
     error: str | None = None
