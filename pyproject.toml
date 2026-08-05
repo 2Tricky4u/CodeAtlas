@@ -5,7 +5,11 @@ description = "Evidence-driven code review and project-visualization platform"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
-dependencies = []
+dependencies = [
+    "jsonschema>=4.26.0",
+    "pydantic>=2.13.4",
+    "python-ulid>=4.0.1",
+]
 
 [dependency-groups]
 dev = [

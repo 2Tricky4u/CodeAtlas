@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/finding.v1.json",
+  "title": "Candidate Finding",
+  "description": "A reviewer agent's candidate finding. This is an agent inference, never a fact: it must carry evidence and enters validation before it can matter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "findingId",
+    "category",
+    "discoveredBySkill",
+    "skillVersion",
+    "severity",
+    "confidence",
+    "claim",
+    "location",
+    "evidence"
+  ],
+  "properties": {
+    "findingId": { "type": "string", "pattern": "^F-[0-9]{4}$" },
+    "category": {
+      "enum": ["correctness", "security", "architecture", "spec", "standards"]
+    },
+    "discoveredBySkill": { "type": "string", "minLength": 1 },
+    "skillVersion": { "type": "string", "minLength": 1 },
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "claim": { "type": "string", "minLength": 1 },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "symbol": { "type": "string" }
+      }
+    },
+    "requirementIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "producer"],
+        "properties": {
+          "kind": {
+            "enum": [
+              "compiler",
+              "language-server",
+              "build-system",
+              "schema",
+              "static-analysis",
+              "runtime-trace",
+              "test",
+              "manual",
+              "llm-inference"
+            ]
+          },
+          "producer": { "type": "string", "minLength": 1 },
+          "producerVersion": { "type": "string" },
+          "artifact": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "proposedReproduction": { "type": "string" }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/run-manifest.v1.json",
+  "title": "Run Manifest",
+  "description": "The reproducibility identity of one pipeline run: pinned inputs, resolved toolchain, and content-addressed outputs. Two clean runs at the same revision+toolchain must produce manifests whose output hashes match.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "kind",
+    "sourceLock",
+    "toolchain",
+    "skillRegistrySha256",
+    "configSha256",
+    "modelIds",
+    "cassetteIds",
+    "inputs",
+    "outputs",
+    "cost"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "runId": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "kind": { "enum": ["repository", "pr"] },
+    "sourceLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "headSha", "changedPaths", "generatedPaths"],
+      "properties": {
+        "repositoryId": { "type": "string", "minLength": 1 },
+        "remoteUrl": { "type": ["string", "null"] },
+        "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+        "mergeBaseSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+        "changedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "generatedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "skillRegistrySha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "configSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "modelIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "cassetteIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalPromptTokens", "totalCompletionTokens"],
+      "properties": {
+        "totalPromptTokens": { "type": "integer", "minimum": 0 },
+        "totalCompletionTokens": { "type": "integer", "minimum": 0 },
+        "totalCostUsd": { "type": ["number", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

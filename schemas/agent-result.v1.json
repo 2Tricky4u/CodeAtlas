@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/agent-result.v1.json",
+  "title": "Agent Result",
+  "description": "Typed result envelope for one agent invocation. `output` has already been validated against the task's output schema when status is `succeeded`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "status", "commandReceipts", "usage"],
+  "properties": {
+    "taskId": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "status": {
+      "enum": ["succeeded", "failed", "timeout", "schema_invalid", "budget_exceeded"]
+    },
+    "output": { "type": ["object", "null"] },
+    "commandReceipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "exitCode", "durationMs"],
+        "properties": {
+          "command": { "type": "string", "minLength": 1 },
+          "exitCode": { "type": "integer" },
+          "durationMs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promptTokens", "completionTokens", "wallMs", "modelId"],
+      "properties": {
+        "promptTokens": { "type": "integer", "minimum": 0 },
+        "completionTokens": { "type": "integer", "minimum": 0 },
+        "costUsd": { "type": ["number", "null"], "minimum": 0 },
+        "wallMs": { "type": "integer", "minimum": 0 },
+        "modelId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "transcriptRef": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+    "error": { "type": ["string", "null"] }
+  }
+}

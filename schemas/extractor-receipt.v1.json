@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/extractor-receipt.v1.json",
+  "title": "Extractor Receipt",
+  "description": "Provenance record for one deterministic tool invocation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "extractor",
+    "extractorVersion",
+    "revision",
+    "configuration",
+    "startedAt",
+    "completedAt",
+    "exitCode",
+    "stdoutSha256",
+    "stderrSha256"
+  ],
+  "properties": {
+    "extractor": { "type": "string", "minLength": 1 },
+    "extractorVersion": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "exitCode": { "type": "integer" },
+    "stdoutSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "stderrSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

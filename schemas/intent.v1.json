@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/intent.v1.json",
+  "title": "Intent Package",
+  "description": "Immutable reconstruction of what the change/repository is supposed to do. Every requirement cites a source or is explicitly marked inferred; inferred intent can never alone justify a blocking finding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requirements", "nonGoals", "compatibilityObligations", "unresolvedQuestions"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "sourceKind", "text", "acceptanceCriteria"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^REQ-[0-9]{3,}$" },
+          "sourceKind": {
+            "enum": ["issue", "spec", "pr-description", "commit", "adr", "repository-rule", "inferred", "unavailable"]
+          },
+          "sourceRef": { "type": ["string", "null"] },
+          "text": { "type": "string", "minLength": 1 },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "nonGoals": { "type": "array", "items": { "type": "string" } },
+    "compatibilityObligations": { "type": "array", "items": { "type": "string" } },
+    "unresolvedQuestions": { "type": "array", "items": { "type": "string" } }
+  }
+}

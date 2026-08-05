@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/agent-task.v1.json",
+  "title": "Agent Task",
+  "description": "Typed dispatch envelope for one agent invocation. Inputs are artifact references only; first-pass review tasks never contain sibling agents' conclusions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "runId",
+    "skillId",
+    "skillVersion",
+    "skillContentSha256",
+    "revisionSha",
+    "workspace",
+    "inputs",
+    "permissions",
+    "outputSchemaId",
+    "limits"
+  ],
+  "properties": {
+    "taskId": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "runId": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "skillId": { "type": "string", "minLength": 1 },
+    "skillVersion": { "type": "string", "minLength": 1 },
+    "skillContentSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "revisionSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkoutPath", "mountMode"],
+      "properties": {
+        "checkoutPath": { "type": "string", "minLength": 1 },
+        "mountMode": { "const": "ro" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedCommands", "network", "writePaths"],
+      "properties": {
+        "allowedCommands": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "network": { "const": false },
+        "writePaths": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "outputSchemaId": { "type": "string", "minLength": 1 },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeoutS", "maxTokens", "maxIterations"],
+      "properties": {
+        "timeoutS": { "type": "integer", "minimum": 1 },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "maxIterations": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
