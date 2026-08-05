@@ -44,6 +44,49 @@ _FIXED_ENV = {
 }
 
 
+def build_pr_fixture_repo(
+    source_dir: Path, dest_dir: Path, git: GitClient | None = None
+) -> tuple[str, str]:
+    """Build a repo whose `main` is defensive and whose `feature` branch adds B4.
+
+    Returns (base_sha, head_sha). The base commit parses the wire request
+    defensively; the feature commit replaces that with the unwrap chain, so the
+    panic is genuinely *introduced by the change* — which is what changed-scope
+    enforcement has to distinguish from a pre-existing defect.
+    """
+    g = git or GitClient()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    _copy_tree(source_dir, dest_dir)
+
+    api = dest_dir / "kvstore" / "src" / "api.rs"
+    flawed = api.read_text(encoding="utf-8")
+    defensive = flawed.replace(
+        "            let key = parts.next().unwrap().to_string();\n"
+        "            let ttl_secs: u64 = parts.next().unwrap().parse().unwrap();\n",
+        "            let Some(key) = parts.next().map(str::to_string) else {\n"
+        '                return Response::Error("missing key".to_string());\n'
+        "            };\n"
+        "            let Some(Ok(ttl_secs)) = parts.next().map(str::parse::<u64>) else {\n"
+        '                return Response::Error("bad ttl".to_string());\n'
+        "            };\n",
+    )
+    if defensive == flawed:
+        raise RuntimeError("PR fixture: could not build the defensive base revision")
+
+    api.write_text(defensive, encoding="utf-8", newline="\n")
+    g.run(["init", "-b", "main"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["add", "-A"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["commit", "-m", "kvstore at base revision"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    base_sha = g.resolve_sha(dest_dir, "HEAD")
+
+    g.run(["checkout", "-b", "feature"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    api.write_text(flawed, encoding="utf-8", newline="\n")
+    g.run(["add", "-A"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["commit", "-m", "simplify put parsing"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    head_sha = g.resolve_sha(dest_dir, "HEAD")
+    return base_sha, head_sha
+
+
 def build_fixture_repo(source_dir: Path, dest_dir: Path, git: GitClient | None = None) -> str:
     """Materialize `source_dir` as a fresh git repo at `dest_dir`; returns head SHA.
 
