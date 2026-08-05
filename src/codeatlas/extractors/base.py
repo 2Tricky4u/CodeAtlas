@@ -44,6 +44,15 @@ class GraphFragment:
             "edges": [e.contract_dump() for e in self.edges],
         }
 
+    @staticmethod
+    def from_dump(data: dict[str, Any]) -> GraphFragment:
+        fragment = GraphFragment(
+            nodes=[GraphNode.model_validate(n) for n in data["nodes"]],
+            edges=[GraphEdge.model_validate(e) for e in data["edges"]],
+        )
+        fragment.sort()
+        return fragment
+
 
 class Extractor(Protocol):
     name: str
