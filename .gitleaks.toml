@@ -7,8 +7,15 @@
 useDefault = true
 
 [allowlist]
-description = "Documented fake secrets used as test vectors by the secret-gate regression tests"
-paths = ['''tests/security/test_secret_gate\.py''']
+description = """
+Documented fake secrets used as test vectors. These files must contain
+secret-shaped strings to prove the gates that reject them actually work; the
+values are synthetic and belong to nothing.
+"""
+paths = [
+  '''tests/security/test_secret_gate\.py''',
+  '''tests/security/test_publication_gate\.py''',
+]
 
 [[rules]]
 id = "codeatlas-github-fine-grained-pat"

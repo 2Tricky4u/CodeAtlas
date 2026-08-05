@@ -84,6 +84,119 @@ def status(
     typer.echo(run_status(deps, run_id))
 
 
+@app.command("show-approval")
+def show_approval(
+    approval_id: int,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Print the exact payload awaiting approval — review this before approving."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from codeatlas.db.tables import ApprovalRow
+
+    deps = _deps(workdir, test_db)
+    with Session(deps.engine) as session:
+        approval = session.get(ApprovalRow, approval_id)
+        if approval is None:
+            typer.echo(f"unknown approval {approval_id}", err=True)
+            raise typer.Exit(1)
+        payload = json.loads(deps.cas.get(approval.payload_sha256))
+        typer.echo(f"approval {approval_id} · run {approval.run_id} · {approval.action_kind}")
+        typer.echo(f"decision: {approval.decision or 'PENDING'}")
+        typer.echo(f"payload:  {approval.payload_sha256}")
+        typer.echo("")
+        typer.echo(f"target: {payload['owner']}/{payload['repo']} PR #{payload['prNumber']}")
+        typer.echo(f"commit: {payload['commitSha']}")
+        typer.echo(f"inline comments: {len(payload['comments'])}")
+        typer.echo("")
+        typer.echo(payload["body"])
+        for comment in payload["comments"]:
+            typer.echo(f"\n--- {comment['path']}:{comment['line']} ---\n{comment['body']}")
+
+
+@app.command()
+def approve(
+    approval_id: int,
+    by: Annotated[str, typer.Option(help="Who is approving (recorded in the audit trail)")],
+    note: Annotated[str | None, typer.Option()] = None,
+    publish: Annotated[bool, typer.Option(help="Publish immediately after approving")] = False,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Approve a pending payload. Approval decisions are CLI-only by design."""
+    configure_logging()
+    from sqlalchemy.orm import Session
+
+    from codeatlas.publication.gate import (
+        PublicationBlocked,
+        decide_approval,
+        publish_approved,
+    )
+
+    deps = _deps(workdir, test_db)
+    with Session(deps.engine) as session:
+        try:
+            decide_approval(
+                session, approval_id=approval_id, decision="approved", decided_by=by, note=note
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        session.commit()
+    typer.echo(f"approval {approval_id} approved by {by}")
+
+    if not publish:
+        typer.echo("not published (pass --publish, or run `codeatlas publish`)")
+        return
+
+    from codeatlas.vcs.github.client import GitHubWriter, token_from_keyring
+
+    with Session(deps.engine) as session:
+        try:
+            record = publish_approved(
+                session,
+                approval_id=approval_id,
+                github=GitHubWriter(token_from_keyring()),
+                cas=deps.cas,
+                enabled=True,
+            )
+            session.commit()
+        except PublicationBlocked as exc:
+            typer.echo(f"publication blocked: {exc}", err=True)
+            raise typer.Exit(1) from exc
+    typer.echo(f"published: {record.external_ref}")
+
+
+@app.command()
+def reject(
+    approval_id: int,
+    by: Annotated[str, typer.Option(help="Who is rejecting (recorded in the audit trail)")],
+    note: Annotated[str | None, typer.Option()] = None,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Reject a pending payload. It can never be published afterwards."""
+    configure_logging()
+    from sqlalchemy.orm import Session
+
+    from codeatlas.publication.gate import decide_approval
+
+    deps = _deps(workdir, test_db)
+    with Session(deps.engine) as session:
+        try:
+            decide_approval(
+                session, approval_id=approval_id, decision="rejected", decided_by=by, note=note
+            )
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        session.commit()
+    typer.echo(f"approval {approval_id} rejected by {by}")
+
+
 def main() -> None:
     app()
 
