@@ -1,0 +1,29 @@
+# CodeAtlas gitleaks config. Extends the default ruleset with strict, no-entropy-filter
+# rules for the two secret types this project actually holds (GitHub fine-grained PAT,
+# Anthropic API key). The defaults alone missed synthetic fine-grained PATs during the
+# M0 planted-secret validation (sequence/entropy filters), which is unacceptable here.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented fake secrets used as test vectors by the secret-gate regression tests"
+paths = ['''tests/security/test_secret_gate\.py''']
+
+[[rules]]
+id = "codeatlas-github-fine-grained-pat"
+description = "GitHub fine-grained personal access token (strict)"
+regex = '''github_pat_[0-9A-Za-z_]{82}'''
+keywords = ["github_pat_"]
+
+[[rules]]
+id = "codeatlas-anthropic-api-key"
+description = "Anthropic API key (strict)"
+regex = '''sk-ant-[A-Za-z0-9_\-]{20,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "codeatlas-postgres-url-password"
+description = "PostgreSQL connection URL with inline password"
+regex = '''postgres(?:ql)?://[^:\s]+:[^@\s]{6,}@'''
+keywords = ["postgres://", "postgresql://"]
