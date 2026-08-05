@@ -11,18 +11,28 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 _DEFAULT_TIMEOUT_S = 15.0
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @dataclass(frozen=True, slots=True)
 class ToolRequirement:
-    """One external tool the platform depends on."""
+    """One external tool the platform depends on.
+
+    `fallback_paths` mirror how the code actually locates each tool. Several are
+    deliberately not on PATH — PostgreSQL's client tools live under Program
+    Files, and the Structurizr CLI is a pinned zip under infra/tools — so a
+    PATH-only probe would report a working install as missing and send someone
+    chasing a setup problem that does not exist.
+    """
 
     name: str
     command: str
     version_args: tuple[str, ...]
     required_for: str  # first milestone that needs it, e.g. "M0"
+    fallback_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,14 +53,35 @@ REQUIRED_TOOLS: tuple[ToolRequirement, ...] = (
     ToolRequirement("cargo", "cargo", ("--version",), "M3"),
     ToolRequirement("rustc", "rustc", ("--version",), "M3"),
     ToolRequirement("rust-analyzer", "rust-analyzer", ("--version",), "M4"),
-    ToolRequirement("psql", "psql", ("--version",), "M5"),
+    ToolRequirement(
+        "psql",
+        "psql",
+        ("--version",),
+        "M5",
+        fallback_paths=(
+            r"C:\Program Files\PostgreSQL\17\bin\psql.exe",
+            r"C:\Program Files\PostgreSQL\16\bin\psql.exe",
+        ),
+    ),
     ToolRequirement("node", "node", ("--version",), "M7"),
     ToolRequirement("npm", "npm", ("--version",), "M7"),
     ToolRequirement("claude", "claude", ("--version",), "M8"),
     ToolRequirement("gh", "gh", ("--version",), "M12"),
     ToolRequirement("java", "java", ("-version",), "M13"),
-    ToolRequirement("structurizr", "structurizr", ("version",), "M13"),
-    ToolRequirement("mmdc", "mmdc", ("--version",), "M13"),
+    ToolRequirement(
+        "structurizr",
+        "structurizr",
+        ("version",),
+        "M13",
+        fallback_paths=(str(_REPO_ROOT / "infra" / "tools" / "structurizr" / "structurizr.bat"),),
+    ),
+    ToolRequirement(
+        "mmdc",
+        "mmdc",
+        ("--version",),
+        "M13",
+        fallback_paths=(str(Path.home() / "AppData" / "Roaming" / "npm" / "mmdc.cmd"),),
+    ),
     ToolRequirement("clangd", "clangd", ("--version",), "M17"),
 )
 
@@ -67,7 +98,15 @@ def probe_tool(req: ToolRequirement, timeout_s: float = _DEFAULT_TIMEOUT_S) -> T
     """
     path = shutil.which(req.command)
     if path is None:
-        return ToolStatus(req.name, found=False, path=None, version=None, error="not on PATH")
+        path = next((p for p in req.fallback_paths if Path(p).exists()), None)
+    if path is None:
+        return ToolStatus(
+            req.name,
+            found=False,
+            path=None,
+            version=None,
+            error="not on PATH" + (" or any known install location" if req.fallback_paths else ""),
+        )
 
     try:
         proc = subprocess.run(  # noqa: S603 - fixed registry command, list args, no shell
