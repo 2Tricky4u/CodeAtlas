@@ -1,0 +1,23 @@
+{
+  "phase": "4-postgresql",
+  "date": "2026-08-05",
+  "installs": [
+    {
+      "tool": "postgresql",
+      "version": "17.10",
+      "method": "winget install --exact --id PostgreSQL.PostgreSQL.17 --override unattended (no pgAdmin/stackbuilder)",
+      "service": "postgresql-x64-17 (auto-start, running)"
+    }
+  ],
+  "hardening": {
+    "password_encryption": "scram-sha-256 (verified)",
+    "pg_hba": "loopback-only (127.0.0.1/32, ::1/128) scram for all rules (verified via pg_hba_file_rules)",
+    "listen_addresses": "ALTER SYSTEM SET localhost applied to postgresql.auto.conf; ACTIVE VALUE STILL '*' until service restart (restart needs elevation; takes effect at next reboot). Loopback-only pg_hba + no firewall inbound rule mitigate meanwhile. VERIFY after next reboot: SHOW listen_addresses; must return 'localhost'.",
+    "roles": "codeatlas_migrator (DDL owner of codeatlas + codeatlas_test), codeatlas_app (CONNECT + DML via default privileges), both NOSUPERUSER NOCREATEDB NOCREATEROLE",
+    "secrets": "postgres_super / codeatlas_app / codeatlas_migrator passwords in Windows Credential Manager under service 'codeatlas/db' (via keyring); never in files"
+  },
+  "pending": [
+    "nightly pg_dump scheduled task + weekly restore --list verification (M15 observability hardening)",
+    "listen_addresses verification after next reboot"
+  ]
+}
