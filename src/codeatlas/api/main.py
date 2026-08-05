@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -40,7 +41,7 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
         allow_headers=["*"],
     )
 
-    def session() -> Session:  # pragma: no cover - generator plumbing
+    def session() -> Iterator[Session]:  # pragma: no cover - generator plumbing
         with Session(engine) as s:
             yield s
 
