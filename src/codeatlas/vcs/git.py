@@ -15,6 +15,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 _GIT_TIMEOUT_S = 300.0
 
@@ -145,14 +146,55 @@ class GitClient:
     # -- clones and checkouts ------------------------------------------------
 
     def mirror_clone(self, source: str, dest: Path) -> None:
+        # The destination must be absolute. git resolves a relative destination
+        # against `cwd`, which is itself the destination's parent — a relative
+        # path therefore nests the clone inside itself
+        # (var/mirrors/var/mirrors/x.git). Tests using absolute tmp paths never
+        # saw this; a relative --workdir did.
+        dest = dest.resolve()
         dest.parent.mkdir(parents=True, exist_ok=True)
         self.run(["clone", "--mirror", source, str(dest)], cwd=dest.parent)
 
     def fetch(self, repo: Path) -> None:
         self.run(["fetch", "--all", "--prune"], cwd=repo)
 
+    def is_repository(self, path: Path) -> bool:
+        """True iff `path` is a git repository git itself can read."""
+        if not path.is_dir():
+            return False
+        proc = self.run(["rev-parse", "--git-dir"], cwd=path, check=False)
+        return proc.returncode == 0
+
+    def ensure_mirror(self, source: str, mirror: Path) -> None:
+        """A usable mirror at `mirror`, rebuilding it if what is there is scrap.
+
+        Interrupted runs leave partial clones behind. Without this, a single
+        crash makes every later run fail with 'destination path already exists'.
+        """
+        if self.is_repository(mirror):
+            self.fetch(mirror)
+            return
+        if mirror.exists():
+            _force_remove(mirror)
+        self.mirror_clone(source, mirror)
+
+    def ensure_checkout(self, mirror: Path, sha: str, dest: Path) -> None:
+        """A read-only worktree at exactly `sha`, rebuilt if it is not one."""
+        if dest.exists():
+            if (
+                self.is_repository(dest)
+                and self.run(["rev-parse", "HEAD"], cwd=dest, check=False).stdout.strip() == sha
+            ):
+                return
+            _force_remove(dest)
+        self.pinned_checkout(mirror, sha, dest)
+
     def pinned_checkout(self, mirror: Path, sha: str, dest: Path) -> None:
         """Materialize a read-only working tree of `mirror` at exactly `sha`."""
+        # Absolute for the same reason as mirror_clone: git would otherwise
+        # resolve a relative destination against cwd and nest it inside itself.
+        mirror = mirror.resolve()
+        dest = dest.resolve()
         # Validate the sha exists in the mirror first (typed failure, no litter).
         self.resolve_sha(mirror, sha)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +204,18 @@ class GitClient:
         )
         self.run(["checkout", "--detach", sha], cwd=dest)
         _make_tree_read_only(dest)
+
+
+def _force_remove(path: Path) -> None:
+    """Delete a tree that may contain read-only files (checkouts are read-only,
+    and git's object store is read-only by design)."""
+    import shutil
+
+    def _on_error(func: Any, target: str, _exc: Any) -> None:
+        Path(target).chmod(stat.S_IWRITE)
+        func(target)
+
+    shutil.rmtree(path, onexc=_on_error)
 
 
 def _make_tree_read_only(root: Path) -> None:

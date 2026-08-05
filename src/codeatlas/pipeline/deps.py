@@ -1,6 +1,9 @@
-"""Dependency container for the pipeline (engine, stores, paths) — enables
-test injection (test DB, tmp CAS, crash-stage fault injection) without config
-globals."""
+"""Dependency container for the pipeline.
+
+Everything the stages need is injected here rather than read from globals, so a
+test can substitute a test database, a temporary artifact store, a replay agent
+engine, or a deliberately crashing stage without touching configuration.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +12,13 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
+from codeatlas.agents.budget import TokenBudget
+from codeatlas.agents.registry import SkillRegistry
 from codeatlas.artifacts.store import ArtifactStore
 from codeatlas.vcs.git import GitClient
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
 
 
 @dataclass
@@ -22,6 +30,18 @@ class PipelineDeps:
     git: GitClient = field(default_factory=GitClient)
     crash_stage: str | None = None  # fault injection for resume tests
 
+    # Review stages. When `agent_engine` is None the pipeline runs its
+    # deterministic half only — extraction, graph, diagrams — which is a valid
+    # and useful mode, not a degraded one.
+    agent_engine: object | None = None
+    skills_dir: Path = DEFAULT_SKILLS_DIR
+    budget: TokenBudget | None = None
+
+    # Publication target. Absent means the run stops after the report.
+    github_owner: str | None = None
+    github_repo: str | None = None
+    pr_number: int | None = None
+
     @property
     def mirrors(self) -> Path:
         return self.workdir / "mirrors"
@@ -29,3 +49,14 @@ class PipelineDeps:
     @property
     def checkouts(self) -> Path:
         return self.workdir / "checkouts"
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self.workdir / "artifacts"
+
+    def registry(self) -> SkillRegistry:
+        return SkillRegistry.load(self.skills_dir)
+
+    @property
+    def reviews_enabled(self) -> bool:
+        return self.agent_engine is not None

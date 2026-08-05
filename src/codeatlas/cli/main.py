@@ -17,16 +17,40 @@ app = typer.Typer(name="codeatlas", no_args_is_help=True, pretty_exceptions_enab
 _DEFAULT_WORKDIR = Path("var")
 
 
-def _deps(workdir: Path, test_db: bool) -> PipelineDeps:
+def _deps(
+    workdir: Path,
+    test_db: bool,
+    *,
+    review: bool = False,
+    replay: bool = False,
+    max_tokens: int = 2_000_000,
+) -> PipelineDeps:
     from codeatlas.artifacts.store import ArtifactStore
     from codeatlas.db.session import app_engine
     from codeatlas.pipeline.deps import PipelineDeps
+
+    agent_engine: object | None = None
+    budget = None
+    if review:
+        from codeatlas.agents.budget import TokenBudget
+
+        if replay:
+            from codeatlas.agents.replay_engine import ReplayEngine
+
+            agent_engine = ReplayEngine(Path("tests") / "cassettes")
+        else:
+            from codeatlas.agents.claude_engine import ClaudeAgentEngine
+
+            agent_engine = ClaudeAgentEngine()
+        budget = TokenBudget(max_run_tokens=max_tokens, max_task_tokens=400_000)
 
     return PipelineDeps(
         engine=app_engine(test=test_db),
         workdir=workdir,
         cas=ArtifactStore(workdir / "objects"),
         checkpoint_path=workdir / "checkpoints" / "pipeline.sqlite",
+        agent_engine=agent_engine,
+        budget=budget,
     )
 
 
@@ -38,13 +62,19 @@ def run(
     workdir: Annotated[
         Path, typer.Option(help="Working directory for mirrors/artifacts")
     ] = _DEFAULT_WORKDIR,
+    review: Annotated[
+        bool, typer.Option(help="Run the agent review stages (costs subscription quota)")
+    ] = False,
+    replay: Annotated[
+        bool, typer.Option(help="Use recorded cassettes instead of the live engine")
+    ] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
     """Analyze a repository at a pinned revision."""
     configure_logging()
     from codeatlas.pipeline.runner import run_status, start_run
 
-    deps = _deps(workdir, test_db)
+    deps = _deps(workdir, test_db, review=review, replay=replay)
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
@@ -82,6 +112,53 @@ def status(
 
     deps = _deps(workdir, test_db)
     typer.echo(run_status(deps, run_id))
+
+
+@app.command("review-pr")
+def review_pr(
+    slug: Annotated[str, typer.Argument(help="owner/repo")],
+    pr_number: Annotated[int, typer.Argument(help="Pull request number")],
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    replay: Annotated[bool, typer.Option(help="Use recorded cassettes")] = False,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Review a GitHub pull request in shadow mode — analyze and post NOTHING.
+
+    Fetches the PR, pins base and head SHAs, analyzes the head revision, and
+    prepares the exact review payload. Publishing it is a separate, explicit act
+    (`codeatlas approve --publish`), so this command can never surprise anyone.
+    """
+    configure_logging()
+    from codeatlas.pipeline.runner import run_status, start_run
+    from codeatlas.vcs.github.client import GitHubError, GitHubReader, token_from_keyring
+
+    if "/" not in slug:
+        typer.echo(f"expected owner/repo, got {slug!r}", err=True)
+        raise typer.Exit(2)
+    owner, repo_name = slug.split("/", 1)
+
+    try:
+        reader = GitHubReader(token_from_keyring())
+        pr = reader.pull_request(owner, repo_name, pr_number)
+    except GitHubError as exc:
+        typer.echo(f"GitHub error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo(f"PR #{pr.number}: {pr.title}")
+    typer.echo(f"  base {pr.base_sha[:12]} -> head {pr.head_sha[:12]}")
+    typer.echo(f"  {len(pr.changed_paths)} changed file(s)")
+
+    deps = _deps(workdir, test_db, review=True, replay=replay)
+    deps.github_owner = owner
+    deps.github_repo = repo_name
+    deps.pr_number = pr_number
+
+    clone_url = f"https://github.com/{owner}/{repo_name}.git"
+    run_id = start_run(deps, repo_path=Path(clone_url), repository_id=slug, ref=pr.head_sha)
+    status = run_status(deps, run_id)
+    typer.echo(f"run {run_id} {status}")
+    typer.echo("nothing was published; review the payload with `codeatlas show-approval`")
+    raise typer.Exit(0 if status.startswith("succeeded") else 1)
 
 
 @app.command()

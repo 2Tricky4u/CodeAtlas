@@ -88,13 +88,12 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
 
         head_sha = deps.git.resolve_sha(repo_path, ref)
         mirror = deps.mirrors / (repository_id.replace("/", "_") + ".git")
-        if not mirror.exists():
-            deps.git.mirror_clone(str(repo_path), mirror)
-        else:
-            deps.git.fetch(mirror)
+        # A crashed run can leave a partial mirror or checkout behind. Treat
+        # anything that is not a usable repository as scrap and rebuild it:
+        # otherwise one interrupted run poisons the workdir for every run after.
+        deps.git.ensure_mirror(str(repo_path), mirror)
         checkout = deps.checkouts / head_sha
-        if not checkout.exists():
-            deps.git.pinned_checkout(mirror, head_sha, checkout)
+        deps.git.ensure_checkout(mirror, head_sha, checkout)
 
         lock: SourceLock = build_source_lock(
             mirror, repository_id=repository_id, head_ref=head_sha, git=deps.git
@@ -245,6 +244,53 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             session.commit()
         return {"cytoscape_sha256": sha}
 
+    def review(state: PipelineState) -> dict[str, Any]:
+        """The review half: intent, reviewers, verification, validation, synthesis.
+
+        Skipped entirely when no agent engine is configured — a deterministic-only
+        run is a supported mode, and pretending to review without a reviewer would
+        be worse than saying so.
+        """
+        if not deps.reviews_enabled:
+            return {"review_notes": ["review skipped: no agent engine configured"]}
+
+        from codeatlas.pipeline.review_stages import (
+            ReviewContext,
+            stage_adr_audit,
+            stage_diagrams,
+            stage_intent,
+            stage_payload,
+            stage_reviewers,
+            stage_synthesize,
+            stage_validate,
+        )
+
+        graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
+        ctx = ReviewContext(
+            run_id=state["run_id"],
+            revision_sha=state["head_sha"],
+            checkout=Path(state["checkout_path"]),
+            graph=graph,
+        )
+
+        stage_intent(deps, ctx)
+        stage_reviewers(deps, ctx)
+        stage_validate(deps, ctx, revision_db_id=state["revision_db_id"])
+        stage_synthesize(deps, ctx)
+        stage_diagrams(deps, ctx)
+        stage_adr_audit(deps, ctx)
+        payload = stage_payload(deps, ctx, scope=None)
+
+        assert ctx.validation is not None
+        return {
+            "review_artifacts": ctx.artifacts,
+            "finding_count": len(ctx.findings),
+            "publishable_count": len(ctx.validation.publishable),
+            "failed_skills": ctx.failed_skills,
+            "review_notes": ctx.notes,
+            "payload_summary": payload or {},
+        }
+
     def finalize(state: PipelineState) -> dict[str, Any]:
         with Session(deps.engine) as session:
             run_row = repo.get_run(session, state["run_id"])
@@ -265,6 +311,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 outputs={
                     "projectGraph": state["graph_sha256"],
                     "cytoscape": state["cytoscape_sha256"],
+                    **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
             )
@@ -281,7 +328,10 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 schema_id="run-manifest.v1",
             )
             run_row.manifest_sha256 = manifest_sha
-            repo.set_run_status(session, run_id=state["run_id"], status="succeeded")
+            # A run where a reviewer failed is not a clean bill of health, and its
+            # status must not read like one.
+            status = "succeeded_with_gaps" if state.get("failed_skills") else "succeeded"
+            repo.set_run_status(session, run_id=state["run_id"], status=status)
             session.commit()
         return {"manifest_sha256": manifest_sha}
 
@@ -291,6 +341,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "extract": extract,
         "build_graph": build_graph,
         "export_cytoscape": export_cytoscape,
+        "review": review,
         "finalize": finalize,
     }
     for stage_name, stage_fn in stages.items():
@@ -301,7 +352,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")
     builder.add_edge("build_graph", "export_cytoscape")
-    builder.add_edge("export_cytoscape", "finalize")
+    builder.add_edge("export_cytoscape", "review")
+    builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)
 
     deps.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
