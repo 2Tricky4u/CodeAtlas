@@ -63,7 +63,7 @@ class RaScipExtractor:
             update={"configuration": {**configuration, "indexSha256": sha256_bytes(index_bytes)}}
         )
 
-        index = scip_pb2.Index()
+        index = scip_pb2.Index()  # type: ignore[attr-defined]
         index.ParseFromString(index_bytes)
         fragment = normalize_scip(index, ra_version=version)
         return fragment, receipt

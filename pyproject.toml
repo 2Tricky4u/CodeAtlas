@@ -65,7 +65,7 @@ warn_unreachable = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = "codeatlas.extractors.rust.scip_pb2.*"
+module = ["codeatlas.extractors.rust.scip_pb2", "codeatlas.extractors.rust.scip_pb2.*"]
 ignore_errors = true
 disallow_untyped_defs = false
 follow_imports = "skip"
