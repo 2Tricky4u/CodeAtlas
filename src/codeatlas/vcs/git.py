@@ -70,6 +70,7 @@ class GitClient:
         cwd: Path,
         check: bool = True,
         timeout_s: float = _GIT_TIMEOUT_S,
+        extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         git = shutil.which("git")
         if git is None:
@@ -77,7 +78,7 @@ class GitClient:
         cmd = [git, *_BASE_CONFIG, *args]
         display = "git " + " ".join(args)
         started = time.monotonic()
-        env = {**os.environ, "LC_ALL": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
+        env = {**os.environ, "LC_ALL": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0", **(extra_env or {})}
         proc = subprocess.run(  # noqa: S603 - fixed binary, list args, no shell
             cmd,
             cwd=cwd,

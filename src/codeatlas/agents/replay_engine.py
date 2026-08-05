@@ -51,7 +51,11 @@ class ReplayEngine:
         payload = {"task": task.contract_dump(), "result": result.contract_dump()}
         self._path(task).write_bytes(canonical_json(payload))
 
-    def run(self, task: AgentTask) -> AgentResult:
+    def run(self, task: AgentTask, instructions: str = "") -> AgentResult:
+        """Replay a recorded result. `instructions` is accepted for interface
+        parity with live engines and deliberately unused: the cassette key
+        already pins the skill's content hash, so instructions cannot drift
+        without invalidating the cassette."""
         path = self._path(task)
         if not path.exists():
             raise CassetteMissing(

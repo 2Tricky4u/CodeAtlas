@@ -18,3 +18,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: intent-reconstructor
+    version: "1.0.0"
+    path: intent-reconstructor/
+    content_sha256: "sha256:b9a58aa8d248a5ef999bb04718a1234006ea4a7dbb9100c60ed8a0dd1044c549"
+    purpose: "Reconstruct stated intent from specs, ADRs and repository rules"
+    output_schema: intent.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"
