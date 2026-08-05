@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from codeatlas.core.canonical import sha256_bytes
 from codeatlas.core.ids import edge_id
@@ -112,7 +113,7 @@ def _display_name(symbol: str, info_names: dict[str, str]) -> str:
     return tail or symbol
 
 
-def _ranges(occ: scip_pb2.Occurrence) -> tuple[int, int]:
+def _ranges(occ: Any) -> tuple[int, int]:
     """(start_line, end_line), 0-based, preferring the enclosing range."""
     r = list(occ.enclosing_range) or list(occ.range)
     start = r[0]
@@ -120,7 +121,7 @@ def _ranges(occ: scip_pb2.Occurrence) -> tuple[int, int]:
     return start, end
 
 
-def normalize_scip(index: scip_pb2.Index, ra_version: str) -> GraphFragment:
+def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
     """Pure normalization of a SCIP index into a graph fragment."""
     strong = Evidence(
         kind="language-server",
