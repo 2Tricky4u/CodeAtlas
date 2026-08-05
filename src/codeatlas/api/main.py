@@ -1,0 +1,167 @@
+"""Read-only FastAPI application.
+
+Strictly GET-only: the dashboard can inspect everything and change nothing.
+Approval decisions happen exclusively through the CLI (ADR-0011). Pinned source
+is served from the bare mirrors via `git cat-file`, with the requested path
+validated against the `file` table for that revision — no filesystem access.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import Session
+
+from codeatlas.artifacts.store import ArtifactStore
+from codeatlas.db.tables import (
+    ArtifactRow,
+    FileRow,
+    GraphSnapshotRow,
+    RevisionRow,
+    RunRow,
+)
+from codeatlas.vcs.git import GitClient, GitError
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_ARTIFACT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
+    app = FastAPI(title="CodeAtlas", version="0.1.0", docs_url="/api/docs")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
+    def session() -> Session:  # pragma: no cover - generator plumbing
+        with Session(engine) as s:
+            yield s
+
+    @app.get("/api/runs")
+    def list_runs(s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        rows = s.scalars(select(RunRow).order_by(RunRow.id.desc()).limit(100)).all()
+        return [_run_summary(s, r) for r in rows]
+
+    @app.get("/api/runs/{run_id}")
+    def run_detail(run_id: str, s: Session = Depends(session)) -> dict[str, object]:  # noqa: B008
+        run = s.get(RunRow, run_id)
+        if run is None:
+            raise HTTPException(404, "unknown run")
+        detail = _run_summary(s, run)
+        detail["events"] = [
+            {
+                "stage": e.stage,
+                "event": e.event,
+                "level": e.level,
+                "at": e.at.isoformat(),
+                "data": e.data,
+            }
+            for e in run.events
+        ]
+        detail["receipts"] = [r.payload for r in run.receipts]
+        return detail
+
+    @app.get("/api/runs/{run_id}/graph")
+    def run_graph(run_id: str, s: Session = Depends(session)) -> dict[str, object]:  # noqa: B008
+        run = s.get(RunRow, run_id)
+        if run is None:
+            raise HTTPException(404, "unknown run")
+        artifact = s.scalar(
+            select(ArtifactRow).where(
+                ArtifactRow.produced_by_run_id == run_id,
+                ArtifactRow.kind == "cytoscape-elements",
+            )
+        )
+        if artifact is None:
+            raise HTTPException(404, "no graph artifact for this run")
+        return json.loads(cas.get(artifact.sha256))  # type: ignore[no-any-return]
+
+    @app.get("/api/source/{revision_sha}")
+    def source(
+        revision_sha: str,
+        path: str = Query(min_length=1),
+        start: int = Query(default=1, ge=1),
+        end: int | None = Query(default=None, ge=1),
+        s: Session = Depends(session),  # noqa: B008
+    ) -> dict[str, object]:
+        if not _SHA_RE.match(revision_sha):
+            raise HTTPException(400, "malformed revision sha")
+        revision = s.scalar(select(RevisionRow).where(RevisionRow.sha == revision_sha))
+        if revision is None:
+            raise HTTPException(404, "unknown revision")
+        # Path allowlist: must exist in the file table at this revision. This is
+        # the traversal defense — arbitrary strings simply aren't known paths.
+        file_row = s.scalar(
+            select(FileRow).where(FileRow.revision_id == revision.id, FileRow.path == path)
+        )
+        if file_row is None:
+            raise HTTPException(404, "path not present at this revision")
+
+        mirror = _mirror_for(s, mirrors, revision)
+        if mirror is None:
+            raise HTTPException(404, "no mirror for this repository")
+        try:
+            blob = GitClient().cat_file(mirror, file_row.git_blob_sha)
+        except GitError as exc:
+            raise HTTPException(500, f"git error: {exc}") from exc
+        lines = blob.decode("utf-8", "replace").splitlines()
+        end_line = min(end if end is not None else len(lines), len(lines))
+        if start > len(lines):
+            raise HTTPException(400, "start beyond end of file")
+        return {
+            "revision": revision_sha,
+            "path": path,
+            "startLine": start,
+            "endLine": end_line,
+            "lines": lines[start - 1 : end_line],
+        }
+
+    @app.get("/api/artifacts/{ref}")
+    def artifact(ref: str, s: Session = Depends(session)) -> object:  # noqa: B008
+        if not _ARTIFACT_RE.match(ref):
+            raise HTTPException(400, "malformed artifact ref")
+        row = s.get(ArtifactRow, ref)
+        if row is None:
+            raise HTTPException(404, "unknown artifact")
+        data = cas.get(ref)
+        if row.media_type == "application/json":
+            return json.loads(data)
+        raise HTTPException(415, "artifact is not JSON-servable via this endpoint")
+
+    return app
+
+
+def _run_summary(s: Session, run: RunRow) -> dict[str, object]:
+    head = s.get(RevisionRow, run.head_revision_id)
+    snapshot = s.scalar(select(GraphSnapshotRow).where(GraphSnapshotRow.run_id == run.id))
+    return {
+        "id": run.id,
+        "repositoryId": run.repository_id,
+        "kind": run.kind,
+        "status": run.status,
+        "headSha": head.sha if head else None,
+        "createdAt": run.created_at.isoformat(),
+        "manifestSha256": run.manifest_sha256,
+        "graph": (
+            {
+                "snapshotId": snapshot.id,
+                "nodeCount": snapshot.node_count,
+                "edgeCount": snapshot.edge_count,
+                "canonicalSha256": snapshot.canonical_sha256,
+            }
+            if snapshot
+            else None
+        ),
+    }
+
+
+def _mirror_for(s: Session, mirrors: Path, revision: RevisionRow) -> Path | None:
+    candidate = mirrors / (revision.repository_id.replace("/", "_") + ".git")
+    return candidate if candidate.exists() else None

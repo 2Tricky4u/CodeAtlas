@@ -1,0 +1,157 @@
+"""Read-only API tests (M7). Markers: subproc + pg.
+
+Seeds one real pipeline run on the fixture repo, then exercises the API via
+FastAPI's TestClient: runs listing/detail, Cytoscape graph payload, pinned
+source retrieval (matching git show), artifact fetch — and the security paths:
+traversal attempts and unknown-path rejection on /api/source.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from codeatlas.artifacts.store import ArtifactStore
+from codeatlas.pipeline.deps import PipelineDeps
+from codeatlas.pipeline.runner import start_run
+from codeatlas.vcs.git import GitClient
+
+pytestmark = [pytest.mark.subproc, pytest.mark.pg]
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURE_SRC = REPO_ROOT / "fixtures" / "rust-flawed-crate"
+sys.path.insert(0, str(REPO_ROOT / "fixtures"))
+
+
+@pytest.fixture(scope="module")
+def seeded():  # type: ignore[no-untyped-def]
+    """(client, run_id, head_sha) — one succeeded run served by the API."""
+    from make_fixture_repos import build_fixture_repo
+
+    from codeatlas.api.main import create_app
+    from codeatlas.db.migrate import downgrade_base, upgrade_head
+    from codeatlas.db.session import app_engine, migrator_engine, test_db_available
+
+    if not test_db_available():
+        pytest.skip("codeatlas_test PostgreSQL database not reachable")
+
+    import tempfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="codeatlas-api-test-"))
+    mig = migrator_engine(test=True)
+    downgrade_base(mig)
+    upgrade_head(mig)
+    mig.dispose()
+
+    engine = app_engine(test=True)
+    repo_dir = tmp / "repo"
+    head_sha = build_fixture_repo(FIXTURE_SRC, repo_dir)
+    deps = PipelineDeps(
+        engine=engine,
+        workdir=tmp / "wd",
+        cas=ArtifactStore(tmp / "wd" / "objects"),
+        checkpoint_path=tmp / "wd" / "checkpoints" / "p.sqlite",
+    )
+    run_id = start_run(deps, repo_path=repo_dir, repository_id="local/kvstore")
+
+    application = create_app(engine=engine, cas=deps.cas, mirrors=deps.mirrors)
+    client = TestClient(application)
+    yield client, run_id, head_sha
+    engine.dispose()
+
+
+class TestRuns:
+    def test_list_runs(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        r = client.get("/api/runs")
+        assert r.status_code == 200
+        runs = r.json()
+        assert any(item["id"] == run_id for item in runs)
+
+    def test_run_detail_includes_stage_timeline(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, head_sha = seeded
+        r = client.get(f"/api/runs/{run_id}")
+        assert r.status_code == 200
+        detail = r.json()
+        assert detail["status"] == "succeeded"
+        assert detail["headSha"] == head_sha
+        stages = [e["stage"] for e in detail["events"] if e["event"] == "finished"]
+        assert "build_graph" in stages
+        assert detail["manifestSha256"].startswith("sha256:")
+
+    def test_unknown_run_404(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/runs/01AAAAAAAAAAAAAAAAAAAAAAAA").status_code == 404
+
+
+class TestGraph:
+    def test_cytoscape_payload(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        r = client.get(f"/api/runs/{run_id}/graph")
+        assert r.status_code == 200
+        payload = r.json()
+        assert len(payload["elements"]["nodes"]) > 10
+        assert any(e["data"]["kind"] == "depends-on" for e in payload["elements"]["edges"])
+
+
+class TestSource:
+    def test_pinned_source_matches_git_show(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _run_id, head_sha = seeded
+        r = client.get(
+            f"/api/source/{head_sha}",
+            params={"path": "kvstore/src/cache.rs", "start": 40, "end": 49},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["path"] == "kvstore/src/cache.rs"
+        assert len(body["lines"]) == 10
+        assert any("0..=n" in line for line in body["lines"])  # the B1 off-by-one range
+
+    def test_traversal_attempts_rejected(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, head_sha = seeded
+        for evil in (
+            "../../secrets.txt",
+            "..\\..\\windows\\system32\\config",
+            "kvstore/../../etc/passwd",
+            "C:\\Windows\\win.ini",
+        ):
+            r = client.get(f"/api/source/{head_sha}", params={"path": evil})
+            assert r.status_code in (400, 404), f"{evil!r} must be rejected, got {r.status_code}"
+
+    def test_unknown_path_at_revision_404(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, head_sha = seeded
+        r = client.get(f"/api/source/{head_sha}", params={"path": "kvstore/src/ghost.rs"})
+        assert r.status_code == 404
+
+    def test_malformed_revision_400(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        r = client.get("/api/source/not-a-sha", params={"path": "kvstore/src/lib.rs"})
+        assert r.status_code in (400, 422)
+
+
+class TestArtifacts:
+    def test_artifact_fetch_by_sha(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        detail = client.get(f"/api/runs/{run_id}").json()
+        r = client.get(f"/api/artifacts/{detail['manifestSha256']}")
+        assert r.status_code == 200
+        assert r.json()["runId"] == run_id
+
+    def test_malformed_artifact_ref_rejected(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/artifacts/md5:abc").status_code in (400, 404, 422)
+
+    def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        for method in ("post", "put", "delete", "patch"):
+            resp = getattr(client, method)(f"/api/runs/{run_id}")
+            assert resp.status_code == 405
+
+
+def _git_show(repo: Path, sha: str, path: str) -> str:
+    g = GitClient()
+    proc = g.run(["show", f"{sha}:{path}"], cwd=repo)
+    return proc.stdout
