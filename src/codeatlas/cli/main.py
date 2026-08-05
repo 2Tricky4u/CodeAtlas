@@ -84,6 +84,40 @@ def status(
     typer.echo(run_status(deps, run_id))
 
 
+@app.command()
+def compare(
+    left_run: str,
+    right_run: str,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Compare two runs. Exits nonzero if they are not reproducible."""
+    from sqlalchemy.orm import Session
+
+    from codeatlas.observability.compare import compare_runs
+    from codeatlas.observability.snapshot import load_snapshot
+
+    deps = _deps(workdir, test_db)
+    with Session(deps.engine) as session:
+        left = load_snapshot(session, left_run)
+        right = load_snapshot(session, right_run)
+    if left is None or right is None:
+        missing = left_run if left is None else right_run
+        typer.echo(f"unknown run {missing}", err=True)
+        raise typer.Exit(2)
+
+    result = compare_runs(left, right)
+    if result.reproducible:
+        typer.echo(f"REPRODUCIBLE: {result.left} and {result.right} agree")
+    else:
+        typer.echo(f"NOT REPRODUCIBLE: {result.left} vs {result.right}")
+        for difference in result.differences:
+            typer.echo(f"  - {difference}")
+    for note in result.notes:
+        typer.echo(f"  note: {note}")
+    raise typer.Exit(0 if result.reproducible else 1)
+
+
 @app.command("show-approval")
 def show_approval(
     approval_id: int,

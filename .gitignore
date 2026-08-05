@@ -37,3 +37,6 @@ Desktop.ini
 
 # Pinned third-party CLI (downloaded by setup, not source)
 infra/tools/
+
+# Local database backups
+var/backups/
