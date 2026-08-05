@@ -6,4 +6,5 @@
 | [ADR-0002](adr-0002-evidence-first-artifact-interfaces.md) | Evidence-first artifact interfaces between pipeline stages | Accepted | 2026-08-05 |
 | [ADR-0005](adr-0005-agent-engine-adapter.md) | Agent engine adapter — Claude Agent SDK on subscription auth | Accepted | 2026-08-05 |
 | [ADR-0008](adr-0008-trusted-skill-registry.md) | Trusted skill registry with pinned content hashes | Accepted | 2026-08-05 |
+| [ADR-0009](adr-0009-finding-lifecycle-and-publication-gates.md) | Finding lifecycle and publication gates | Accepted | 2026-08-05 |
 | [ADR-0012](adr-0012-record-replay-testing.md) | Record/replay testing of agent-dependent stages | Accepted | 2026-08-05 |

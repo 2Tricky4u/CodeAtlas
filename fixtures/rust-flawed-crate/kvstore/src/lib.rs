@@ -1,7 +1,5 @@
-//! kvstore: a small key-value store used as a CodeAtlas evaluation fixture.
-//!
-//! This crate deliberately contains planted defects documented in the fixture
-//! MANIFEST.yaml (B1..B5) plus sound decoys. Do not "fix" them.
+//! kvstore: a small bounded key-value store with an in-memory cache in front of
+//! a file-backed store.
 
 pub mod api;
 pub mod cache;

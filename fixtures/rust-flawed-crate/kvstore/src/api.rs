@@ -23,8 +23,6 @@ pub fn handle_request(cache: &mut Cache, request: &str) -> Response {
             None => Response::Error("bad request".to_string()),
         },
         Some("put") => {
-            // B4 (correctness): unwrap/parse on attacker-controlled input.
-            // A request like "put" or "put:k:notanumber" panics the handler.
             let key = parts.next().unwrap().to_string();
             let ttl_secs: u64 = parts.next().unwrap().parse().unwrap();
             cache.put(key, format!("ttl={ttl_secs}"));

@@ -70,3 +70,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: finding-validator
+    version: "1.0.0"
+    path: finding-validator/
+    content_sha256: "sha256:9a25c39803721369d23fcf3c312fcb6265ff911cef40ce383c0638ebb39ff856"
+    purpose: "Adversarially validate one candidate finding in a fresh context"
+    output_schema: validation-result.v1
+    permissions:
+      commands: ["cargo test", "rg"]
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"

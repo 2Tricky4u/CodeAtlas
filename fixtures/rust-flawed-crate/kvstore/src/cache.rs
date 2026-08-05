@@ -39,8 +39,6 @@ impl Cache {
 
     /// Evict the `n` oldest entries.
     pub fn evict_oldest(&mut self, n: usize) {
-        // B1 (correctness): off-by-one — the inclusive range evicts n+1
-        // entries, so the cache silently under-fills by one on every overflow.
         for _ in 0..=n {
             if let Some(oldest) = self.order.pop_front() {
                 self.map.remove(&oldest);
@@ -48,8 +46,7 @@ impl Cache {
         }
     }
 
-    /// Decoy (sound): saturating arithmetic is intentional and correct here —
-    /// an empty cache reports zero free slots rather than underflowing.
+    /// Free capacity remaining in the cache.
     pub fn free_slots(&self) -> usize {
         self.max_entries.saturating_sub(self.map.len())
     }
@@ -77,9 +74,6 @@ impl SharedCounter {
 
     /// Read a counter, initializing it if absent.
     pub fn read_or_init(&self, key: &str) -> u64 {
-        // B3 (correctness): check-then-use across two separate lock
-        // acquisitions. Another thread can remove the key between the
-        // contains_key check and the get, panicking on unwrap.
         if self.inner.lock().unwrap().contains_key(key) {
             *self.inner.lock().unwrap().get(key).unwrap()
         } else {

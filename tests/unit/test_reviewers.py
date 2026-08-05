@@ -155,15 +155,18 @@ class TestEvaluator:
         assert len(manifest.expected) == 5
         assert len(manifest.decoys) == 2
 
-        # Two planted bugs found, one spurious report on a decoy line.
+        # Two planted bugs found, one spurious report on a decoy's line. Lines are
+        # resolved from the manifest anchors, never hardcoded: the fixture moves.
+        root = REPO_ROOT / "fixtures" / "rust-flawed-crate"
+        b1 = next(e for e in manifest.expected if e.id == "B1")
+        b2 = next(e for e in manifest.expected if e.id == "B2")
+        d1 = next(d for d in manifest.decoys if d.id == "D1")
         found = [
-            _finding("F-0001", "reviewer-security", path="kvstore/src/storage.rs", line=30),
-            _finding("F-0002", "reviewer-correctness", path="kvstore/src/cache.rs", line=42),
-            _finding("F-0003", "reviewer-correctness", path="kvstore/src/cache.rs", line=53),
+            _finding("F-0001", "reviewer-security", path=b2.path, line=_anchor_line(root, b2)),
+            _finding("F-0002", "reviewer-correctness", path=b1.path, line=_anchor_line(root, b1)),
+            _finding("F-0003", "reviewer-correctness", path=d1.path, line=_anchor_line(root, d1)),
         ]
-        score = score_findings(
-            found, manifest, source_root=REPO_ROOT / "fixtures" / "rust-flawed-crate"
-        )
+        score = score_findings(found, manifest, source_root=root)
         assert "B2" in score.matched
         assert "B1" in score.matched
         assert score.recall == pytest.approx(2 / 5)

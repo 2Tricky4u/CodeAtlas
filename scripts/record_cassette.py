@@ -14,6 +14,10 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeatlas.artifacts.store import ArtifactStore
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "fixtures"))
@@ -51,6 +55,8 @@ def main(skill_id: str) -> int:
         inputs = {"documents": cas.put_json([s.path for s in sources])}
     elif skill_id.startswith("reviewer-"):
         inputs = _reviewer_inputs(checkout, cas)
+    elif skill_id == "finding-validator":
+        inputs = _validator_inputs(cas)
     else:
         inputs = {}
 
@@ -68,7 +74,7 @@ def main(skill_id: str) -> int:
     return 0
 
 
-def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:  # type: ignore[name-defined] # noqa: F821
+def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:
     """The evidence bundle reviewers receive, built exactly as the pipeline does."""
     import json
 
@@ -104,6 +110,31 @@ def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:  # t
         source_paths=source_paths,
         graph_slice=slice_graph_for_review(graph, source_paths),
     )
+
+
+def _validator_inputs(cas: ArtifactStore) -> dict[str, str]:
+    """One candidate finding as the validation stage would present it.
+
+    Uses a recorded reviewer finding so the cassette exercises a realistic claim.
+    """
+    import json
+
+    from codeatlas.models.findings import Finding
+
+    cassette = next((REPO_ROOT / "tests" / "cassettes").glob("reviewer-correctness-*.json"), None)
+    if cassette is None:
+        raise SystemExit("record the reviewer cassettes first")
+    findings = json.loads(cassette.read_text(encoding="utf-8"))["result"]["output"]["findings"]
+    finding = Finding.model_validate(findings[0])
+    payload = {
+        "finding": finding.contract_dump(),
+        "verification": {
+            "diagnosticsAtLocation": [],
+            "failingTests": [],
+            "summary": {"diagnostics": 0, "tests": 0, "failingTests": 0},
+        },
+    }
+    return {"candidate": cas.put_json(payload)}
 
 
 if __name__ == "__main__":

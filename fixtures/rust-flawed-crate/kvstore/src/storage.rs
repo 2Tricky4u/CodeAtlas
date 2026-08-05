@@ -1,8 +1,5 @@
 //! File-backed persistent store.
 
-// B5 (architecture): the storage layer imports the API layer, violating the
-// accepted layering decision in docs/adr/adr-0001-layering.md (api -> cache ->
-// storage, never upward).
 use crate::api::Response;
 
 use std::fs;
@@ -21,8 +18,6 @@ impl FileStore {
 
     /// Read the value stored for `key`. Keys arrive from the wire untrusted.
     pub fn read(&self, key: &str) -> io::Result<Vec<u8>> {
-        // B2 (security): unsanitized join — a key like "..\\..\\secret" or
-        // "../../secret" escapes the store root entirely.
         let path = self.root.join(key);
         fs::read(path)
     }
@@ -35,7 +30,7 @@ impl FileStore {
         fs::write(path, value)
     }
 
-    /// Report a storage outcome in API terms (exists to make B5 load-bearing).
+    /// Report a storage outcome in API terms.
     pub fn status_response(&self, key: &str) -> Response {
         match self.read(key) {
             Ok(bytes) => Response::Ok(format!("{} bytes", bytes.len())),
@@ -43,8 +38,7 @@ impl FileStore {
         }
     }
 
-    /// Decoy (sound): the unsafe block is a documented, valid use — it reads a
-    /// fixed-size prefix from a buffer we just bounds-checked.
+    /// Read a little-endian u32 magic number from the start of `bytes`.
     pub fn magic(&self, bytes: &[u8]) -> Option<u32> {
         if bytes.len() < 4 {
             return None;
