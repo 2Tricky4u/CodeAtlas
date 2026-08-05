@@ -15,6 +15,7 @@ from pathlib import Path
 
 from codeatlas.core.logging import get_logger
 from codeatlas.extractors.base import ExtractorError, run_receipted
+from codeatlas.extractors.rust.lockfile import detect as detect_lockfile_mode
 from codeatlas.models.receipts import ExtractorReceipt
 from codeatlas.verify.parse import (
     VerificationIndex,
@@ -24,19 +25,17 @@ from codeatlas.verify.parse import (
 
 log = get_logger("codeatlas.verify")
 
-_CHECK = ["check", "--workspace", "--message-format", "json", "--locked"]
-_CLIPPY = [
-    "clippy",
-    "--workspace",
-    "--message-format",
-    "json",
-    "--locked",
-    "--",
-    "-W",
-    "clippy::all",
-]
-_TEST = ["test", "--workspace", "--locked", "--", "-Z", "unstable-options", "--format", "json"]
-_TEST_STABLE = ["test", "--workspace", "--locked"]
+
+def _check(flag: str) -> list[str]:
+    return ["check", "--workspace", "--message-format", "json", flag]
+
+
+def _clippy(flag: str) -> list[str]:
+    return ["clippy", "--workspace", "--message-format", "json", flag, "--", "-W", "clippy::all"]
+
+
+def _test(flag: str) -> list[str]:
+    return ["test", "--workspace", flag]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,13 +58,18 @@ def run_battery(workspace: Path, revision_sha: str) -> BatteryOutcome:
     diagnostics_lines: list[str] = []
     test_lines: list[str] = []
 
+    # Repositories without a committed Cargo.lock cannot use --locked; the mode
+    # and its cost are recorded in every receipt.
+    mode = detect_lockfile_mode(workspace)
+    check_cmd, clippy_cmd, test_cmd = _check(mode.flag), _clippy(mode.flag), _test(mode.flag)
+
     # cargo check — compiler diagnostics
     proc, receipt = run_receipted(
         extractor_name="cargo-check",
-        command=[cargo, *_CHECK],
+        command=[cargo, *check_cmd],
         cwd=workspace,
         revision_sha=revision_sha,
-        configuration={"command": "cargo " + " ".join(_CHECK)},
+        configuration={"command": "cargo " + " ".join(check_cmd), **mode.receipt_fields()},
         extractor_version=version,
     )
     receipts.append(receipt)
@@ -76,10 +80,10 @@ def run_battery(workspace: Path, revision_sha: str) -> BatteryOutcome:
     if shutil.which("cargo-clippy") or _component_available(cargo, "clippy"):
         proc, receipt = run_receipted(
             extractor_name="cargo-clippy",
-            command=[cargo, *_CLIPPY],
+            command=[cargo, *clippy_cmd],
             cwd=workspace,
             revision_sha=revision_sha,
-            configuration={"command": "cargo " + " ".join(_CLIPPY)},
+            configuration={"command": "cargo " + " ".join(clippy_cmd), **mode.receipt_fields()},
             extractor_version=version,
         )
         receipts.append(receipt)
@@ -93,10 +97,10 @@ def run_battery(workspace: Path, revision_sha: str) -> BatteryOutcome:
     # results we then do not claim to have parsed per-test.
     proc, receipt = run_receipted(
         extractor_name="cargo-test",
-        command=[cargo, *_TEST_STABLE],
+        command=[cargo, *test_cmd],
         cwd=workspace,
         revision_sha=revision_sha,
-        configuration={"command": "cargo " + " ".join(_TEST_STABLE)},
+        configuration={"command": "cargo " + " ".join(test_cmd), **mode.receipt_fields()},
         extractor_version=version,
     )
     receipts.append(receipt)

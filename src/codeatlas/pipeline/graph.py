@@ -82,16 +82,17 @@ def _wrap(deps: PipelineDeps, name: str, fn: NodeFn) -> NodeFn:
 
 def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     def source_lock(state: PipelineState) -> dict[str, Any]:
-        repo_path = Path(state["repo_path"])
+        from codeatlas.pipeline.source import prepare_source
+
         repository_id = state["repository_id"]
         ref = state.get("ref", "HEAD")
 
-        head_sha = deps.git.resolve_sha(repo_path, ref)
-        mirror = deps.mirrors / (repository_id.replace("/", "_") + ".git")
-        # A crashed run can leave a partial mirror or checkout behind. Treat
-        # anything that is not a usable repository as scrap and rebuild it:
-        # otherwise one interrupted run poisons the workdir for every run after.
-        deps.git.ensure_mirror(str(repo_path), mirror)
+        # Works for a local path or a clone URL: the mirror is created first and
+        # everything is resolved from it. A crashed run can leave a partial
+        # mirror or checkout behind, so anything unusable is rebuilt rather than
+        # left to poison every later run.
+        prepared = prepare_source(deps, state["repo_path"], repository_id, ref)
+        mirror, head_sha = prepared.mirror, prepared.head_sha
         checkout = deps.checkouts / head_sha
         deps.git.ensure_checkout(mirror, head_sha, checkout)
 

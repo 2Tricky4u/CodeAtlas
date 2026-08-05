@@ -36,7 +36,11 @@ def main(skill_id: str) -> int:
     from codeatlas.review.intent import collect_intent_sources
 
     configure_logging()
-    engine = ClaudeAgentEngine()
+    tmp = Path(tempfile.mkdtemp(prefix="codeatlas-record-"))
+    cas = ArtifactStore(tmp / "objects")
+
+    # The engine shares the store so it can inline each input's content.
+    engine = ClaudeAgentEngine(cas=cas)
     health = engine.health_check()
     if not health.available:
         print(f"engine unavailable: {health.detail}", file=sys.stderr)
@@ -45,10 +49,8 @@ def main(skill_id: str) -> int:
     registry = SkillRegistry.load(REPO_ROOT / ".agents" / "skills")
     skill = registry.get(skill_id)
 
-    tmp = Path(tempfile.mkdtemp(prefix="codeatlas-record-"))
     checkout = tmp / "repo"
     sha = build_fixture_repo(REPO_ROOT / "fixtures" / "rust-flawed-crate", checkout)
-    cas = ArtifactStore(tmp / "objects")
 
     if skill_id == "intent-reconstructor":
         sources = collect_intent_sources(checkout)

@@ -12,12 +12,25 @@ from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.pipeline.graph import build_pipeline
 
 
-def start_run(deps: PipelineDeps, repo_path: Path, repository_id: str, ref: str = "HEAD") -> str:
-    """Create the run row and execute the pipeline. Returns the run id."""
-    head_sha = deps.git.resolve_sha(repo_path, ref)
+def start_run(
+    deps: PipelineDeps, repo_path: Path | str, repository_id: str, ref: str = "HEAD"
+) -> str:
+    """Create the run row and execute the pipeline. Returns the run id.
+
+    `repo_path` may be a local repository or a clone URL; both are mirrored
+    first and resolved from the mirror.
+    """
+    from codeatlas.pipeline.source import prepare_source
+
+    source = str(repo_path)
+    prepared = prepare_source(deps, source, repository_id, ref)
+    head_sha = prepared.head_sha
     with Session(deps.engine) as session:
         repository = repo.ensure_repository(
-            session, repository_id=repository_id, provider="local", remote_url=str(repo_path)
+            session,
+            repository_id=repository_id,
+            provider=prepared.provider,
+            remote_url=prepared.remote_url or source,
         )
         revision = repo.ensure_revision(session, repository_id=repository.id, sha=head_sha)
         run_row = repo.create_run(

@@ -74,15 +74,14 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
         run = s.get(RunRow, run_id)
         if run is None:
             raise HTTPException(404, "unknown run")
-        artifact = s.scalar(
-            select(ArtifactRow).where(
-                ArtifactRow.produced_by_run_id == run_id,
-                ArtifactRow.kind == "cytoscape-elements",
-            )
-        )
-        if artifact is None:
+        # Membership, not producer: identical content is shared between runs, so
+        # a repeat run's graph is attributed to whichever run first produced it.
+        from codeatlas.db.repositories import artifact_for_run
+
+        sha = artifact_for_run(s, run_id, "cytoscape-elements")
+        if sha is None:
             raise HTTPException(404, "no graph artifact for this run")
-        return json.loads(cas.get(artifact.sha256))  # type: ignore[no-any-return]
+        return json.loads(cas.get(sha))  # type: ignore[no-any-return]
 
     @app.get("/api/source/{revision_sha}")
     def source(

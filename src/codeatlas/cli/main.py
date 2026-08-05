@@ -29,6 +29,7 @@ def _deps(
     from codeatlas.db.session import app_engine
     from codeatlas.pipeline.deps import PipelineDeps
 
+    cas = ArtifactStore(workdir / "objects")
     agent_engine: object | None = None
     budget = None
     if review:
@@ -41,13 +42,15 @@ def _deps(
         else:
             from codeatlas.agents.claude_engine import ClaudeAgentEngine
 
-            agent_engine = ClaudeAgentEngine()
+            # The store is required: agents receive their inputs as content,
+            # and without it they would get undereferenceable hashes.
+            agent_engine = ClaudeAgentEngine(cas=cas)
         budget = TokenBudget(max_run_tokens=max_tokens, max_task_tokens=400_000)
 
     return PipelineDeps(
         engine=app_engine(test=test_db),
         workdir=workdir,
-        cas=ArtifactStore(workdir / "objects"),
+        cas=cas,
         checkpoint_path=workdir / "checkpoints" / "pipeline.sqlite",
         agent_engine=agent_engine,
         budget=budget,
@@ -152,9 +155,12 @@ def review_pr(
     deps.github_owner = owner
     deps.github_repo = repo_name
     deps.pr_number = pr_number
+    # Private repositories need an authenticated clone. The token is injected
+    # through git's environment config, never written to .git/config.
+    deps.git.github_token = token_from_keyring()
 
     clone_url = f"https://github.com/{owner}/{repo_name}.git"
-    run_id = start_run(deps, repo_path=Path(clone_url), repository_id=slug, ref=pr.head_sha)
+    run_id = start_run(deps, repo_path=clone_url, repository_id=slug, ref=pr.head_sha)
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
     typer.echo("nothing was published; review the payload with `codeatlas show-approval`")
@@ -193,6 +199,54 @@ def compare(
     for note in result.notes:
         typer.echo(f"  note: {note}")
     raise typer.Exit(0 if result.reproducible else 1)
+
+
+@app.command("request-approval")
+def request_approval_cmd(
+    run_id: str,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Open an approval for a completed run's review payload.
+
+    Separated from analysis on purpose: producing a payload and proposing to
+    publish it are different acts, and only the second one starts a countdown to
+    something leaving the machine.
+    """
+    configure_logging()
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from codeatlas.db.tables import RunRow
+    from codeatlas.publication.gate import request_approval
+    from codeatlas.publication.payload import ReviewPayload
+
+    deps = _deps(workdir, test_db)
+    with Session(deps.engine) as session:
+        run = session.get(RunRow, run_id)
+        if run is None:
+            typer.echo(f"unknown run {run_id}", err=True)
+            raise typer.Exit(1)
+        from codeatlas.db.repositories import artifact_for_run
+
+        sha = artifact_for_run(session, run_id, "review-payload-dry-run")
+        if sha is None:
+            typer.echo(
+                f"run {run_id} has no review payload; it was not a pull-request review",
+                err=True,
+            )
+            raise typer.Exit(1)
+        payload = ReviewPayload.model_validate(json.loads(deps.cas.get(sha)))
+        approval = request_approval(session, run_id=run_id, payload=payload, cas=deps.cas)
+        session.commit()
+        approval_id = approval.id
+
+    typer.echo(f"approval {approval_id} opened for run {run_id}")
+    typer.echo(f"  target: {payload.owner}/{payload.repo} PR #{payload.pr_number}")
+    typer.echo(f"  inline comments: {len(payload.comments)}")
+    typer.echo(f"\nreview it:  uv run codeatlas show-approval {approval_id}")
+    typer.echo(f'then:       uv run codeatlas approve {approval_id} --by "<you>" --publish')
 
 
 @app.command("show-approval")

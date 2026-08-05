@@ -41,8 +41,24 @@ _JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.DOTALL)
 class ClaudeAgentEngine:
     name = "claude-agent-sdk"
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self, model: str | None = None, cas: Any | None = None) -> None:
         self.model = model
+        # Resolves the task's content-addressed inputs so their CONTENT can be
+        # inlined into the prompt. Without it an agent receives hashes it cannot
+        # dereference — see _build_prompt.
+        self.cas = cas
+
+    def _resolve_inputs(self, task: AgentTask) -> dict[str, Any] | None:
+        if self.cas is None or not task.inputs:
+            return None
+        resolved: dict[str, Any] = {}
+        for name, ref in task.inputs.items():
+            try:
+                resolved[name] = json.loads(self.cas.get(ref))
+            except (KeyError, ValueError) as exc:
+                log.error("agent.input_unresolvable", input=name, ref=ref, error=str(exc))
+                return None
+        return resolved
 
     def health_check(self) -> EngineHealth:
         import shutil
@@ -107,7 +123,7 @@ class ClaudeAgentEngine:
             setting_sources=[],  # ignore user/project settings: the skill is the instruction set
         )
 
-        prompt = _build_prompt(task, instructions)
+        prompt = _build_prompt(task, instructions, self._resolve_inputs(task))
         started = time.monotonic()
         text_parts: list[str] = []
         usage = UsageStats(
@@ -185,18 +201,51 @@ def _permission_violation(
     return None
 
 
-def _build_prompt(task: AgentTask, instructions: str) -> str:
-    return (
-        f"{instructions}\n\n"
-        "## Task\n"
-        f"- revision: {task.revision_sha}\n"
-        f"- workspace: the current working directory (read-only checkout)\n"
-        f"- inputs: {json.dumps(task.inputs, sort_keys=True)}\n\n"
-        "## Output contract\n"
+MAX_INLINE_INPUT_CHARS = 60_000
+
+
+def _build_prompt(
+    task: AgentTask, instructions: str, resolved_inputs: dict[str, Any] | None = None
+) -> str:
+    """The prompt an agent actually sees.
+
+    Inputs are inlined as CONTENT, not as content-addressed hashes. An agent has
+    no way to dereference a sha256, so passing bare hashes silently starved every
+    stage of its evidence — the finding-validator was echoing the hash back as a
+    finding id rather than ruling on the finding, because it had never seen one.
+    Hashes remain in the task for provenance and cassette keying.
+    """
+    sections = [
+        instructions,
+        "",
+        "## Task",
+        f"- revision: {task.revision_sha}",
+        "- workspace: the current working directory (read-only checkout)",
+    ]
+
+    if resolved_inputs:
+        sections += ["", "## Inputs", ""]
+        for name, value in sorted(resolved_inputs.items()):
+            rendered = json.dumps(value, indent=2, sort_keys=True)
+            if len(rendered) > MAX_INLINE_INPUT_CHARS:
+                rendered = (
+                    rendered[:MAX_INLINE_INPUT_CHARS]
+                    + f"\n... TRUNCATED at {MAX_INLINE_INPUT_CHARS} characters; "
+                    "the remainder was not provided, so do not assume anything about it."
+                )
+            sections += [f"### {name}", "```json", rendered, "```", ""]
+    elif task.inputs:
+        sections += ["", f"- input references: {json.dumps(task.inputs, sort_keys=True)}"]
+
+    sections += [
+        "",
+        "## Output contract",
         f"Reply with ONE fenced ```json block validating against `{task.output_schema_id}`. "
         "No prose outside the block. Every claim must cite a file path and line range that "
-        "exists at this revision.\n"
-    )
+        "exists at this revision.",
+        "",
+    ]
+    return "\n".join(sections)
 
 
 def _usage_from(message: object) -> UsageStats:

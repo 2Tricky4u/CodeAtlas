@@ -61,9 +61,29 @@ class TreeEntry:
 
 @dataclass
 class GitClient:
-    """Stateful wrapper collecting receipts for every git call it makes."""
+    """Stateful wrapper collecting receipts for every git call it makes.
+
+    `github_token`, when set, authenticates clones and fetches from github.com.
+    It is injected through git's environment-based config so it never reaches
+    `.git/config` on disk (where an embedded-credential remote URL would persist
+    it) and never appears on a command line (where any process could read it).
+    Receipts record the command, which never contains the token.
+    """
 
     receipts: list[GitReceipt] = field(default_factory=list)
+    github_token: str | None = None
+
+    def _auth_env(self) -> dict[str, str]:
+        if not self.github_token:
+            return {}
+        import base64
+
+        basic = base64.b64encode(f"x-access-token:{self.github_token}".encode()).decode("ascii")
+        return {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+            "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {basic}",
+        }
 
     def run(
         self,
@@ -79,7 +99,13 @@ class GitClient:
         cmd = [git, *_BASE_CONFIG, *args]
         display = "git " + " ".join(args)
         started = time.monotonic()
-        env = {**os.environ, "LC_ALL": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0", **(extra_env or {})}
+        env = {
+            **os.environ,
+            "LC_ALL": "C.UTF-8",
+            "GIT_TERMINAL_PROMPT": "0",
+            **self._auth_env(),
+            **(extra_env or {}),
+        }
         proc = subprocess.run(  # noqa: S603 - fixed binary, list args, no shell
             cmd,
             cwd=cwd,

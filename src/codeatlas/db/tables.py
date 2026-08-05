@@ -142,7 +142,30 @@ class ArtifactRow(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     schema_id: Mapped[str | None] = mapped_column(String(60))
     producer: Mapped[str] = mapped_column(String(100))
+    # The run that FIRST produced this content. Identical content produced by a
+    # later run keeps this value, so it is provenance, not membership — use
+    # run_artifact to ask which runs an artifact belongs to.
     produced_by_run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RunArtifactRow(Base):
+    """Which artifacts belong to which run.
+
+    Artifacts are content-addressed, so two runs that produce identical output
+    share one row — that is the point of the store. Attributing an artifact to a
+    single producing run therefore made every repeat run look as though it had
+    produced nothing, and the API returned 404 for a graph that plainly existed.
+    Membership is a relation, not a column.
+    """
+
+    __tablename__ = "run_artifact"
+    __table_args__ = (UniqueConstraint("run_id", "sha256", "role"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    sha256: Mapped[str] = mapped_column(ForeignKey("artifact.sha256"), index=True)
+    role: Mapped[str] = mapped_column(String(60))  # the artifact's kind for this run
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

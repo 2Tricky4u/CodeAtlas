@@ -15,10 +15,11 @@ from typing import Any
 from codeatlas.core.ids import edge_id
 from codeatlas.core.paths import to_repo_relative
 from codeatlas.extractors.base import ExtractorError, GraphFragment, run_receipted
+from codeatlas.extractors.rust.lockfile import detect as detect_lockfile_mode
 from codeatlas.models.graph import Evidence, GraphEdge, GraphNode, SourceLocation
 from codeatlas.models.receipts import ExtractorReceipt
 
-_COMMAND = ["metadata", "--format-version", "1", "--locked"]
+_BASE_COMMAND = ["metadata", "--format-version", "1"]
 
 
 class CargoMetadataExtractor:
@@ -30,13 +31,20 @@ class CargoMetadataExtractor:
             raise ExtractorError("cargo not found on PATH")
         version = _cargo_version(cargo)
 
+        # Repositories without a committed Cargo.lock cannot use --locked. The
+        # receipt records which mode was used and what it costs, so a run is
+        # never silently less pinned than it appears.
+        mode = detect_lockfile_mode(workspace)
+        command = [*_BASE_COMMAND, mode.flag]
+
         configuration: dict[str, str | float | int | bool | None] = {
-            "command": "cargo " + " ".join(_COMMAND),
+            "command": "cargo " + " ".join(command),
             "workspace": workspace.name,
+            **mode.receipt_fields(),
         }
         proc, receipt = run_receipted(
             extractor_name=self.name,
-            command=[cargo, *_COMMAND],
+            command=[cargo, *command],
             cwd=workspace,
             revision_sha=revision_sha,
             configuration=configuration,

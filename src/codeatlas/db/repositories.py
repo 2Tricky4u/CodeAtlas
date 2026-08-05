@@ -22,6 +22,7 @@ from codeatlas.db.tables import (
     GraphSnapshotRow,
     RepositoryRow,
     RevisionRow,
+    RunArtifactRow,
     RunEventRow,
     RunRow,
 )
@@ -127,6 +128,12 @@ def index_artifact(
     produced_by_run_id: str | None = None,
     schema_id: str | None = None,
 ) -> ArtifactRow:
+    """Index an artifact and, when a run is given, record that run's membership.
+
+    The artifact row is shared across runs that produce identical content; the
+    membership row is per run. Asking "which artifacts does this run have?" must
+    go through `run_artifact`, never through `produced_by_run_id`.
+    """
     row = session.get(ArtifactRow, sha256)
     if row is None:
         row = ArtifactRow(
@@ -140,7 +147,28 @@ def index_artifact(
         )
         session.add(row)
         session.flush()
+
+    if produced_by_run_id is not None:
+        existing = session.scalar(
+            select(RunArtifactRow).where(
+                RunArtifactRow.run_id == produced_by_run_id,
+                RunArtifactRow.sha256 == sha256,
+                RunArtifactRow.role == kind,
+            )
+        )
+        if existing is None:
+            session.add(RunArtifactRow(run_id=produced_by_run_id, sha256=sha256, role=kind))
+            session.flush()
     return row
+
+
+def artifact_for_run(session: Session, run_id: str, role: str) -> str | None:
+    """The sha256 of this run's artifact with the given role, if any."""
+    return session.scalar(
+        select(RunArtifactRow.sha256)
+        .where(RunArtifactRow.run_id == run_id, RunArtifactRow.role == role)
+        .order_by(RunArtifactRow.id.desc())
+    )
 
 
 def store_graph_snapshot(
