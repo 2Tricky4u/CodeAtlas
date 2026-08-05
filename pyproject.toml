@@ -1,0 +1,66 @@
+[project]
+name = "codeatlas"
+version = "0.1.0"
+description = "Evidence-driven code review and project-visualization platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-timeout>=2.3",
+    "hypothesis>=6.112",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "poethepoet>=0.30",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codeatlas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+timeout = 120
+markers = [
+    "subproc: needs local git/cargo/rust-analyzer subprocesses",
+    "pg: needs local PostgreSQL test database",
+    "agent_live: needs logged-in claude CLI (consumes subscription quota)",
+    "network: needs network access / GitHub scratch repository",
+    "e2e_ui: needs Playwright browser",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "PTH", "S"]
+ignore = ["S101"]  # assert is fine in this codebase (also used by pytest)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S603", "S607"]  # tests may run local subprocesses with fixed args
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = "src"
+packages = ["codeatlas"]
+warn_unreachable = true
+show_error_codes = true
+
+[tool.poe.tasks]
+lint = "ruff check src tests scripts"
+fmt = "ruff format src tests scripts"
+typecheck = "mypy"
+test = "pytest"
+verify-env = "python scripts/verify_env.py"
+check = ["lint", "typecheck", "test"]

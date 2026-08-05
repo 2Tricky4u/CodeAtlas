@@ -1,0 +1,33 @@
+{
+  "phase": "0-bootstrap",
+  "date": "2026-08-05",
+  "installs": [
+    {
+      "tool": "uv",
+      "version": "0.12.0 (b88d7c5c4 2026-07-28 x86_64-pc-windows-msvc)",
+      "method": "winget install --exact --id astral-sh.uv",
+      "source": "winget/Microsoft.Winget.Source"
+    },
+    {
+      "tool": "gitleaks",
+      "version": "8.30.1",
+      "method": "winget install --exact --id Gitleaks.Gitleaks",
+      "source": "winget/Microsoft.Winget.Source"
+    }
+  ],
+  "preexisting": {
+    "python": "3.12.4",
+    "git": "2.50.1.windows.1",
+    "node": "22.19.0",
+    "npm": "10.9.3",
+    "cargo": "1.94.1",
+    "rustc": "1.94.1",
+    "java": "17.0.12 LTS",
+    "claude": "2.1.222"
+  },
+  "notes": [
+    "rust-analyzer on PATH is only the rustup proxy shim; component install deferred to M4",
+    "Java 17 already satisfies Structurizr CLI requirement (17+); Temurin 21 install likely unnecessary at M13",
+    "git repo initialized with core.longpaths=true, core.autocrlf=false"
+  ]
+}

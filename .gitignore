@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+frontend/dist/
+
+# Rust fixture build output
+fixtures/**/target/
+Cargo.lock.orig
+
+# Runtime data (never committed)
+review-artifacts/
+var/
+ops/receipts/*.local.json
+
+# Secrets & local config
+.env
+config/codeatlas.toml
+*.local.toml
+
+# OS
+Thumbs.db
+Desktop.ini
