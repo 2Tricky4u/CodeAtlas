@@ -1,0 +1,25 @@
+{
+  "phase": "7-diagrams",
+  "date": "2026-08-05",
+  "installs": [
+    {
+      "tool": "mermaid-cli (mmdc)",
+      "version": "11.16.0",
+      "method": "npm install -g @mermaid-js/mermaid-cli",
+      "validated": "renders a valid diagram to a 22 KB SVG; a malformed diagram exits 1 and writes NO file (the must-fail gate)"
+    },
+    {
+      "tool": "structurizr-cli",
+      "version": "v2025.11.09",
+      "method": "GitHub release zip -> infra/tools/structurizr (pinned, not on PATH)",
+      "sha256": "f5365a463fc44d539ed19bec00c48ba1e1ecda0ccfd1ba40d2e7472d264eb79a",
+      "requires": "Java 17+ (17.0.12 LTS already present; Temurin install not needed)",
+      "validated": "validate exits 0 on a well-formed workspace; export -format mermaid writes one .mmd per view"
+    }
+  ],
+  "gotchas": [
+    "Structurizr rejects a UTF-8 BOM: 'Unexpected tokens (expected: workspace) at line 1'. The DSL writer must emit UTF-8 WITHOUT BOM (PowerShell's -Encoding utf8 adds one; Python's default open(..., encoding='utf-8') does not).",
+    "Structurizr view blocks must be multi-line; `systemContext sys { include * }` on one line is a parse error.",
+    "The Structurizr CLI cannot rasterize: it validates and exports (mermaid/plantuml/dot/json). Rendering to SVG goes through mmdc."
+  ]
+}

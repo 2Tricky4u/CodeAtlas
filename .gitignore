@@ -34,3 +34,6 @@ config/codeatlas.toml
 # OS
 Thumbs.db
 Desktop.ini
+
+# Pinned third-party CLI (downloaded by setup, not source)
+infra/tools/
