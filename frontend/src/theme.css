@@ -305,6 +305,28 @@ table.data tr.clickable:hover td {
   border: 1px solid var(--bg-2);
 }
 
+.matrix-colhead {
+  width: 14px;
+  padding: 0 0 3px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Names both ends of the cell under the cursor. The columns are too narrow to
+   label at project size, so the readout is the only thing that makes an
+   off-diagonal cell nameable. */
+.matrix-readout {
+  font-size: 11px;
+  color: var(--fg-1);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+
+.matrix-readout strong {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+
 .empty-state {
   padding: 32px;
   text-align: center;

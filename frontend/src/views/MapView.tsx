@@ -11,14 +11,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import cytoscape from "cytoscape";
-import {
-  api,
-  type GraphPayload,
-  type GraphView,
-  type GraphViews,
-  type ViewNode,
-} from "../api";
+import { api, type GraphPayload, type GraphView, type GraphViews } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
+import { kindColor, positionsFromLevels, rankMatches, shortLabels } from "./layout";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 export function MapView() {
@@ -104,29 +99,6 @@ export function MapView() {
 
 // --- levelized node-link (packages and per-package modules) ------------------
 
-/** Positions from levels: x spreads within a level, y stacks levels bottom-up. */
-function positionsFromLevels(nodes: ViewNode[]): Map<string, { x: number; y: number }> {
-  const byLevel = new Map<number, ViewNode[]>();
-  for (const node of nodes) {
-    const level = node.level ?? 0;
-    byLevel.set(level, [...(byLevel.get(level) ?? []), node]);
-  }
-  const positions = new Map<string, { x: number; y: number }>();
-  const maxLevel = Math.max(...[...byLevel.keys()], 0);
-  const SPACING_X = 190;
-  const SPACING_Y = 110;
-  for (const [level, members] of byLevel) {
-    members.sort((a, b) => a.label.localeCompare(b.label));
-    members.forEach((node, index) => {
-      positions.set(node.id, {
-        x: (index - (members.length - 1) / 2) * SPACING_X,
-        y: (maxLevel - level) * SPACING_Y,
-      });
-    });
-  }
-  return positions;
-}
-
 function LevelizedView({
   view,
   onOpenSource,
@@ -138,10 +110,19 @@ function LevelizedView({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const positions = positionsFromLevels(view.nodes);
+    const positions = positionsFromLevels(view.nodes, view.edges);
+    // Within one view the shared path prefix is context the reader already has;
+    // spending the label on it is what made every node in `ignore` read
+    // `crates/ignore/src/…` and overlap its neighbour.
+    const short = shortLabels(view.nodes.map((node) => node.label));
+    const maxFanIn = Math.max(1, ...view.nodes.map((node) => node.fanIn ?? 0));
     const elements: cytoscape.ElementDefinition[] = [
       ...view.nodes.map((node) => ({
-        data: { ...node } as cytoscape.NodeDataDefinition,
+        data: {
+          ...node,
+          label: short.get(node.label) ?? node.label,
+          fanIn: node.fanIn ?? 0,
+        } as cytoscape.NodeDataDefinition,
         position: positions.get(node.id),
       })),
       ...view.edges.map((edge) => ({ data: { ...edge } as cytoscape.EdgeDataDefinition })),
@@ -150,7 +131,7 @@ function LevelizedView({
       container: containerRef.current,
       elements,
       layout: { name: "preset" },
-      style: cytoscapeStyle(),
+      style: cytoscapeStyle(maxFanIn),
       wheelSensitivity: 0.2,
       // Without a ceiling, `fit` on a two-node view blows the labels up to
       // headline size and the diagram reads as a poster rather than a map.
@@ -182,7 +163,7 @@ function LevelizedView({
   );
 }
 
-function cytoscapeStyle(): cytoscape.StylesheetJson {
+function cytoscapeStyle(maxFanIn: number): cytoscape.StylesheetJson {
   return [
     {
       selector: "node",
@@ -193,8 +174,11 @@ function cytoscapeStyle(): cytoscape.StylesheetJson {
         "font-family": "ui-monospace, monospace",
         "text-valign": "bottom",
         "text-margin-y": 4,
-        width: 18,
-        height: 18,
+        // Size carries fan-in, so a glance separates the crate everything
+        // depends on from the leaf nobody imports. Eleven identical squares
+        // said nothing about which of them mattered.
+        width: `mapData(fanIn, 0, ${maxFanIn}, 16, 38)`,
+        height: `mapData(fanIn, 0, ${maxFanIn}, 16, 38)`,
         shape: "round-rectangle",
         "background-color": (element: cytoscape.NodeSingular) => {
           const kind = String(element.data("kind"));
@@ -249,15 +233,72 @@ function MatrixView({
     return set;
   }, [view, index]);
 
-  const shortLabel = (node: ViewNode) => node.label.split("/").pop() ?? node.label;
+  // 104 rows over nine crates contain five files called `mod.rs` and three
+  // called `lib.rs`. A bare basename makes distinct rows indistinguishable.
+  const short = useMemo(() => shortLabels(view.nodes.map((node) => node.label)), [view]);
+  const [hover, setHover] = useState<{ row: number; column: number } | null>(null);
+
+  const hovered =
+    hover && view.nodes[hover.row] && view.nodes[hover.column]
+      ? {
+          source: view.nodes[hover.row]!,
+          target: view.nodes[hover.column]!,
+          weight: cells.get(`${hover.row}:${hover.column}`),
+        }
+      : null;
 
   return (
     <div style={{ overflow: "auto", flex: 1 }} data-testid="matrix">
       <p className="note" style={{ marginTop: 0 }}>
         row depends on column · ordered by level, so a clean layering fills the lower
-        triangle · cells above the diagonal are cycles
+        triangle · cells above the diagonal are cycles · columns carry the same numbers
+        as the rows
       </p>
-      <table style={{ borderCollapse: "collapse" }}>
+      {/* Without this a reader can see a cell but cannot say what it connects:
+          the columns have no room for a name at this size. */}
+      <div
+        className="matrix-readout"
+        data-testid="matrix-readout"
+        style={{ minHeight: "1.4em", marginBottom: 6 }}
+      >
+        {hovered ? (
+          <span>
+            <strong>{hovered.source.label}</strong>
+            {hovered.weight === undefined ? " does not depend on " : " → "}
+            <strong>{hovered.target.label}</strong>
+            {hovered.weight !== undefined && ` · ${hovered.weight} reference(s)`}
+          </span>
+        ) : (
+          <span className="note">hover a cell to name both ends</span>
+        )}
+      </div>
+      <table style={{ borderCollapse: "collapse" }} onMouseLeave={() => setHover(null)}>
+        <thead>
+          <tr>
+            <th />
+            {view.nodes.map((columnNode, columnIndex) => {
+              const number = columnIndex + 1;
+              // A number over every 14px column runs into its neighbours and
+              // reads as noise. Tick every fifth and let the reader count.
+              const isTick = number % 5 === 0 || number === 1;
+              const isHovered = hover?.column === columnIndex;
+              return (
+                <th
+                  key={columnNode.id}
+                  className="matrix-colhead"
+                  title={columnNode.label}
+                  style={{
+                    fontWeight: 400,
+                    fontSize: 8,
+                    color: isHovered ? "var(--accent)" : "var(--fg-3)",
+                  }}
+                >
+                  {isHovered || isTick ? number : ""}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
         <tbody>
           {view.nodes.map((rowNode, rowIndex) => (
             <tr key={rowNode.id}>
@@ -267,33 +308,40 @@ function MatrixView({
                   paddingRight: 8,
                   fontWeight: 400,
                   fontSize: 10,
-                  color: "var(--fg-2)",
+                  color: hover?.row === rowIndex ? "var(--accent)" : "var(--fg-2)",
                   whiteSpace: "nowrap",
                   cursor: rowNode.path ? "pointer" : "default",
                 }}
                 onClick={() => rowNode.path && onOpenSource(rowNode.path)}
                 title={rowNode.label}
               >
-                {shortLabel(rowNode)}
+                <span style={{ color: "var(--fg-3)" }}>{rowIndex + 1}</span>{" "}
+                {short.get(rowNode.label) ?? rowNode.label}
               </th>
               {view.nodes.map((columnNode, columnIndex) => {
                 const weight = cells.get(`${rowIndex}:${columnIndex}`);
                 const isDiagonal = rowIndex === columnIndex;
                 const isCycleCell = weight !== undefined && columnIndex > rowIndex;
+                const onAxis = hover?.row === rowIndex || hover?.column === columnIndex;
                 return (
                   <td
                     key={columnNode.id}
                     className="matrix-cell"
+                    data-testid={weight !== undefined ? "matrix-hit" : undefined}
+                    onMouseEnter={() => setHover({ row: rowIndex, column: columnIndex })}
                     title={
                       weight !== undefined
                         ? `${rowNode.label} → ${columnNode.label} (${weight})`
                         : undefined
                     }
                     style={{
+                      outline: onAxis ? "1px solid var(--border-strong)" : undefined,
                       background: isDiagonal
                         ? "var(--bg-3)"
                         : weight === undefined
-                          ? "transparent"
+                          ? onAxis
+                            ? "var(--bg-2)"
+                            : "transparent"
                           : isCycleCell
                             ? "var(--warn)"
                             : `color-mix(in srgb, var(--accent) ${Math.min(25 + weight * 8, 90)}%, transparent)`,
@@ -334,11 +382,20 @@ function FocusView({
   }, [runId]);
 
   const matches = useMemo(() => {
-    if (!graph || query.length < 2) return [];
-    const needle = query.toLowerCase();
-    return graph.elements.nodes
-      .filter((node) => String(node.data.label ?? "").toLowerCase().includes(needle))
-      .slice(0, 12);
+    if (!graph) return [];
+    // Ranked, not filtered: over 4,700 nodes a plain substring match buries the
+    // type named `Searcher` under every file whose path contains "searcher".
+    const ranked = rankMatches(
+      graph.elements.nodes.map((node) => ({
+        id: String(node.data.id),
+        label: String(node.data.label ?? ""),
+        kind: String(node.data.kind ?? ""),
+        node,
+      })),
+      query,
+      12,
+    );
+    return ranked.map((entry) => entry.node);
   }, [graph, query]);
 
   useEffect(() => {
@@ -362,10 +419,28 @@ function FocusView({
         shownSet.has(String(edge.data.source)) && shownSet.has(String(edge.data.target)),
     );
 
+    const shortNeighbours = shortLabels(nodes.map((node) => String(node.data.label ?? "")));
     const cy = cytoscape({
       container: containerRef.current,
-      elements: [...nodes, ...visibleEdges.map((edge) => ({ data: edge.data }))],
-      layout: { name: "concentric", animate: false, concentric: (node) => (node.id() === focusId ? 2 : 1), levelWidth: () => 1 },
+      elements: [
+        ...nodes.map((node) => ({
+          data: {
+            ...node.data,
+            label: shortNeighbours.get(String(node.data.label ?? "")) ?? node.data.label,
+          },
+        })),
+        ...visibleEdges.map((edge) => ({ data: edge.data })),
+      ],
+      layout: {
+        name: "concentric",
+        animate: false,
+        concentric: (node) => (node.id() === focusId ? 2 : 1),
+        levelWidth: () => 1,
+        // A neighbourhood of a dozen nodes was drawing at thumbnail size in the
+        // middle of an empty canvas; the ring needs room proportional to how
+        // many labels have to fit around it.
+        minNodeSpacing: 45,
+      },
       style: [
         {
           selector: "node",
@@ -377,7 +452,7 @@ function FocusView({
             width: 14,
             height: 14,
             "background-color": (element: cytoscape.NodeSingular) =>
-              `var(--kind-${String(element.data("kind"))}, #6b7489)` as unknown as string,
+              kindColor(String(element.data("kind"))),
           },
         },
         {
@@ -400,7 +475,10 @@ function FocusView({
         },
       ],
       wheelSensitivity: 0.2,
-      maxZoom: 1.4,
+      // Higher than the levelized views allow: a 1-hop neighbourhood is small
+      // by construction, and capping it at 1.4 wasted three quarters of the
+      // canvas on a graph that had room to be read comfortably.
+      maxZoom: 2.4,
       minZoom: 0.15,
     });
     cy.fit(undefined, 40);
@@ -445,6 +523,9 @@ function FocusView({
                 style={{ cursor: "pointer" }}
                 onClick={() => setFocusId(node.data.id)}
                 data-testid="focus-match"
+                // Two crates can both have a module called `searcher`; the id
+                // is what tells the identical-looking chips apart.
+                title={node.data.id}
               >
                 {String(node.data.kind)} · {String(node.data.label)}
               </button>

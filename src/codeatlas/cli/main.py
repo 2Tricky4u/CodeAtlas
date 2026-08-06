@@ -59,7 +59,7 @@ def _deps(
 
 @app.command()
 def run(
-    repo: Annotated[Path, typer.Option(exists=True, help="Path to the git repository")],
+    repo: Annotated[str, typer.Option(help="Local repository path or clone URL")],
     repository_id: Annotated[str, typer.Option(help="Stable repository id, e.g. local/kvstore")],
     ref: Annotated[str, typer.Option(help="Ref or SHA to analyze")] = "HEAD",
     workdir: Annotated[
@@ -73,15 +73,51 @@ def run(
     ] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
-    """Analyze a repository at a pinned revision."""
+    """Analyze a repository at a pinned revision.
+
+    `--repo` takes a local path or anything git can clone. The pipeline has
+    always handled both — it mirrors first and resolves from the mirror — but
+    this command used to demand an existing directory, so the one thing you
+    would try first on a public project failed at argument parsing.
+    """
     configure_logging()
     from codeatlas.pipeline.runner import run_status, start_run
+    from codeatlas.pipeline.source import is_remote
+
+    if not is_remote(repo) and not Path(repo).is_dir():
+        typer.echo(f"--repo {repo!r} is neither a directory nor a clone URL", err=True)
+        raise typer.Exit(2)
 
     deps = _deps(workdir, test_db, review=review, replay=replay)
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
     raise typer.Exit(0 if status in ("succeeded", "succeeded_with_gaps") else 1)
+
+
+@app.command()
+def serve(
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    host: Annotated[str, typer.Option()] = "127.0.0.1",
+    port: Annotated[int, typer.Option()] = 8000,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Serve the read-only API the dashboard reads.
+
+    Bound to loopback by default. The application is GET-only by construction
+    (ADR-0011): approval and publication happen through the CLI, so serving this
+    exposes inspection and nothing else — but it does expose pinned source for
+    every analyzed revision, which is why the default is not 0.0.0.0.
+    """
+    configure_logging()
+    import uvicorn
+
+    from codeatlas.api.main import create_app
+
+    deps = _deps(workdir, test_db)
+    application = create_app(engine=deps.engine, cas=deps.cas, mirrors=deps.mirrors)
+    typer.echo(f"read-only API on http://{host}:{port}/api  (docs at /api/docs)")
+    uvicorn.run(application, host=host, port=port, log_level="info")
 
 
 @app.command()

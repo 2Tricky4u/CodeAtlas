@@ -99,3 +99,14 @@ typecheck = "mypy"
 test = "pytest"
 verify-env = "python scripts/verify_env.py"
 check = ["lint", "typecheck", "test"]
+
+# Dashboard. Kept out of `check` for the same reason the pytest tiers are: it
+# needs a capability the base environment does not guarantee (node plus an
+# installed `frontend/node_modules`).
+#
+# These are `shell` tasks rather than plain commands because on Windows `npm`
+# is a `.cmd` shim, which poe's direct process exec cannot launch.
+ui-typecheck.shell = "npm --prefix frontend run typecheck"
+ui-test.shell = "npm --prefix frontend run test"
+ui-e2e.shell = "npm --prefix frontend run e2e"
+ui = ["ui-typecheck", "ui-test"]

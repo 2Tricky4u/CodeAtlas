@@ -5,6 +5,10 @@
 - `uv run poe check` — ruff + mypy --strict + pytest (default tiers). Run before every commit.
 - `uv run poe verify-env` — tool matrix: what is installed vs required per milestone.
 - `uv run pytest -m subproc` / `-m pg` / `-m agent_live` / `-m network` — capability-gated tiers.
+- `uv run poe ui` — dashboard: `tsc -b` + vitest. `poe ui-e2e` for Playwright.
+- `codeatlas serve --workdir var --port N` + `CODEATLAS_API=http://127.0.0.1:N npm run preview`
+  — the dashboard against real data. `CODEATLAS_RUN=<id> npm run e2e` then exercises
+  `e2e/live.spec.ts`, the only suite that is not route-mocked.
 
 ## Hard rules
 
