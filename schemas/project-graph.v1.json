@@ -84,6 +84,7 @@
             "file",
             "type",
             "function",
+            "constant",
             "service",
             "endpoint",
             "database",

@@ -89,8 +89,35 @@ class _Definition:
     display_name: str
 
 
-def _classify(symbol: str) -> NodeKind | None:
-    """Classify a SCIP symbol by its descriptor suffix (stable grammar)."""
+# SCIP SymbolInformation.Kind values for things a module can depend on, as
+# opposed to a field of a struct. rust-analyzer populates `kind` for every term
+# symbol it emits (893 of 893, measured on ripgrep), so this is the tool's own
+# classification rather than a guess from the descriptor shape.
+#
+# Resolved by name from the generated enum, not written as numbers: the first
+# attempt hardcoded 79 for StaticVariable, which is actually StaticField, and
+# every `static` in the codebase stayed invisible until a reviewer noticed one
+# missing edge. The names are in the protocol; the numbers are an implementation
+# detail that should never have been retyped.
+_CONSTANT_KINDS = frozenset(
+    scip_pb2.SymbolInformation.Kind.Value(name)  # type: ignore[attr-defined]
+    for name in ("Constant", "StaticVariable")
+)
+
+
+def _classify(symbol: str, kind: int = 0) -> NodeKind | None:
+    """Classify a SCIP symbol by its descriptor suffix (stable grammar).
+
+    Term descriptors — a bare trailing `.` — cover constants, statics, struct
+    fields and enum variants alike, so the suffix alone cannot separate them.
+    Dropping the lot, as this did, silently lost every `const` and `static`:
+    on ripgrep that left `printer/src/lib.rs` with no dependents at all despite
+    `util.rs` importing its `MAX_LOOK_AHEAD`, and made `default_types.rs` and
+    `flags/complete/mod.rs` look like orphans. Five such edges were missed.
+
+    Fields stay out: 803 of ripgrep's 893 term symbols are struct fields, and a
+    field is reached through the type that owns it, which is already an edge.
+    """
     if symbol.startswith("local "):
         return None
     if symbol.endswith("()."):
@@ -99,6 +126,8 @@ def _classify(symbol: str) -> NodeKind | None:
         return "type"
     if symbol.endswith("/"):
         return "module"
+    if symbol.endswith(".") and kind in _CONSTANT_KINDS:
+        return "constant"
     return None  # fields, impl blocks, type parameters, meta descriptors
 
 
@@ -141,15 +170,19 @@ def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
     # Pass 1: collect workspace definitions.
     definitions: dict[str, _Definition] = {}
     info_names: dict[str, str] = {}
+    info_kinds: dict[str, int] = {}
     for doc in documents:
-        path = doc.relative_path.replace("\\", "/")
         for info in doc.symbols:
             if info.display_name:
                 info_names[info.symbol] = info.display_name
+            if info.kind:
+                info_kinds[info.symbol] = info.kind
+    for doc in documents:
+        path = doc.relative_path.replace("\\", "/")
         for occ in doc.occurrences:
             if not occ.symbol_roles & _DEFINITION_ROLE:
                 continue
-            kind = _classify(occ.symbol)
+            kind = _classify(occ.symbol, info_kinds.get(occ.symbol, 0))
             if kind is None or occ.symbol in definitions:
                 continue
             start, end = _ranges(occ)
@@ -215,14 +248,18 @@ def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
             line = occ.range[0]
             enclosing = _innermost_function(function_spans, line)
             target_id = f"sym:scip/{occ.symbol}"
-            if enclosing is not None and target_def.node_kind == "function":
+            if enclosing is not None and target_def.node_kind in ("function", "constant"):
                 if enclosing != target_id:
-                    eid = edge_id(enclosing, "calls", target_id, None)
+                    # A function reaching a constant reads it; reaching another
+                    # function calls it. Both are dependencies, and saying which
+                    # is which costs nothing.
+                    relation = "calls" if target_def.node_kind == "function" else "reads"
+                    eid = edge_id(enclosing, relation, target_id, None)
                     edges[eid] = GraphEdge(
                         id=eid,
                         source=enclosing,
                         target=target_id,
-                        kind="calls",
+                        kind=relation,  # type: ignore[arg-type]
                         evidence=[candidate],
                     )
             elif enclosing is None:

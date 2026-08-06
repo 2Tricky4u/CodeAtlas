@@ -40,7 +40,7 @@ from codeatlas.models.overview import (
     Suggestion,
 )
 
-DEPENDENCY_EDGE_KINDS = frozenset({"calls", "imports", "depends-on"})
+DEPENDENCY_EDGE_KINDS = frozenset({"calls", "reads", "imports", "depends-on"})
 
 # How many entries each ranked list carries. Short on purpose: a "start here"
 # list nobody finishes is not a starting point.
@@ -48,8 +48,17 @@ START_HERE_LIMIT = 7
 HUB_LIMIT = 5
 
 _PACKAGE_ID = re.compile(r"^pkg:(?P<namespace>[^/]+)/(?P<name>.+)@(?P<version>[^@]+)$")
-_LIBRARY_ROOTS = ("lib.rs", "mod.rs", "__init__.py", "index.ts", "index.js")
+# `mod.rs` is deliberately absent: it is an ordinary module file, not a crate
+# root. Counting it made every directory an "entry point" — on ripgrep that put
+# four `mod.rs` files ahead of `main.rs` in a list meant to say where to start.
+_LIBRARY_ROOTS = ("lib.rs", "__init__.py", "index.ts", "index.js")
 _BINARY_ROOTS = ("main.rs",)
+# A Cargo build script runs at compile time and is not part of the program. It
+# defines `main`, which is exactly why it has to be named explicitly.
+_BUILD_SCRIPTS = ("build.rs",)
+# Auxiliary Cargo targets. Each example defines `main`, so on ripgrep three of
+# them took "start here" slots ahead of the crates a reader has to understand.
+_AUXILIARY_DIRS = re.compile(r"(^|/)(examples|benches|tests)/")
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +111,9 @@ def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
         counts=OverviewCounts(
             packages=sum(1 for n in graph.nodes if n.kind == "package"),
             files=len(modules),
-            symbols=sum(1 for n in graph.nodes if n.kind in ("function", "type", "module")),
+            symbols=sum(
+                1 for n in graph.nodes if n.kind in ("function", "type", "module", "constant")
+            ),
             edges=len(graph.edges),
         ),
         notes=notes,
@@ -117,7 +128,7 @@ def _modules(graph: ProjectGraph) -> dict[str, _Module]:
     symbols: dict[str, int] = defaultdict(int)
     packages: dict[str, str] = {}
     for node in graph.nodes:
-        if node.kind in ("function", "type", "module") and node.location:
+        if node.kind in ("function", "type", "module", "constant") and node.location:
             symbols[node.location.path] += 1
 
     for node in graph.nodes:
@@ -322,11 +333,16 @@ def _entry_points(graph: ProjectGraph, modules: dict[str, _Module]) -> list[Sugg
     reasons: dict[str, list[str]] = defaultdict(list)
 
     for node in graph.nodes:
-        if node.kind == "function" and node.label == "main" and node.location:
-            reasons[node.location.path].append("defines `main`")
+        is_main = node.kind == "function" and node.label == "main" and node.location is not None
+        if is_main and node.location.path.rsplit("/", 1)[-1] not in _BUILD_SCRIPTS:  # type: ignore[union-attr]
+            path = node.location.path  # type: ignore[union-attr]
+            where = "example or test" if _AUXILIARY_DIRS.search(path) else "program"
+            reasons[path].append(f"defines `main` ({where})")
 
     for path in modules:
         name = path.rsplit("/", 1)[-1]
+        if name in _BUILD_SCRIPTS:
+            continue
         if name in _BINARY_ROOTS:
             reasons[path].append(f"binary root ({name})")
         elif name in _LIBRARY_ROOTS:
@@ -339,9 +355,24 @@ def _entry_points(graph: ProjectGraph, modules: dict[str, _Module]) -> list[Sugg
     ]
 
 
+def _is_program_entry(suggestion: Suggestion) -> bool:
+    """Where the program itself starts, as opposed to an example or a test."""
+    if _AUXILIARY_DIRS.search(suggestion.path):
+        return False
+    return "binary root" in suggestion.reason or "defines `main` (program)" in suggestion.reason
+
+
 def _start_here(entry_points: list[Suggestion], modules: list[ModuleSummary]) -> list[Suggestion]:
-    """Entry points first, then whatever the most code depends on."""
-    suggestions = list(entry_points)
+    """Where the program starts, then whatever the most code depends on.
+
+    Only *program* entry points lead. A workspace has one `main.rs` and a
+    library root per crate, so seeding this list with every entry point filled
+    all seven slots with facades — on ripgrep it returned four `mod.rs` files and
+    a build script, and none of `matcher`, `searcher` or `ignore`, which is where
+    a reader actually has to go. Library roots remain in `entryPoints`; here they
+    compete on fan-in like everything else, and surface when they earn it.
+    """
+    suggestions = [s for s in entry_points if _is_program_entry(s)]
     seen = {s.path for s in suggestions}
 
     foundations = sorted(

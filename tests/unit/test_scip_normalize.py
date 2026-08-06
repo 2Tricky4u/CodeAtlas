@@ -52,6 +52,88 @@ class TestNodes:
         assert sym.evidence[0].producer == "rust-analyzer"
 
 
+class TestConstantsAndStatics:
+    """Constants were dropped entirely, and modules holding them looked orphaned.
+
+    A SCIP *term* descriptor — a bare trailing `.` — covers constants, statics,
+    struct fields and enum variants alike, so the classifier dropped the lot.
+    An independent audit of ripgrep found five module dependencies missing as a
+    result: `printer/src/lib.rs` had no dependents despite `util.rs` importing
+    its `MAX_LOOK_AHEAD`, and `default_types.rs` and `flags/complete/mod.rs`
+    read as orphans.
+
+    rust-analyzer populates `SymbolInformation.kind` for every term symbol it
+    emits (893 of 893, measured on ripgrep), so this uses the tool's own
+    classification rather than guessing from the descriptor.
+    """
+
+    # By name, for the reason the extractor does it by name: the first attempt
+    # hardcoded 79 for StaticVariable, which is StaticField.
+    CONSTANT = scip_pb2.SymbolInformation.Kind.Value("Constant")
+    STATIC = scip_pb2.SymbolInformation.Kind.Value("StaticVariable")
+    FIELD = scip_pb2.SymbolInformation.Kind.Value("Field")
+    FUNCTION = scip_pb2.SymbolInformation.Kind.Value("Function")
+
+    def _index(self):  # type: ignore[no-untyped-def]
+        index = scip_pb2.Index()
+
+        holder = index.documents.add()
+        holder.relative_path = "src/limits.rs"
+        for symbol, name, kind in (
+            ("rust-analyzer cargo demo 0.1.0 MAX_LOOK_AHEAD.", "MAX_LOOK_AHEAD", self.CONSTANT),
+            ("rust-analyzer cargo demo 0.1.0 ENCODINGS.", "ENCODINGS", self.STATIC),
+            ("rust-analyzer cargo demo 0.1.0 Holder#field.", "field", self.FIELD),
+        ):
+            info = holder.symbols.add()
+            info.symbol, info.display_name, info.kind = symbol, name, kind
+            occurrence = holder.occurrences.add()
+            occurrence.symbol = symbol
+            occurrence.symbol_roles = 1  # definition
+            occurrence.range.extend([0, 0, 0, 10])
+
+        reader = index.documents.add()
+        reader.relative_path = "src/util.rs"
+        function = "rust-analyzer cargo demo 0.1.0 util/read()."
+        info = reader.symbols.add()
+        info.symbol, info.display_name, info.kind = function, "read", self.FUNCTION
+        definition = reader.occurrences.add()
+        definition.symbol = function
+        definition.symbol_roles = 1
+        definition.range.extend([0, 0, 0, 8])
+        definition.enclosing_range.extend([0, 0, 5, 1])
+        reference = reader.occurrences.add()
+        reference.symbol = "rust-analyzer cargo demo 0.1.0 MAX_LOOK_AHEAD."
+        reference.range.extend([2, 4, 2, 18])
+        return normalize_scip(index, ra_version="rust-analyzer test")
+
+    def test_a_constant_becomes_a_node(self) -> None:
+        fragment = self._index()
+        constants = [n for n in fragment.nodes if n.kind == "constant"]
+        assert sorted(n.label for n in constants) == ["ENCODINGS", "MAX_LOOK_AHEAD"]
+        assert all(n.location and n.location.path == "src/limits.rs" for n in constants)
+
+    def test_a_static_counts_too(self) -> None:
+        """ripgrep's `static ENCODINGS` was the one that caught the wrong number."""
+        fragment = self._index()
+        assert any(n.kind == "constant" and n.label == "ENCODINGS" for n in fragment.nodes)
+
+    def test_a_struct_field_does_not(self) -> None:
+        """803 of ripgrep's 893 term symbols are fields; they reach through their type."""
+        fragment = self._index()
+        assert not any(n.id.endswith("Holder#field.") for n in fragment.nodes)
+
+    def test_a_function_reading_a_constant_is_an_edge(self) -> None:
+        fragment = self._index()
+        reads = [e for e in fragment.edges if e.kind == "reads"]
+        assert len(reads) == 1
+        assert reads[0].source.endswith("util/read().")
+        assert reads[0].target.endswith("MAX_LOOK_AHEAD.")
+
+    def test_reading_is_distinguished_from_calling(self) -> None:
+        fragment = self._index()
+        assert not any(e.kind == "calls" for e in fragment.edges)
+
+
 class TestEdges:
     def test_contains_edges_file_to_symbol(self, fragment) -> None:  # type: ignore[no-untyped-def]
         contains = [e for e in fragment.edges if e.kind == "contains"]

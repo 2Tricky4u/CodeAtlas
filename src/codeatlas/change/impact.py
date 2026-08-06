@@ -41,7 +41,7 @@ from codeatlas.models.impact import (
 )
 
 # Relationships that make one symbol depend on another.
-DEPENDENCY_EDGE_KINDS = frozenset({"calls", "imports"})
+DEPENDENCY_EDGE_KINDS = frozenset({"calls", "reads", "imports"})
 
 MAX_HOPS = 2
 DEFAULT_HOPS = 1

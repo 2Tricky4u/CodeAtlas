@@ -27,6 +27,7 @@ NodeKind = Literal[
     "file",
     "type",
     "function",
+    "constant",
     "service",
     "endpoint",
     "database",

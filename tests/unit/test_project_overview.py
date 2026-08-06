@@ -316,12 +316,60 @@ class TestEntryPoints:
 
 
 class TestStartHere:
-    def test_entry_points_come_first(self) -> None:
+    def test_the_program_entry_point_comes_first(self) -> None:
+        main_file = file_node("kvstore-cli/src/main.rs")
+        main_fn = sym_node("main().", "kvstore-cli/src/main.rs", package="kvstore-cli")
+        overview = build_overview(
+            graph(
+                [*STACK.nodes, main_file, main_fn],
+                [*STACK.edges, edge(main_file, "contains", main_fn)],
+            ),
+            repository_id="local/kvstore",
+        )
+        assert overview.start_here[0].path == "kvstore-cli/src/main.rs"
+
+    def test_a_library_root_with_no_dependents_does_not_lead(self) -> None:
+        """Found on ripgrep: four `mod.rs` files and a build script filled the list.
+
+        A workspace has a library root per crate, so seeding "start here" with
+        every entry point returns facades and nothing a reader has to go and
+        read. Library roots stay in `entryPoints` and compete on fan-in here.
+        """
         lib = file_node("kvstore/src/lib.rs")
         overview = build_overview(
             graph([*STACK.nodes, lib], list(STACK.edges)), repository_id="local/kvstore"
         )
-        assert overview.start_here[0].path == "kvstore/src/lib.rs"
+        assert "kvstore/src/lib.rs" in {e.path for e in overview.entry_points}
+        assert overview.start_here[0].path == "kvstore/src/storage.rs", "the foundation leads"
+
+    def test_a_build_script_is_not_an_entry_point(self) -> None:
+        """`build.rs` defines `main` and runs at compile time. It was ranked #1."""
+        build = file_node("build.rs")
+        build_main = sym_node("main().", "build.rs", package="kvstore")
+        overview = build_overview(
+            graph(
+                [*STACK.nodes, build, build_main],
+                [*STACK.edges, edge(build, "contains", build_main)],
+            ),
+            repository_id="local/kvstore",
+        )
+        assert "build.rs" not in {e.path for e in overview.entry_points}
+        assert "build.rs" not in {e.path for e in overview.start_here}
+
+    def test_an_example_does_not_outrank_the_program(self) -> None:
+        """Three of ripgrep's `examples/*.rs` define `main` and took three slots."""
+        example = file_node("crates/grep/examples/simplegrep.rs")
+        example_main = sym_node("main().", "crates/grep/examples/simplegrep.rs")
+        overview = build_overview(
+            graph(
+                [*STACK.nodes, example, example_main],
+                [*STACK.edges, edge(example, "contains", example_main)],
+            ),
+            repository_id="local/kvstore",
+        )
+        assert overview.start_here[0].path != "crates/grep/examples/simplegrep.rs"
+        listed = {e.path: e.reason for e in overview.entry_points}
+        assert "example or test" in listed["crates/grep/examples/simplegrep.rs"]
 
     def test_the_most_depended_on_module_follows(self) -> None:
         overview = build_overview(STACK, repository_id="local/kvstore")
