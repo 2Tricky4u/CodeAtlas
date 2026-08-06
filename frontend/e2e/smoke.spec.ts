@@ -159,10 +159,15 @@ test.describe("project overview", () => {
     await expect(start).toContainText("3 module(s) depend on it");
   });
 
-  test("clicking a suggestion opens its pinned source", async ({ page }) => {
+  test("clicking a suggestion explains the module rather than dead-ending in text", async ({
+    page,
+  }) => {
+    // Until Phase 3 this opened a source popup and stopped; now it lands on the
+    // module page, where source is one click among several.
     await page.goto(`/#/runs/${RUN_ID}/overview`);
     await page.getByRole("button", { name: "kvstore/src/cache.rs" }).first().click();
-    await expect(page.getByTestId("source-panel")).toContainText("pub fn evict");
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page).toHaveURL(/module\/kvstore\/src\/cache\.rs/);
   });
 
   test("the narrative comes after the measurements, and every claim is cited", async ({
@@ -224,6 +229,55 @@ test.describe("project overview", () => {
     await mockApi(page, { withNarrative: false });
     await page.goto(`/#/runs/${RUN_ID}/overview`);
     await expect(page.getByTestId("no-narrative")).toContainText("everything above is measured");
+  });
+});
+
+test.describe("module page", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("it says what the file defines, from the measured contains edges", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    const definitions = page.getByTestId("definitions");
+    await expect(definitions).toContainText("evict_oldest");
+    await expect(definitions).toContainText("put");
+  });
+
+  test("expanding a definition shows who uses it, grouped by module", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("definition").filter({ hasText: "evict_oldest" }).click();
+    await expect(page.getByTestId("callers")).toContainText("put");
+  });
+
+  test("a change section names the symbols this PR touched here", async ({ page }) => {
+    // H2: the review, where you are looking. The diff fixture adds evict,
+    // removes evict_oldest and touches put — all in cache.rs.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    const change = page.getByTestId("change-here");
+    await expect(change).toContainText("evict_oldest");
+    await expect(change).toContainText("removed");
+    await expect(page.getByTestId("findings-here")).toContainText("overflow + 1");
+  });
+
+  test("without a base revision there is no change section at all", async ({ page }) => {
+    // Absent, not empty — the rule the change view already follows.
+    await page.route(`**/api/runs/${RUN_ID}`, (route) =>
+      route.fulfill({ json: { ...DETAIL, baseSha: null, kind: "repository" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page.getByTestId("change-here")).toHaveCount(0);
+  });
+
+  test("an unknown path says why rather than rendering blank", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/ghost.rs`);
+    await expect(page.getByTestId("empty-state")).toContainText("not a module");
+  });
+
+  test("a finding's location links into the module page", async ({ page }) => {
+    // The reverse direction: from the review surfaces into the understanding.
+    await page.goto(`/#/runs/${RUN_ID}/findings`);
+    await page.getByTestId("module-link").first().click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
   });
 });
 
@@ -526,7 +580,9 @@ test.describe("project map", () => {
     await page.getByTestId("focus-match").first().click();
     await expect(page.getByTestId("filters")).toBeVisible();
     await page.getByTestId("filter-toggle").filter({ hasText: "function" }).click();
-    await expect(page.getByTestId("filter-hidden")).toContainText("hid 1 node(s)");
+    // The invariant is that hiding is counted and stated, not a specific count
+    // that shifts whenever the fixture graph gains a node.
+    await expect(page.getByTestId("filter-hidden")).toContainText(/hid [1-9]\d* node\(s\)/);
   });
 
   test("the node you searched for is never filtered away", async ({ page }) => {

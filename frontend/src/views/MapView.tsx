@@ -13,6 +13,7 @@ import { useParams } from "react-router-dom";
 import cytoscape from "cytoscape";
 import { api, type GraphPayload, type GraphView, type GraphViews } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
+import { ModuleLink } from "./links";
 import {
   applyFilters,
   type Filters,
@@ -94,7 +95,7 @@ export function MapView() {
       {activeId === "focus" ? (
         <FocusView runId={runId!} onOpenSource={openSource} />
       ) : active.kind === "matrix" ? (
-        <MatrixView view={active} onOpenSource={openSource} />
+        <MatrixView view={active} />
       ) : (
         <LevelizedView key={active.id} view={active} onOpenSource={openSource} />
       )}
@@ -220,13 +221,7 @@ function cytoscapeStyle(maxFanIn: number): cytoscape.StylesheetJson {
 
 // --- matrix ------------------------------------------------------------------
 
-function MatrixView({
-  view,
-  onOpenSource,
-}: {
-  view: GraphView;
-  onOpenSource: (path: string) => void;
-}) {
+function MatrixView({ view }: { view: GraphView }) {
   const index = useMemo(() => new Map(view.nodes.map((node, i) => [node.id, i])), [view]);
   const cells = useMemo(() => {
     const set = new Map<string, number>();
@@ -317,13 +312,17 @@ function MatrixView({
                   fontSize: 10,
                   color: hover?.row === rowIndex ? "var(--accent)" : "var(--fg-2)",
                   whiteSpace: "nowrap",
-                  cursor: rowNode.path ? "pointer" : "default",
                 }}
-                onClick={() => rowNode.path && onOpenSource(rowNode.path)}
                 title={rowNode.label}
               >
                 <span style={{ color: "var(--fg-3)" }}>{rowIndex + 1}</span>{" "}
-                {short.get(rowNode.label) ?? rowNode.label}
+                {rowNode.path ? (
+                  <ModuleLink path={rowNode.path} className="" style={{ color: "inherit" }}>
+                    {short.get(rowNode.label) ?? rowNode.label}
+                  </ModuleLink>
+                ) : (
+                  (short.get(rowNode.label) ?? rowNode.label)
+                )}
               </th>
               {view.nodes.map((columnNode, columnIndex) => {
                 const weight = cells.get(`${rowIndex}:${columnIndex}`);

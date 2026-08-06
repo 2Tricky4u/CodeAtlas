@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type ProjectCitation, type ProjectExplanation } from "../api";
 import { Panel } from "../ui";
 import { shortLabels } from "./layout";
+import { ModuleLink } from "./links";
 
 /** Past this many claims the sections start collapsed. */
 const COLLAPSE_ABOVE = 8;
@@ -21,11 +22,9 @@ const modulePath = (key: string) => key.replace(/^[a-z-]+:/, "");
 export function NarrativePanel({
   runId,
   onOpenSource,
-  onShowModule,
 }: {
   runId: string;
   onOpenSource: (path: string, startLine?: number) => void;
-  onShowModule?: (key: string) => void;
 }) {
   const [explanation, setExplanation] = useState<ProjectExplanation | null | undefined>(undefined);
   const [expanded, setExpanded] = useState(false);
@@ -108,7 +107,6 @@ export function NarrativePanel({
                       citation={citation}
                       short={short}
                       onOpenSource={onOpenSource}
-                      onShowModule={onShowModule}
                     />
                   ))}
                 </li>
@@ -135,12 +133,10 @@ function ProjectCitationChip({
   citation,
   short,
   onOpenSource,
-  onShowModule,
 }: {
   citation: ProjectCitation;
   short: Map<string, string>;
   onOpenSource: (path: string, startLine?: number) => void;
-  onShowModule?: (key: string) => void;
 }) {
   if (citation.kind === "source") {
     return (
@@ -157,20 +153,18 @@ function ProjectCitationChip({
     );
   }
   if (citation.kind === "module") {
-    // Prefixed because a module and a file at the same path are different
-    // things being cited: one is a node the graph measured, the other is text.
+    // A module citation navigates to the module page — the thing itself, with
+    // its usages and imports — rather than merely popping the file's text.
     return (
-      <button
-        onClick={() =>
-          onShowModule ? onShowModule(citation.key) : onOpenSource(modulePath(citation.key))
-        }
-        className="badge accent"
-        style={{ marginLeft: 4, cursor: "pointer" }}
+      <ModuleLink
+        path={modulePath(citation.key)}
+        style={{ marginLeft: 4 }}
         title={citation.key}
-        data-testid="narrative-citation"
       >
-        mod {short.get(modulePath(citation.key)) ?? modulePath(citation.key)}
-      </button>
+        <span data-testid="narrative-citation">
+          mod {short.get(modulePath(citation.key)) ?? modulePath(citation.key)}
+        </span>
+      </ModuleLink>
     );
   }
   if (citation.kind === "package") {

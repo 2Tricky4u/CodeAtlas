@@ -134,6 +134,7 @@ export const GRAPH = {
     edges: [
       { data: { id: "e0", source: "pkg:kvstore", target: "file:kvstore/src/cache.rs", kind: "contains" } },
       { data: { id: "e1", source: "file:kvstore/src/cache.rs", target: "sym:evict", kind: "contains" } },
+      { data: { id: "e1b", source: "file:kvstore/src/cache.rs", target: "sym:put", kind: "contains" } },
       { data: { id: "e2", source: "sym:put", target: "sym:evict", kind: "calls" } },
     ],
   },

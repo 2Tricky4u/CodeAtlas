@@ -16,6 +16,7 @@ import { ChangeView } from "./views/ChangeView";
 import { DetailView } from "./views/DetailView";
 import { FindingsView } from "./views/FindingsView";
 import { MapView } from "./views/MapView";
+import { ModuleView } from "./views/ModuleView";
 import { OverviewView } from "./views/OverviewView";
 import { ProtocolView } from "./views/ProtocolView";
 import { ReviewView } from "./views/ReviewView";
@@ -37,6 +38,9 @@ export function App() {
             <Route path="findings" element={<FindingsView />} />
             <Route path="review" element={<ReviewView />} />
             <Route path="detail" element={<DetailView />} />
+            {/* Splat: module paths contain slashes. Not a tab — reached by
+                clicking any module named anywhere in the app. */}
+            <Route path="module/*" element={<ModuleView />} />
           </Route>
         </Route>
       </Routes>

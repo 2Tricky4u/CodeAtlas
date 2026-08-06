@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type AdrAudit, type AuditedDecision, type AuditResult } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
+import { ModuleLink } from "./links";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 const TONE: Record<AuditResult, "ok" | "warn" | "bad" | "info"> = {
@@ -137,11 +138,18 @@ function DecisionCard({
 
         {(decision.affectedNodes?.length ?? 0) > 0 && (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-            {decision.affectedNodes!.map((node) => (
-              <span key={node} className="badge" title={node} data-testid="affected-node">
-                {node.split("/").pop()}
-              </span>
-            ))}
+            {decision.affectedNodes!.map((node) => {
+              const path = node.startsWith("file:") ? node.slice("file:".length) : null;
+              return path ? (
+                <ModuleLink key={node} path={path} title={node}>
+                  <span data-testid="affected-node">{path.split("/").pop()}</span>
+                </ModuleLink>
+              ) : (
+                <span key={node} className="badge" title={node} data-testid="affected-node">
+                  {node.split("/").pop()}
+                </span>
+              );
+            })}
           </div>
         )}
 

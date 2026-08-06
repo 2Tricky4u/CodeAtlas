@@ -79,6 +79,15 @@ test.describe("live", () => {
     await page.screenshot({ path: "../var/ui-shots/live-review.png", fullPage: true });
   });
 
+  test("module page at real size", async ({ page }) => {
+    // walk.rs: fan-in 8, inside the 8-module cycle, the overview's own numbers.
+    await page.goto(`/#/runs/${RUN}/module/crates/ignore/src/walk.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page.getByTestId("definitions")).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: "../var/ui-shots/live-module.png", fullPage: true });
+  });
+
   test("focus on a real symbol", async ({ page }) => {
     await page.goto(`/#/runs/${RUN}/map`);
     await page.getByTestId("focus-tab").click();

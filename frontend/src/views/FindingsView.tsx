@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type Finding, type RunSummary } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel, SEVERITY_TONE, type Tone } from "../ui";
+import { ModuleLink } from "./links";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -98,8 +99,12 @@ export function FindingsView() {
                     {Math.round(finding.confidence * 100)}% confidence
                   </div>
                 </td>
-                <td className="note">
-                  {finding.path}
+                <td className="note" onClick={(event) => event.stopPropagation()}>
+                  {/* Row click opens the pinned lines; this link explains the
+                      whole module the finding lives in. */}
+                  <ModuleLink path={finding.path} className="" style={{ color: "var(--fg-1)" }}>
+                    {finding.path}
+                  </ModuleLink>
                   {finding.startLine ? `:${finding.startLine}` : ""}
                 </td>
                 <td>

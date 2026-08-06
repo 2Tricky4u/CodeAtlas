@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type ProjectOverview } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
+import { ModuleLink } from "./links";
 import { NarrativePanel } from "./NarrativePanel";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
@@ -64,13 +65,14 @@ export function OverviewView() {
           <ol style={{ margin: 0, paddingLeft: "1.4em" }} data-testid="start-here">
             {overview.startHere.map((entry) => (
               <li key={entry.path} style={{ marginBottom: 6 }}>
-                <button
-                  onClick={() => open(entry.path)}
+                <ModuleLink
+                  path={entry.path}
+                  className=""
                   style={{ color: "var(--accent)" }}
-                  title="open pinned source"
+                  title="explain this module"
                 >
                   {entry.path}
-                </button>
+                </ModuleLink>
                 <div className="note">{entry.reason}</div>
               </li>
             ))}
@@ -88,12 +90,12 @@ export function OverviewView() {
             </thead>
             <tbody>
               {overview.hubs.dependedOn.map((module) => (
-                <tr
-                  key={module.path}
-                  className="clickable"
-                  onClick={() => open(module.path)}
-                >
-                  <td>{module.path}</td>
+                <tr key={module.path}>
+                  <td>
+                    <ModuleLink path={module.path} className="" style={{ color: "var(--fg-0)" }}>
+                      {module.path}
+                    </ModuleLink>
+                  </td>
                   <td className="mono-num">{module.fanIn}</td>
                   <td className="mono-num">{module.level}</td>
                 </tr>
@@ -112,7 +114,14 @@ export function OverviewView() {
             <div key={index} style={{ marginBottom: 8 }}>
               <Badge tone="warn">{cycle.members.length} modules</Badge>
               <div className="note" style={{ marginTop: 3 }}>
-                {cycle.members.join(" ⇄ ")}
+                {cycle.members.map((member, i) => (
+                  <span key={member}>
+                    {i > 0 && " ⇄ "}
+                    <ModuleLink path={member} className="" style={{ color: "var(--fg-1)" }}>
+                      {member}
+                    </ModuleLink>
+                  </span>
+                ))}
               </div>
             </div>
           ))}
@@ -129,9 +138,9 @@ export function OverviewView() {
               <ul style={{ margin: 0, paddingLeft: "1.2em" }}>
                 {overview.orphans.map((orphan) => (
                   <li key={orphan.path}>
-                    <button onClick={() => open(orphan.path)} style={{ color: "var(--fg-1)" }}>
+                    <ModuleLink path={orphan.path} className="" style={{ color: "var(--fg-1)" }}>
                       {orphan.path}
-                    </button>
+                    </ModuleLink>
                   </li>
                 ))}
               </ul>
