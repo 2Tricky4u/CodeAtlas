@@ -23,6 +23,14 @@ test.describe("live", () => {
     await page.screenshot({ path: "../var/ui-shots/live-overview.png" });
   });
 
+  test("flows at real size", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN}/overview`);
+    await expect(page.getByTestId("flow").first()).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("flow").first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: "../var/ui-shots/live-flows.png" });
+  });
+
   test("map at package level", async ({ page }) => {
     await page.goto(`/#/runs/${RUN}/map`);
     await expect(page.locator('[data-testid="graph"] canvas').first()).toBeVisible();

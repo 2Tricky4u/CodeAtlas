@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type ProjectOverview } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
+import { FlowsPanel } from "./FlowsPanel";
 import { ModuleLink } from "./links";
 import { NarrativePanel } from "./NarrativePanel";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
@@ -57,6 +58,10 @@ export function OverviewView() {
           numbers before the prose that interprets them. */}
       <div style={{ marginBottom: 12 }}>
         <NarrativePanel runId={runId!} onOpenSource={open} />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <FlowsPanel runId={runId!} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
