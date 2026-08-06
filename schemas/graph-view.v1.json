@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/graph-view.v1.json",
+  "title": "Graph Views",
+  "description": "Bounded, readable renderings of a project graph. A node-link view stops being readable past roughly 20-25 nodes (Ghoniem/Fekete/Castagliola), so views are scoped, checked, and refused when they fail — a hairball is a confident-looking picture that cannot be read, which is worse than no picture. The whole-project answer is a matrix, which scales.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "repositoryId", "revision", "views", "refused", "notes"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "views": {
+      "description": "In reading order: the view to open first comes first.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/view" }
+    },
+    "refused": {
+      "description": "Views that were computed and then not emitted, with the check they failed. Present so a missing view is a stated decision rather than an absence.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/refusal" }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "layout", "nodes", "edges", "readability"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["package-dependencies", "levelized-modules", "matrix", "neighborhood"]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "scope": { "type": ["string", "null"] },
+        "layout": {
+          "description": "The layout family this view's data is shaped for. Layered for dependency data — edge crossings dominate comprehension (Purchase, GD'97) and force-directed layouts maximize them on DAGs.",
+          "enum": ["elk-layered", "fcose", "none"]
+        },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "suppressedEdges": {
+          "description": "Edges the layout carries rather than draws. Counted, because a view showing 3 of 47 edges must not read as a project with 3 dependencies.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "readability": { "$ref": "#/$defs/readability" },
+        "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "parent": {
+          "description": "Compound parent, so a package can be collapsed to one box.",
+          "type": ["string", "null"]
+        },
+        "level": { "type": ["integer", "null"], "minimum": 0 },
+        "path": { "type": ["string", "null"] },
+        "fanIn": { "type": ["integer", "null"], "minimum": 0 },
+        "fanOut": { "type": ["integer", "null"], "minimum": 0 },
+        "inCycle": { "type": "boolean" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "weight": { "type": ["integer", "null"], "minimum": 1 },
+        "violatesLevels": { "type": "boolean" }
+      }
+    },
+    "readability": {
+      "description": "The Dunne-Shneiderman rubric made mechanical: every node visible, degree countable, edges traceable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "passed", "value", "limit"],
+      "properties": {
+        "name": { "enum": ["node-budget", "edge-density", "max-degree"] },
+        "passed": { "type": "boolean" },
+        "value": { "type": "number" },
+        "limit": { "type": "number" }
+      }
+    },
+    "refusal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "failedCheck", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "failedCheck": { "enum": ["node-budget", "edge-density", "max-degree"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

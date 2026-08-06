@@ -17,6 +17,9 @@ pinned revision (or a GitHub pull request), a completed run produces:
 - **Structurizr C4** architecture views, **Mermaid** protocol/sequence/state diagrams, and a
   **Cytoscape.js** dependency graph;
 - **ADR links and drift detection** against accepted architecture decisions;
+- **bounded graph views** — a package-level overview, per-package levelized module views
+  drawing only the cycles, and a dependency matrix for the whole project — where a view
+  that fails its readability checks is refused rather than rendered as a hairball;
 - a **read-only dashboard** where every claim drills down to pinned source;
 - **manual human approval gating every external write** (PR comments, ADR changes, fixes).
 
@@ -107,4 +110,11 @@ work against the real thing:
 ```powershell
 uv run python scripts/validate_github.py             # GitHub read paths and refusals
 uv run python scripts/validate_two_revisions.py owner/repo N   # both revisions, live PR
+uv run python scripts/check_real_project.py --repo <url>       # every analysis, real crate
 ```
+
+The last one is the important one for anything graph-shaped. The fixture crate has five
+files; a levelization that collapses, an impact set that reaches everything, or a view that
+is a hairball only show up at real size. It separates what it can verify itself from the
+judgements only a reader of that codebase can make, and `scripts/show_overview.py` and
+`scripts/show_views.py` print the results for a human to look at.

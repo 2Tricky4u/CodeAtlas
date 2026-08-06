@@ -16,6 +16,7 @@ from codeatlas.models.overview import ProjectOverview
 from codeatlas.models.protocol import ProtocolModel
 from codeatlas.models.receipts import ExtractorReceipt
 from codeatlas.models.validation import ValidationResult
+from codeatlas.models.views import GraphViews
 
 # Schema file -> top-level contract model. The drift test iterates this mapping.
 CONTRACT_MODELS: dict[str, type[ContractModel]] = {
@@ -34,6 +35,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "change-impact.v1.json": ChangeImpact,
     "change-explanation.v1.json": ChangeExplanation,
     "project-overview.v1.json": ProjectOverview,
+    "graph-view.v1.json": GraphViews,
 }
 
 __all__ = [
@@ -48,6 +50,7 @@ __all__ = [
     "ExtractorReceipt",
     "Finding",
     "GraphDiff",
+    "GraphViews",
     "IntentPackage",
     "ProjectGraph",
     "ProjectOverview",

@@ -652,12 +652,31 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         has opened a pull request against still has a shape worth describing.
         """
         from codeatlas.project.overview import build_overview
+        from codeatlas.project.views import build_views
 
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         overview = build_overview(graph, repository_id=state["repository_id"])
         payload = canonical_json(overview.contract_dump())
         sha = deps.cas.put(payload)
+
+        # The views the dashboard can actually draw, each already checked for
+        # readability. A view that would be a hairball is refused here rather
+        # than left for the browser to attempt.
+        views = build_views(graph, overview)
+        view_payload = canonical_json(views.contract_dump())
+        view_sha = deps.cas.put(view_payload)
+
         with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=view_sha,
+                kind="graph-views",
+                media_type="application/json",
+                size_bytes=len(view_payload),
+                producer="pipeline",
+                produced_by_run_id=state["run_id"],
+                schema_id="graph-view.v1",
+            )
             repo.index_artifact(
                 session,
                 sha256=sha,
@@ -679,10 +698,12 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     "cycles": len(overview.cycles),
                     "entryPoints": len(overview.entry_points),
                     "orphans": len(overview.orphans),
+                    "views": len(views.views),
+                    "viewsRefused": len(views.refused),
                 },
             )
             session.commit()
-        return {"project_overview_sha256": sha}
+        return {"project_overview_sha256": sha, "graph_views_sha256": view_sha}
 
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
@@ -796,6 +817,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     "projectGraph": state["graph_sha256"],
                     "cytoscape": state["cytoscape_sha256"],
                     "projectOverview": state["project_overview_sha256"],
+                    "graphViews": state["graph_views_sha256"],
                     **(
                         {"baseProjectGraph": state["base_graph_sha256"]}
                         if state.get("base_graph_sha256")

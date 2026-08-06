@@ -36,6 +36,7 @@ EXPECTED_SCHEMAS = {
     "change-impact.v1.json",
     "change-explanation.v1.json",
     "project-overview.v1.json",
+    "graph-view.v1.json",
 }
 
 
@@ -489,6 +490,49 @@ PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+GRAPH_VIEW_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "repositoryId": "local/kvstore",
+    "revision": "a" * 40,
+    "views": [
+        {
+            "id": "packages",
+            "kind": "package-dependencies",
+            "title": "Packages",
+            "layout": "elk-layered",
+            "nodes": [{"id": "pkg:kvstore", "label": "kvstore", "kind": "package", "fanIn": 1}],
+            "edges": [
+                {
+                    "id": "pkgedge:cli->kvstore",
+                    "source": "pkg:kvstore-cli",
+                    "target": "pkg:kvstore",
+                    "kind": "depends-on",
+                    "weight": 4,
+                }
+            ],
+            "suppressedEdges": 0,
+            "readability": {
+                "passed": True,
+                "checks": [
+                    {"name": "node-budget", "passed": True, "value": 2, "limit": 25},
+                    {"name": "edge-density", "passed": True, "value": 0.5, "limit": 3},
+                    {"name": "max-degree", "passed": True, "value": 1, "limit": 10},
+                ],
+            },
+            "notes": ["open here: one box per package"],
+        }
+    ],
+    "refused": [
+        {
+            "id": "modules:kvstore",
+            "kind": "levelized-modules",
+            "failedCheck": "node-budget",
+            "reason": "node-budget 41 exceeds the limit of 25; this would be a hairball",
+        }
+    ],
+    "notes": [],
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -505,6 +549,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "change-impact.v1.json": CHANGE_IMPACT_EXAMPLE,
     "change-explanation.v1.json": CHANGE_EXPLANATION_EXAMPLE,
     "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
+    "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
 }
 
 

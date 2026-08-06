@@ -40,6 +40,7 @@ class PipelineState(TypedDict, total=False):
     graph_diff_sha256: str | None
     change_impact_sha256: str | None
     project_overview_sha256: str
+    graph_views_sha256: str
     # Review half (present only when an agent engine is configured)
     review_artifacts: Annotated[dict[str, str], operator.or_]
     finding_count: int
