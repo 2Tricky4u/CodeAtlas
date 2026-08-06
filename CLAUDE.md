@@ -9,6 +9,8 @@
 - `codeatlas serve --workdir var --port N` + `CODEATLAS_API=http://127.0.0.1:N npm run preview`
   — the dashboard against real data. `CODEATLAS_RUN=<id> npm run e2e` then exercises
   `e2e/live.spec.ts`, the only suite that is not route-mocked.
+- `codeatlas run --narrate --no-review` — describe a project without reviewing it. The two
+  agent capabilities are independent nodes; `--narrate` unset follows `--review`.
 
 ## Hard rules
 

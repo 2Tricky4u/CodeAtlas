@@ -705,6 +705,56 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             session.commit()
         return {"project_overview_sha256": sha, "graph_views_sha256": view_sha}
 
+    def narrate(state: PipelineState) -> dict[str, Any]:
+        """Say what this project is, checked against the overview above.
+
+        Its own node, gated on its own flag. Project comprehension does not
+        depend on there being a change to review — that was the plan's claim and
+        it was not true while this lived inside `review`.
+        """
+        if not deps.narration_available:
+            reason = (
+                "no agent engine configured"
+                if deps.agent_engine is None
+                else "narration disabled for this run"
+            )
+            with Session(deps.engine) as session:
+                repo.add_run_event(
+                    session,
+                    run_id=state["run_id"],
+                    stage="narrate",
+                    event="narration_skipped",
+                    data={"reason": reason},
+                )
+                session.commit()
+            return {"review_notes": [f"project narrative skipped: {reason}"]}
+
+        from codeatlas.pipeline.narrate_stage import narrate_project
+
+        result = narrate_project(
+            deps,
+            run_id=state["run_id"],
+            revision_sha=state["head_sha"],
+            checkout=Path(state["checkout_path"]),
+            repository_id=state["repository_id"],
+            revision_db_id=state["revision_db_id"],
+            project_overview_sha=state["project_overview_sha256"],
+        )
+        with Session(deps.engine) as session:
+            repo.add_run_event(
+                session,
+                run_id=state["run_id"],
+                stage="narrate",
+                event="narrated" if result.sha256 else "narration_failed",
+                level="info" if result.sha256 else "warning",
+                data={"droppedClaims": result.dropped},
+            )
+            session.commit()
+        return {
+            "project_explanation_sha256": result.sha256,
+            "review_notes": result.notes,
+        }
+
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         payload = to_cytoscape(graph)
@@ -738,7 +788,6 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             stage_adr_audit,
             stage_diagrams,
             stage_explain_change,
-            stage_explain_project,
             stage_intent,
             stage_payload,
             stage_reviewers,
@@ -778,16 +827,6 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 api_change_sha=state.get("api_change_sha256"),
                 impact_sha=state.get("change_impact_sha256"),
             )
-
-        # Project comprehension is independent of the change: a repository with
-        # no pull request still gets narrated.
-        stage_explain_project(
-            deps,
-            ctx,
-            repository_id=state["repository_id"],
-            revision_db_id=state["revision_db_id"],
-            project_overview_sha=state["project_overview_sha256"],
-        )
 
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)
@@ -832,6 +871,11 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     **(
                         {"baseProjectGraph": state["base_graph_sha256"]}
                         if state.get("base_graph_sha256")
+                        else {}
+                    ),
+                    **(
+                        {"project-explanation": narrative_sha}
+                        if (narrative_sha := state.get("project_explanation_sha256"))
                         else {}
                     ),
                     **(
@@ -885,6 +929,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "api_change": api_change,
         "change_impact": change_impact,
         "project_overview": project_overview,
+        "narrate": narrate,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -901,7 +946,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("graph_diff", "api_change")
     builder.add_edge("api_change", "change_impact")
     builder.add_edge("change_impact", "project_overview")
-    builder.add_edge("project_overview", "export_cytoscape")
+    builder.add_edge("project_overview", "narrate")
+    builder.add_edge("narrate", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

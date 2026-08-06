@@ -22,17 +22,27 @@ def _deps(
     test_db: bool,
     *,
     review: bool = False,
+    narrate: bool | None = None,
     replay: bool = False,
     max_tokens: int = 2_000_000,
 ) -> PipelineDeps:
+    """Build the dependency container.
+
+    `narrate` is tri-state on purpose. Unset it follows `--review`, which is
+    what the pipeline did when narration lived inside the review — so existing
+    invocations behave exactly as before. Set explicitly it is independent, and
+    `--narrate` alone gets you a described project with no reviewers run.
+    """
     from codeatlas.artifacts.store import ArtifactStore
     from codeatlas.db.session import app_engine
     from codeatlas.pipeline.deps import PipelineDeps
 
+    narration = review if narrate is None else narrate
+
     cas = ArtifactStore(workdir / "objects")
     agent_engine: object | None = None
     budget = None
-    if review:
+    if review or narration:
         from codeatlas.agents.budget import TokenBudget
 
         if replay:
@@ -54,6 +64,8 @@ def _deps(
         checkpoint_path=workdir / "checkpoints" / "pipeline.sqlite",
         agent_engine=agent_engine,
         budget=budget,
+        review_enabled=review,
+        narration_enabled=narration,
     )
 
 
@@ -68,6 +80,10 @@ def run(
     review: Annotated[
         bool, typer.Option(help="Run the agent review stages (costs subscription quota)")
     ] = False,
+    narrate: Annotated[
+        bool | None,
+        typer.Option(help="Explain what this project is. Defaults to following --review."),
+    ] = None,
     replay: Annotated[
         bool, typer.Option(help="Use recorded cassettes instead of the live engine")
     ] = False,
@@ -79,6 +95,9 @@ def run(
     always handled both — it mirrors first and resolves from the mirror — but
     this command used to demand an existing directory, so the one thing you
     would try first on a public project failed at argument parsing.
+
+    `--narrate` without `--review` describes the project without reviewing it:
+    the two are separate questions and cost very different amounts.
     """
     configure_logging()
     from codeatlas.pipeline.runner import run_status, start_run
@@ -88,7 +107,7 @@ def run(
         typer.echo(f"--repo {repo!r} is neither a directory nor a clone URL", err=True)
         raise typer.Exit(2)
 
-    deps = _deps(workdir, test_db, review=review, replay=replay)
+    deps = _deps(workdir, test_db, review=review, narrate=narrate, replay=replay)
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
@@ -158,6 +177,9 @@ def review_pr(
     slug: Annotated[str, typer.Argument(help="owner/repo")],
     pr_number: Annotated[int, typer.Argument(help="Pull request number")],
     workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    narrate: Annotated[
+        bool, typer.Option(help="Also explain what the project is, not just the change")
+    ] = True,
     replay: Annotated[bool, typer.Option(help="Use recorded cassettes")] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
@@ -187,7 +209,7 @@ def review_pr(
     typer.echo(f"  base {pr.base_sha[:12]} -> head {pr.head_sha[:12]}")
     typer.echo(f"  {len(pr.changed_paths)} changed file(s)")
 
-    deps = _deps(workdir, test_db, review=True, replay=replay)
+    deps = _deps(workdir, test_db, review=True, narrate=narrate, replay=replay)
     deps.github_owner = owner
     deps.github_repo = repo_name
     deps.pr_number = pr_number

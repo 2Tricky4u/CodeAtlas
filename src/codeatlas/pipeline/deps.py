@@ -30,12 +30,19 @@ class PipelineDeps:
     git: GitClient = field(default_factory=GitClient)
     crash_stage: str | None = None  # fault injection for resume tests
 
-    # Review stages. When `agent_engine` is None the pipeline runs its
+    # Agent stages. When `agent_engine` is None the pipeline runs its
     # deterministic half only — extraction, graph, diagrams — which is a valid
     # and useful mode, not a degraded one.
     agent_engine: object | None = None
     skills_dir: Path = DEFAULT_SKILLS_DIR
     budget: TokenBudget | None = None
+
+    # The two agent capabilities are independent and are switched independently:
+    # explaining a project needs no pull request, and reviewing one needs nobody
+    # to open the map. They were a single flag, which made "narrate this
+    # repository" mean "and also run four reviewers and a validator per finding".
+    narration_enabled: bool = True
+    review_enabled: bool = True
 
     # Publication target. Absent means the run stops after the report.
     github_owner: str | None = None
@@ -59,4 +66,8 @@ class PipelineDeps:
 
     @property
     def reviews_enabled(self) -> bool:
-        return self.agent_engine is not None
+        return self.agent_engine is not None and self.review_enabled
+
+    @property
+    def narration_available(self) -> bool:
+        return self.agent_engine is not None and self.narration_enabled

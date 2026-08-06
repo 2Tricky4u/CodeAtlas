@@ -10,7 +10,6 @@ a stage that failed leaves the reason behind.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,15 +30,14 @@ from codeatlas.artifacts.structurizr.validate import (
     validate_workspace,
     write_dsl,
 )
-from codeatlas.core.canonical import canonical_json
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
-from codeatlas.db.tables import ArtifactRow, FileRow, FindingRow
+from codeatlas.db.tables import FileRow, FindingRow
 from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
-from codeatlas.models.overview import ProjectOverview
+from codeatlas.pipeline.artifacts_out import adopt_artifact, publish_artifact
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.publication.payload import build_payload
 from codeatlas.review.intent_node import reconstruct_intent
@@ -55,16 +53,6 @@ from codeatlas.validation.validator import ValidationOutcome, validate_findings
 from codeatlas.verify.battery import run_battery
 
 log = get_logger("codeatlas.pipeline.review")
-
-
-# A role is a URL path segment on /api/runs/{id}/artifact/{role}; the API refuses
-# anything else, so a stage that coins a role the API cannot serve has produced
-# an artifact nobody can fetch. Rejected here, where the mistake is made.
-_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,59}$")
-
-# Media types the read-only API is willing to hand back. Anything else can be
-# stored, but there is no point giving it a role.
-_SERVABLE_MEDIA = frozenset({"application/json", "text/plain", "text/markdown"})
 
 
 @dataclass
@@ -106,65 +94,21 @@ class ReviewContext:
         artifacts were named in the run manifest and returned 404 from the API.
         `artifacts` is read-only precisely so this is the only way in.
         """
-        if not _ROLE_RE.match(role):
-            raise ValueError(
-                f"{role!r} is not a servable artifact role: "
-                "lowercase letters, digits and hyphens, starting with a letter"
-            )
-        if media_type not in _SERVABLE_MEDIA:
-            raise ValueError(f"{media_type!r} cannot be served by the read-only API")
-
-        if media_type == "application/json":
-            blob = canonical_json(payload)
-        elif isinstance(payload, str):
-            blob = payload.encode("utf-8")
-        else:  # pragma: no cover - defensive; a text role is given text
-            raise TypeError(f"{media_type} artifact must be a string, got {type(payload).__name__}")
-
-        sha = deps.cas.put(blob)
-        with Session(deps.engine) as session:
-            repo.index_artifact(
-                session,
-                sha256=sha,
-                kind=role,
-                media_type=media_type,
-                size_bytes=len(blob),
-                producer=producer,
-                produced_by_run_id=self.run_id,
-                schema_id=schema_id,
-            )
-            session.commit()
+        sha = publish_artifact(
+            deps,
+            self.run_id,
+            role,
+            payload,
+            schema_id=schema_id,
+            media_type=media_type,
+            producer=producer,
+        )
         self._artifacts[role] = sha
         return sha
 
     def adopt(self, deps: PipelineDeps, role: str, sha256: str) -> str:
-        """Claim an artifact another component already stored and indexed.
-
-        `publish` is the normal path. This exists for the few artifacts written
-        deeper in the stack — the publication gate writes its dry-run payload as
-        part of deciding — where re-serialising here would risk two copies
-        drifting. The membership row is still written, so the guarantee that
-        every reported role resolves is unchanged.
-        """
-        if not _ROLE_RE.match(role):
-            raise ValueError(f"{role!r} is not a servable artifact role")
-        with Session(deps.engine) as session:
-            row = session.get(ArtifactRow, sha256)
-            if row is None:
-                raise ValueError(f"cannot adopt {sha256}: it was never indexed")
-            repo.index_artifact(
-                session,
-                sha256=sha256,
-                kind=row.kind,
-                media_type=row.media_type,
-                size_bytes=row.size_bytes,
-                producer=row.producer,
-                produced_by_run_id=self.run_id,
-                schema_id=row.schema_id,
-                role=role,
-            )
-            session.commit()
-        self._artifacts[role] = sha256
+        """Claim an artifact another component already stored and indexed."""
+        self._artifacts[role] = adopt_artifact(deps, self.run_id, role, sha256)
         return sha256
 
 
@@ -525,77 +469,6 @@ def stage_explain_change(
         )
     log.info(
         "review.explained",
-        run_id=ctx.run_id,
-        claims=explanation.claim_count,
-        dropped=len(dropped),
-    )
-
-
-def stage_explain_project(
-    deps: PipelineDeps,
-    ctx: ReviewContext,
-    *,
-    repository_id: str,
-    revision_db_id: int,
-    project_overview_sha: str,
-) -> None:
-    """Narrate the project, then delete every claim the overview does not support.
-
-    Unlike the change explanation this runs for any run, pull request or not:
-    "what is this project" is a question that does not need a diff to be worth
-    answering, and the deterministic overview it is checked against is computed
-    on every run.
-    """
-    from codeatlas.pipeline.source import mirror_path
-    from codeatlas.project.narrative import build_project_index, explain_project
-
-    overview = ProjectOverview.model_validate(json.loads(deps.cas.get(project_overview_sha)))
-
-    mirror = mirror_path(deps, repository_id)
-    with Session(deps.engine) as session:
-        rows = session.scalars(select(FileRow).where(FileRow.revision_id == revision_db_id)).all()
-        blobs = {row.path: row.git_blob_sha for row in rows}
-
-    index = build_project_index(overview, paths=set(blobs))
-
-    def read_lines(path: str) -> int:
-        blob_sha = blobs.get(path)
-        if blob_sha is None:
-            raise FileNotFoundError(path)
-        return len(deps.git.cat_file(mirror, blob_sha).decode("utf-8", "replace").splitlines())
-
-    explanation, dropped = explain_project(
-        engine=deps.agent_engine,  # type: ignore[arg-type]
-        registry=deps.registry(),
-        run_id=ctx.run_id,
-        revision_sha=ctx.revision_sha,
-        checkout=ctx.checkout,
-        db_engine=deps.engine,
-        cas=deps.cas,
-        overview=overview,
-        index=index,
-        budget=deps.budget,
-        read_lines=read_lines,
-    )
-    if explanation is None:
-        ctx.failed_skills.append("project-explainer")
-        ctx.notes.append("project explanation unavailable: the explainer did not complete")
-        return
-
-    ctx.publish(
-        deps,
-        "project-explanation",
-        explanation.contract_dump(),
-        schema_id="project-explanation.v1",
-        producer="project-explainer",
-    )
-    if dropped:
-        ctx.notes.append(
-            f"{len(dropped)} project explanation claim(s) removed: their citations did "
-            "not resolve against the deterministic overview"
-        )
-    log.info(
-        "review.project_explained",
         run_id=ctx.run_id,
         claims=explanation.claim_count,
         dropped=len(dropped),
