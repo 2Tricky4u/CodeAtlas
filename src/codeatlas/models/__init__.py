@@ -5,6 +5,7 @@ from __future__ import annotations
 from codeatlas.models.agent import AgentResult, AgentTask
 from codeatlas.models.api import ApiChange, ApiSurface
 from codeatlas.models.base import ContractModel
+from codeatlas.models.diff import GraphDiff
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
@@ -26,6 +27,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "run-manifest.v1.json": RunManifest,
     "api-surface.v1.json": ApiSurface,
     "api-change.v1.json": ApiChange,
+    "graph-diff.v1.json": GraphDiff,
 }
 
 __all__ = [
@@ -37,6 +39,7 @@ __all__ = [
     "ContractModel",
     "ExtractorReceipt",
     "Finding",
+    "GraphDiff",
     "IntentPackage",
     "ProjectGraph",
     "ProtocolModel",

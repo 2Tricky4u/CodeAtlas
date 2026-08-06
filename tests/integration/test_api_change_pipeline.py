@@ -77,13 +77,17 @@ def api_pr_run(test_engine, tmp_path_factory: pytest.TempPathFactory):  # type: 
     return deps, run_id, base_sha, head_sha
 
 
-def _api_change(deps, run_id) -> dict:  # type: ignore[no-untyped-def]
+def _artifact(deps, run_id, role: str) -> dict:  # type: ignore[no-untyped-def]
     from codeatlas.db.repositories import artifact_for_run
 
     with Session(deps.engine) as s:
-        sha = artifact_for_run(s, run_id, "api-change")
-    assert sha is not None, "a pull-request run must record what it did to the public API"
+        sha = artifact_for_run(s, run_id, role)
+    assert sha is not None, f"a pull-request run must record its {role}"
     return json.loads(deps.cas.get(sha))  # type: ignore[no-any-return]
+
+
+def _api_change(deps, run_id) -> dict:  # type: ignore[no-untyped-def]
+    return _artifact(deps, run_id, "api-change")
 
 
 class TestTheRunKnowsWhatTheChangeDidToTheApi:
@@ -135,6 +139,74 @@ class TestTheRunKnowsWhatTheChangeDidToTheApi:
             manifest = json.loads(deps.cas.get(run.manifest_sha256))
         assert manifest["outputs"]["apiChange"].startswith("sha256:")
         assert manifest["kind"] == "pr"
+
+
+class TestTheRunKnowsWhatTheChangeDidToTheStructure:
+    """P2b on real extractor output, where the ids carry versions and paths."""
+
+    def test_the_replaced_method_shows_as_one_removal_and_two_additions(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        diff = _artifact(deps, run_id, "graph-diff")
+
+        removed = {n["label"] for n in diff["nodes"]["removed"]}
+        added = {n["label"] for n in diff["nodes"]["added"]}
+        assert "evict_oldest" in removed
+        assert {"evict", "capacity"} <= added
+
+    def test_the_call_into_the_removed_method_is_gone(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """The sentence a text diff cannot produce: nothing calls it any more."""
+        deps, run_id, _, _ = api_pr_run
+        diff = _artifact(deps, run_id, "graph-diff")
+
+        calls_into = [
+            e
+            for e in diff["edges"]["removed"]
+            if e["targetLabel"] == "evict_oldest" and e["kind"] == "calls"
+        ]
+        assert calls_into, "put() called evict_oldest at the base revision"
+        assert {e["sourceLabel"] for e in calls_into} == {"put"}
+        # The file that declared it stops containing it, too.
+        assert any(
+            e["kind"] == "contains" and e["targetLabel"] == "evict_oldest"
+            for e in diff["edges"]["removed"]
+        )
+
+    def test_the_touched_symbols_come_from_the_change_s_own_diff(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        diff = _artifact(deps, run_id, "graph-diff")
+
+        touched = {n["label"] for n in diff["nodes"]["touched"]}
+        assert touched, "the change edited cache.rs; some symbol must overlap it"
+        assert all(n["path"] == "kvstore/src/cache.rs" for n in diff["nodes"]["touched"]), (
+            "only the edited file was touched"
+        )
+
+    def test_the_rename_is_offered_as_a_guess_beside_the_facts(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        diff = _artifact(deps, run_id, "graph-diff")
+
+        guesses = {(g["beforeLabel"], g["afterLabel"]) for g in diff["likelyRenamed"]}
+        assert ("evict_oldest", "evict") in guesses
+        for guess in diff["likelyRenamed"]:
+            assert guess["basis"], "an inference without its reason cannot be checked"
+        # And the facts it explains are still stated as facts.
+        assert "evict_oldest" in {n["label"] for n in diff["nodes"]["removed"]}
+
+    def test_every_identity_was_normalized_on_real_extractor_output(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """If this ever regresses, version bumps start reading as rewrites."""
+        deps, run_id, _, _ = api_pr_run
+        diff = _artifact(deps, run_id, "graph-diff")
+        assert diff["unnormalizedIdentities"] == 0
+
+    def test_the_manifest_lists_the_structural_diff(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.db.tables import RunRow
+
+        deps, run_id, _, _ = api_pr_run
+        with Session(deps.engine) as s:
+            run = s.get(RunRow, run_id)
+            assert run is not None and run.manifest_sha256 is not None
+            manifest = json.loads(deps.cas.get(run.manifest_sha256))
+        assert manifest["outputs"]["graphDiff"].startswith("sha256:")
 
 
 class TestABodyOnlyChangeReportsNoApiChange:

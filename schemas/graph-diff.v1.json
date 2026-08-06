@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/graph-diff.v1.json",
+  "title": "Project Graph Diff",
+  "description": "Structural difference between two project graphs: which symbols and which relationships a change added, removed or moved. This is the signal a text diff cannot give — an edge appearing between two modules is visible in neither file's diff. Facts and inferences are kept in separate places.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "baseRevision",
+    "headRevision",
+    "nodes",
+    "edges",
+    "packageVersionChanges",
+    "likelyRenamed",
+    "unnormalizedIdentities",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "baseRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "headRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "removed", "moved", "touched"],
+      "properties": {
+        "added": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "removed": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "moved": { "type": "array", "items": { "$ref": "#/$defs/movedNode" } },
+        "touched": {
+          "description": "Symbols whose source range overlaps a line the change added. Empty when the diff was not supplied — never a claim that nothing was touched.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "edges": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "removed"],
+      "properties": {
+        "added": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "removed": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+      }
+    },
+    "packageVersionChanges": {
+      "description": "Version identity is deliberately excluded from structural comparison, so it is reported here instead of as churn.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/versionChange" }
+    },
+    "likelyRenamed": {
+      "description": "INFERENCE, not fact. A removal and an addition that look like one rename. The underlying removal and addition remain in `nodes`; this never rewrites them.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/renameGuess" }
+    },
+    "unnormalizedIdentities": {
+      "description": "Node ids whose identity could not be normalized to a version-independent key. They are compared raw, so a version bump can still show as churn for these.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableKey", "id", "kind", "label"],
+      "properties": {
+        "stableKey": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "movedNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableKey", "kind", "label", "beforePath", "afterPath"],
+      "properties": {
+        "stableKey": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "beforePath": { "type": "string", "minLength": 1 },
+        "afterPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "sourceKey", "targetKey", "sourceLabel", "targetLabel"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "sourceKey": { "type": "string", "minLength": 1 },
+        "targetKey": { "type": "string", "minLength": 1 },
+        "sourceLabel": { "type": "string", "minLength": 1 },
+        "targetLabel": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string" },
+        "targetPath": { "type": "string" }
+      }
+    },
+    "versionChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "before", "after"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "before": { "type": "string", "minLength": 1 },
+        "after": { "type": "string", "minLength": 1 }
+      }
+    },
+    "renameGuess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beforeKey", "afterKey", "beforeLabel", "afterLabel", "confidence", "basis"],
+      "properties": {
+        "beforeKey": { "type": "string", "minLength": 1 },
+        "afterKey": { "type": "string", "minLength": 1 },
+        "beforeLabel": { "type": "string", "minLength": 1 },
+        "afterLabel": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "confidence": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "basis": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodesAdded",
+        "nodesRemoved",
+        "nodesMoved",
+        "nodesTouched",
+        "edgesAdded",
+        "edgesRemoved"
+      ],
+      "properties": {
+        "nodesAdded": { "type": "integer", "minimum": 0 },
+        "nodesRemoved": { "type": "integer", "minimum": 0 },
+        "nodesMoved": { "type": "integer", "minimum": 0 },
+        "nodesTouched": { "type": "integer", "minimum": 0 },
+        "edgesAdded": { "type": "integer", "minimum": 0 },
+        "edgesRemoved": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

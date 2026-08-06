@@ -32,6 +32,7 @@ EXPECTED_SCHEMAS = {
     "run-manifest.v1.json",
     "api-surface.v1.json",
     "api-change.v1.json",
+    "graph-diff.v1.json",
 }
 
 
@@ -258,6 +259,82 @@ API_CHANGE_EXAMPLE: dict[str, Any] = {
     "tools": {"cargoPublicApi": "0.52.0", "cargoSemverChecks": "0.44.0"},
 }
 
+GRAPH_DIFF_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "baseRevision": "a" * 40,
+    "headRevision": "b" * 40,
+    "nodes": {
+        "added": [
+            {
+                "stableKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict().",
+                "id": "sym:scip/rust-analyzer cargo kvstore 0.1.0 cache/Cache#evict().",
+                "kind": "function",
+                "label": "evict",
+                "path": "kvstore/src/cache.rs",
+                "startLine": 41,
+                "endLine": 55,
+            }
+        ],
+        "removed": [
+            {
+                "stableKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict_oldest().",
+                "id": "sym:scip/rust-analyzer cargo kvstore 0.1.0 cache/Cache#evict_oldest().",
+                "kind": "function",
+                "label": "evict_oldest",
+                "path": "kvstore/src/cache.rs",
+                "startLine": 41,
+                "endLine": 48,
+            }
+        ],
+        "moved": [
+            {
+                "stableKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#",
+                "kind": "type",
+                "label": "Cache",
+                "beforePath": "kvstore/src/cache.rs",
+                "afterPath": "kvstore/src/eviction.rs",
+            }
+        ],
+        "touched": [],
+    },
+    "edges": {
+        "added": [],
+        "removed": [
+            {
+                "id": "edge:3d1c2a9f8b7e6d5c4a3b2c1d",
+                "kind": "calls",
+                "sourceKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#put().",
+                "targetKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict_oldest().",
+                "sourceLabel": "put",
+                "targetLabel": "evict_oldest",
+                "sourcePath": "kvstore/src/cache.rs",
+                "targetPath": "kvstore/src/cache.rs",
+            }
+        ],
+    },
+    "packageVersionChanges": [{"name": "kvstore", "before": "0.1.0", "after": "0.2.0"}],
+    "likelyRenamed": [
+        {
+            "beforeKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict_oldest().",
+            "afterKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict().",
+            "beforeLabel": "evict_oldest",
+            "afterLabel": "evict",
+            "path": "kvstore/src/cache.rs",
+            "confidence": 0.75,
+            "basis": "same file and overlapping source range; name similarity 0.71",
+        }
+    ],
+    "unnormalizedIdentities": 0,
+    "summary": {
+        "nodesAdded": 1,
+        "nodesRemoved": 1,
+        "nodesMoved": 1,
+        "nodesTouched": 0,
+        "edgesAdded": 0,
+        "edgesRemoved": 1,
+    },
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -270,6 +347,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "run-manifest.v1.json": MANIFEST_EXAMPLE,
     "api-surface.v1.json": API_SURFACE_EXAMPLE,
     "api-change.v1.json": API_CHANGE_EXAMPLE,
+    "graph-diff.v1.json": GRAPH_DIFF_EXAMPLE,
 }
 
 

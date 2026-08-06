@@ -405,6 +405,56 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             "base_cache_hit": cached is not None,
         }
 
+    def graph_diff(state: PipelineState) -> dict[str, Any]:
+        """What the change did to the structure: symbols and relationships.
+
+        Pure and cheap — two graphs in, a delta out — so it runs before the
+        API-surface stage. A missing nightly toolchain then costs a run its API
+        narrative without also costing it the structural one.
+        """
+        base_graph_sha = state.get("base_graph_sha256")
+        if not base_graph_sha:
+            return {}
+
+        from codeatlas.change.graph import diff_graphs
+
+        base_graph = ProjectGraph.model_validate(json.loads(deps.cas.get(base_graph_sha)))
+        head_graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
+        added = {path: set(lines) for path, lines in (state.get("added_lines") or {}).items()}
+
+        diff = diff_graphs(base_graph, head_graph, added_lines=added or None)
+        payload = canonical_json(diff.contract_dump())
+        sha = deps.cas.put(payload)
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=sha,
+                kind="graph-diff",
+                media_type="application/json",
+                size_bytes=len(payload),
+                producer="pipeline",
+                produced_by_run_id=state["run_id"],
+                schema_id="graph-diff.v1",
+            )
+            repo.add_run_event(
+                session,
+                run_id=state["run_id"],
+                stage="graph_diff",
+                event="graph_diff_computed",
+                data={
+                    "nodesAdded": diff.summary.nodes_added,
+                    "nodesRemoved": diff.summary.nodes_removed,
+                    "nodesTouched": diff.summary.nodes_touched,
+                    "edgesAdded": diff.summary.edges_added,
+                    "edgesRemoved": diff.summary.edges_removed,
+                    # A nonzero count here means some ids were compared raw, so
+                    # a version bump can still show as churn for those.
+                    "unnormalizedIdentities": diff.unnormalized_identities,
+                },
+            )
+            session.commit()
+        return {"graph_diff_sha256": sha}
+
     def api_change(state: PipelineState) -> dict[str, Any]:
         """What the change did to the public API, decided by tools not opinions.
 
@@ -614,6 +664,11 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         if (api_change_sha := state.get("api_change_sha256"))
                         else {}
                     ),
+                    **(
+                        {"graphDiff": graph_diff_sha}
+                        if (graph_diff_sha := state.get("graph_diff_sha256"))
+                        else {}
+                    ),
                     **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
@@ -644,6 +699,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "extract": extract,
         "build_graph": build_graph,
         "base_revision": base_revision,
+        "graph_diff": graph_diff,
         "api_change": api_change,
         "export_cytoscape": export_cytoscape,
         "review": review,
@@ -657,7 +713,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")
     builder.add_edge("build_graph", "base_revision")
-    builder.add_edge("base_revision", "api_change")
+    builder.add_edge("base_revision", "graph_diff")
+    builder.add_edge("graph_diff", "api_change")
     builder.add_edge("api_change", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
