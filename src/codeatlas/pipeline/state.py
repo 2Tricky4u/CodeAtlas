@@ -22,6 +22,20 @@ class PipelineState(TypedDict, total=False):
     cytoscape_sha256: str
     manifest_sha256: str
     stage_status: Annotated[dict[str, str], operator.or_]
+    # Pull-request mode: the revision this change is measured against. Absent in
+    # repository mode, where the whole tree is the subject and there is no
+    # "before". Base fragments deliberately have no state field — the base stage
+    # extracts and merges in one step, and adding them to `fragment_shas` would
+    # merge two revisions into one graph through its accumulating reducer.
+    base_ref: str
+    base_sha: str
+    base_revision_db_id: int
+    base_graph_sha256: str
+    base_graph_snapshot_id: int
+    base_cache_hit: bool
+    pr_number: int
+    changed_paths: list[str]
+    added_lines: dict[str, list[int]]
     # Review half (present only when an agent engine is configured)
     review_artifacts: Annotated[dict[str, str], operator.or_]
     finding_count: int

@@ -170,10 +170,20 @@ class RunArtifactRow(Base):
 
 
 class GraphSnapshotRow(Base):
+    """One revision's graph, as produced by one run.
+
+    A pull-request run holds two: the head under review and the base it changed.
+    `role` is what tells them apart — every reader must ask for the one it means,
+    because "the run's graph" stopped being a well-defined phrase the moment a
+    run could analyze two revisions.
+    """
+
     __tablename__ = "graph_snapshot"
+    __table_args__ = (UniqueConstraint("run_id", "role"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="head")
     revision_id: Mapped[int] = mapped_column(ForeignKey("revision.id"))
     schema_version: Mapped[str] = mapped_column(String(20))
     canonical_sha256: Mapped[str] = mapped_column(String(71))
@@ -186,6 +196,26 @@ class GraphSnapshotRow(Base):
     edges: Mapped[list[GraphEdgeRow]] = relationship(
         back_populates="snapshot", order_by="GraphEdgeRow.natural_id"
     )
+
+
+class GraphCacheRow(Base):
+    """An already-computed graph, reusable when nothing that produced it changed.
+
+    A project graph is a deterministic function of (revision, extractor
+    toolchain, normalization code) — ADR-0007 — so an entry whose key matches is
+    the graph re-extraction would produce. `produced_by_run_id` keeps a reused
+    graph traceable to the run whose receipts actually witness it.
+    """
+
+    __tablename__ = "graph_cache"
+    __table_args__ = (UniqueConstraint("revision_id", "toolchain_fingerprint"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey("revision.id"), index=True)
+    toolchain_fingerprint: Mapped[str] = mapped_column(String(71))
+    graph_sha256: Mapped[str] = mapped_column(ForeignKey("artifact.sha256"))
+    produced_by_run_id: Mapped[str] = mapped_column(ForeignKey("run.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class GraphNodeRow(Base):

@@ -22,10 +22,13 @@ def load_snapshot(session: Session, run_id: str) -> RunSnapshot | None:
         return None
 
     revision = session.get(RevisionRow, run.head_revision_id)
+    # The head snapshot explicitly. A pull-request run also holds a base
+    # snapshot, and comparing two runs' *base* graphs would report a changed
+    # head as reproducible — a false all-clear, which is worse than no answer.
     graph = session.scalar(
-        select(GraphSnapshotRow)
-        .where(GraphSnapshotRow.run_id == run_id)
-        .order_by(GraphSnapshotRow.id.desc())
+        select(GraphSnapshotRow).where(
+            GraphSnapshotRow.run_id == run_id, GraphSnapshotRow.role == "head"
+        )
     )
     receipts = session.scalars(
         select(ExtractorReceiptRow).where(ExtractorReceiptRow.run_id == run_id)

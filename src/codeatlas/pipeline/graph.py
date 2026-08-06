@@ -37,6 +37,59 @@ log = get_logger("codeatlas.pipeline")
 
 NodeFn = Callable[[PipelineState], dict[str, Any]]
 
+EXTRACTORS = (CargoMetadataExtractor, RaScipExtractor)
+
+
+def _load_file_table(
+    session: Session, deps: PipelineDeps, mirror: Path, revision_id: int, sha: str
+) -> None:
+    """Record the full tree at a revision. Idempotent — revisions are immutable.
+
+    Both revisions of a pull request need this: the file table is the allowlist
+    `/api/source` validates against, so a "what it looked like before" view is
+    only servable for a base revision whose tree was recorded.
+    """
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    from codeatlas.db.tables import FileRow
+    from codeatlas.vcs.source_lock import classify_generated
+
+    existing = session.scalar(
+        sa_select(sa_func.count()).select_from(FileRow).where(FileRow.revision_id == revision_id)
+    )
+    if existing:
+        return
+    entries = deps.git.ls_tree(mirror, sha)
+    generated = set(classify_generated([e.path for e in entries]))
+    for entry in entries:
+        session.add(
+            FileRow(
+                revision_id=revision_id,
+                path=entry.path,
+                git_blob_sha=entry.blob_sha,
+                language="rust" if entry.path.endswith(".rs") else None,
+                is_generated=entry.path in generated,
+            )
+        )
+
+
+def _validated_graph(
+    session: Session, graph: ProjectGraph, revision_db_id: int, stage: str
+) -> None:
+    from sqlalchemy import select
+
+    from codeatlas.db.tables import FileRow
+
+    valid_paths = set(
+        session.scalars(select(FileRow.path).where(FileRow.revision_id == revision_db_id))
+    )
+    violations = validate_graph(graph, valid_paths=valid_paths)
+    if violations:
+        raise StageFailure(
+            stage, f"{len(violations)} constraint violations: " + "; ".join(violations[:5])
+        )
+
 
 class StageFailure(RuntimeError):
     def __init__(self, stage: str, message: str) -> None:
@@ -82,10 +135,11 @@ def _wrap(deps: PipelineDeps, name: str, fn: NodeFn) -> NodeFn:
 
 def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     def source_lock(state: PipelineState) -> dict[str, Any]:
-        from codeatlas.pipeline.source import prepare_source
+        from codeatlas.pipeline.source import prepare_source, resolve_in_mirror
 
         repository_id = state["repository_id"]
         ref = state.get("ref", "HEAD")
+        base_ref = state.get("base_ref")
 
         # Works for a local path or a clone URL: the mirror is created first and
         # everything is resolved from it. A crashed run can leave a partial
@@ -96,10 +150,31 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         checkout = deps.checkouts / head_sha
         deps.git.ensure_checkout(mirror, head_sha, checkout)
 
-        lock: SourceLock = build_source_lock(
-            mirror, repository_id=repository_id, head_ref=head_sha, git=deps.git
+        base_sha = (
+            resolve_in_mirror(deps, mirror, base_ref, remote=prepared.remote_url is not None)
+            if base_ref
+            else None
         )
-        lock_sha = deps.cas.put(canonical_json(lock.contract_dump()))
+
+        lock: SourceLock = build_source_lock(
+            mirror,
+            repository_id=repository_id,
+            head_ref=head_sha,
+            base_ref=base_sha,
+            git=deps.git,
+        )
+        lock_bytes = canonical_json(lock.contract_dump())
+        lock_sha = deps.cas.put(lock_bytes)
+
+        # The diff the review is scoped against comes from the same pinned
+        # revisions the extraction ran on, not from a provider API that could be
+        # describing a different head.
+        added_lines: dict[str, list[int]] = {}
+        if base_sha and lock.merge_base_sha:
+            from codeatlas.review.scope import parse_added_lines
+
+            diff = deps.git.unified_diff(mirror, lock.merge_base_sha, head_sha)
+            added_lines = {path: sorted(lines) for path, lines in parse_added_lines(diff).items()}
 
         with Session(deps.engine) as session:
             revision = repo.ensure_revision(
@@ -110,56 +185,46 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 raise StageFailure("source_lock", f"run {state['run_id']} not found")
             run_row.head_revision_id = revision.id
             run_row.status = "running"
+            if base_sha:
+                base_revision = repo.ensure_revision(
+                    session, repository_id=repository_id, sha=base_sha, ref_name=base_ref
+                )
+                run_row.base_revision_id = base_revision.id
+                run_row.kind = "pr"
+                if state.get("pr_number"):
+                    run_row.pr_number = int(state["pr_number"])
             repo.index_artifact(
                 session,
                 sha256=lock_sha,
                 kind="source-lock",
                 media_type="application/json",
-                size_bytes=len(canonical_json(lock.contract_dump())),
+                size_bytes=len(lock_bytes),
                 producer="pipeline",
                 produced_by_run_id=state["run_id"],
             )
-            # file table: full tree at revision (idempotent — revisions are immutable)
-            from sqlalchemy import func as sa_func
-            from sqlalchemy import select as sa_select
-
-            from codeatlas.db.tables import FileRow
-            from codeatlas.vcs.source_lock import classify_generated
-
-            existing = session.scalar(
-                sa_select(sa_func.count())
-                .select_from(FileRow)
-                .where(FileRow.revision_id == revision.id)
-            )
-            if not existing:
-                entries = deps.git.ls_tree(mirror, head_sha)
-                generated = set(classify_generated([e.path for e in entries]))
-                for entry in entries:
-                    session.add(
-                        FileRow(
-                            revision_id=revision.id,
-                            path=entry.path,
-                            git_blob_sha=entry.blob_sha,
-                            language="rust" if entry.path.endswith(".rs") else None,
-                            is_generated=entry.path in generated,
-                        )
-                    )
+            _load_file_table(session, deps, mirror, revision.id, head_sha)
             session.commit()
             revision_db_id = revision.id
 
-        return {
+        update: dict[str, Any] = {
             "head_sha": head_sha,
             "revision_db_id": revision_db_id,
             "checkout_path": str(checkout),
             "source_lock_sha256": lock_sha,
+            "changed_paths": list(lock.changed_paths),
+            "added_lines": added_lines,
         }
+        if base_sha:
+            update["base_sha"] = base_sha
+        return update
 
     def extract(state: PipelineState) -> dict[str, Any]:
         checkout = Path(state["checkout_path"])
         head_sha = state["head_sha"]
         fragment_shas: list[str] = []
         count = 0
-        for extractor in (CargoMetadataExtractor(), RaScipExtractor()):
+        for factory in EXTRACTORS:
+            extractor = factory()
             try:
                 fragment, receipt = extractor.extract(checkout, head_sha)
             except ExtractorError as exc:
@@ -185,27 +250,10 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             head_sha=state["head_sha"],
             fragments=fragments,
         )
-        with Session(deps.engine) as session:
-            from sqlalchemy import select
-
-            from codeatlas.db.tables import FileRow
-
-            valid_paths = set(
-                session.scalars(
-                    select(FileRow.path).where(FileRow.revision_id == state["revision_db_id"])
-                )
-            )
-        violations = validate_graph(graph, valid_paths=valid_paths)
-        if violations:
-            raise StageFailure(
-                "build_graph",
-                f"{len(violations)} constraint violations: " + "; ".join(violations[:5]),
-            )
-
-        dump = graph.contract_dump()
-        graph_bytes = canonical_json(dump)
+        graph_bytes = canonical_json(graph.contract_dump())
         graph_sha = deps.cas.put(graph_bytes)
         with Session(deps.engine) as session:
+            _validated_graph(session, graph, state["revision_db_id"], "build_graph")
             repo.index_artifact(
                 session,
                 sha256=graph_sha,
@@ -222,10 +270,130 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 revision_id=state["revision_db_id"],
                 graph=graph,
                 artifact_sha256=graph_sha,
+                role="head",
             )
             session.commit()
             snapshot_id = snapshot.id
         return {"graph_snapshot_id": snapshot_id, "graph_sha256": graph_sha}
+
+    def base_revision(state: PipelineState) -> dict[str, Any]:
+        """Analyze the revision this change is measured against.
+
+        A no-op in repository mode, where there is no "before". Extraction is the
+        expensive half of a run, so an already-analyzed base is reused when the
+        toolchain that produced it still matches — see `graph_cache`. The reuse
+        is recorded as a run event, because an invisible cache is one nobody can
+        check.
+        """
+        base_sha = state.get("base_sha")
+        if not base_sha:
+            return {"base_cache_hit": False}
+
+        from codeatlas.pipeline import graph_cache
+        from codeatlas.pipeline.source import mirror_path
+
+        run_id = state["run_id"]
+        mirror = mirror_path(deps, state["repository_id"])
+        fingerprint = graph_cache.toolchain_fingerprint()
+
+        with Session(deps.engine) as session:
+            revision = repo.ensure_revision(
+                session, repository_id=state["repository_id"], sha=base_sha
+            )
+            _load_file_table(session, deps, mirror, revision.id, base_sha)
+            session.commit()
+            base_revision_db_id = revision.id
+            entry = graph_cache.lookup_entry(session, base_revision_db_id, fingerprint)
+            cached = entry.graph_sha256 if entry else None
+            origin_run = entry.produced_by_run_id if entry else None
+
+        if cached is not None:
+            graph_sha = cached
+            graph = ProjectGraph.model_validate(json.loads(deps.cas.get(graph_sha)))
+            with Session(deps.engine) as session:
+                repo.add_run_event(
+                    session,
+                    run_id=run_id,
+                    stage="base_revision",
+                    event="base_graph_cache_hit",
+                    # `producedByRunId` is the provenance link: this run holds no
+                    # extractor receipts for the base, and that is where the ones
+                    # that witness this graph live.
+                    data={
+                        "revision": base_sha,
+                        "toolchain": fingerprint,
+                        "graph": graph_sha,
+                        "producedByRunId": origin_run,
+                    },
+                )
+                session.commit()
+        else:
+            checkout = deps.checkouts / base_sha
+            deps.git.ensure_checkout(mirror, base_sha, checkout)
+            fragments: list[GraphFragment] = []
+            for factory in EXTRACTORS:
+                extractor = factory()
+                try:
+                    fragment, receipt = extractor.extract(checkout, base_sha)
+                except ExtractorError as exc:
+                    if exc.receipt is not None:
+                        with Session(deps.engine) as session:
+                            repo.record_receipt(session, run_id=run_id, receipt=exc.receipt)
+                            session.commit()
+                    raise
+                fragments.append(fragment)
+                with Session(deps.engine) as session:
+                    repo.record_receipt(session, run_id=run_id, receipt=receipt)
+                    session.commit()
+            graph = merge_fragments(
+                repository_id=state["repository_id"], head_sha=base_sha, fragments=fragments
+            )
+            graph_bytes = canonical_json(graph.contract_dump())
+            graph_sha = deps.cas.put(graph_bytes)
+            with Session(deps.engine) as session:
+                _validated_graph(session, graph, base_revision_db_id, "base_revision")
+                session.commit()
+
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=graph_sha,
+                kind="project-graph",
+                media_type="application/json",
+                size_bytes=len(deps.cas.get(graph_sha)),
+                producer="pipeline",
+                produced_by_run_id=run_id,
+                schema_id="project-graph.v1",
+                role="project-graph-base",
+            )
+            if cached is None:
+                # After indexing, never before: the cache points at an artifact
+                # row, so remembering a graph the artifact table does not know
+                # about would leave a dangling reference.
+                graph_cache.remember(
+                    session,
+                    revision_id=base_revision_db_id,
+                    fingerprint=fingerprint,
+                    graph_sha256=graph_sha,
+                    produced_by_run_id=run_id,
+                )
+            snapshot = repo.store_graph_snapshot(
+                session,
+                run_id=run_id,
+                revision_id=base_revision_db_id,
+                graph=graph,
+                artifact_sha256=graph_sha,
+                role="base",
+            )
+            session.commit()
+            snapshot_id = snapshot.id
+
+        return {
+            "base_revision_db_id": base_revision_db_id,
+            "base_graph_sha256": graph_sha,
+            "base_graph_snapshot_id": snapshot_id,
+            "base_cache_hit": cached is not None,
+        }
 
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
@@ -274,13 +442,20 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             graph=graph,
         )
 
+        from codeatlas.pipeline.scope import scope_from_state
+
+        # In pull-request mode this is a real scope, so a finding the change did
+        # not introduce is reported without blocking. In repository mode it is
+        # None, which means the whole tree is in scope and everything blocks.
+        scope = scope_from_state(deps, dict(state))
+
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)
         stage_validate(deps, ctx, revision_db_id=state["revision_db_id"])
         stage_synthesize(deps, ctx)
         stage_diagrams(deps, ctx)
         stage_adr_audit(deps, ctx)
-        payload = stage_payload(deps, ctx, scope=None)
+        payload = stage_payload(deps, ctx, scope=scope)
 
         assert ctx.validation is not None
         return {
@@ -301,7 +476,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             lock = SourceLock.model_validate(json.loads(deps.cas.get(state["source_lock_sha256"])))
             manifest = RunManifest(
                 run_id=state["run_id"],
-                kind="repository",
+                kind="pr" if run_row.kind == "pr" else "repository",
                 source_lock=lock,
                 toolchain=toolchain,
                 skill_registry_sha256=canonical_sha256({"skills": []}),
@@ -312,6 +487,11 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 outputs={
                     "projectGraph": state["graph_sha256"],
                     "cytoscape": state["cytoscape_sha256"],
+                    **(
+                        {"baseProjectGraph": state["base_graph_sha256"]}
+                        if state.get("base_graph_sha256")
+                        else {}
+                    ),
                     **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
@@ -341,6 +521,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "source_lock": source_lock,
         "extract": extract,
         "build_graph": build_graph,
+        "base_revision": base_revision,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -352,7 +533,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge(START, "source_lock")
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")
-    builder.add_edge("build_graph", "export_cytoscape")
+    builder.add_edge("build_graph", "base_revision")
+    builder.add_edge("base_revision", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

@@ -13,12 +13,19 @@ from codeatlas.pipeline.graph import build_pipeline
 
 
 def start_run(
-    deps: PipelineDeps, repo_path: Path | str, repository_id: str, ref: str = "HEAD"
+    deps: PipelineDeps,
+    repo_path: Path | str,
+    repository_id: str,
+    ref: str = "HEAD",
+    base_ref: str | None = None,
+    pr_number: int | None = None,
 ) -> str:
     """Create the run row and execute the pipeline. Returns the run id.
 
     `repo_path` may be a local repository or a clone URL; both are mirrored
-    first and resolved from the mirror.
+    first and resolved from the mirror. Passing `base_ref` makes this a
+    pull-request run: both revisions are analyzed, findings are scoped to what
+    the change introduced, and the run can say what the code did before.
     """
     from codeatlas.pipeline.source import prepare_source
 
@@ -36,24 +43,28 @@ def start_run(
         run_row = repo.create_run(
             session,
             repository_id=repository.id,
-            kind="repository",
+            kind="pr" if base_ref else "repository",
             head_revision_id=revision.id,
+            pr_number=pr_number,
         )
         session.commit()
         run_id = run_row.id
 
+    initial: dict[str, object] = {
+        "run_id": run_id,
+        "repository_id": repository_id,
+        "repo_path": str(repo_path),
+        "ref": ref,
+    }
+    if base_ref:
+        initial["base_ref"] = base_ref
+    if pr_number is not None:
+        initial["pr_number"] = pr_number
+
     pipeline = build_pipeline(deps)
     config = {"configurable": {"thread_id": run_id}}
     with contextlib.suppress(Exception):  # run status already recorded by the node wrapper
-        pipeline.invoke(
-            {
-                "run_id": run_id,
-                "repository_id": repository_id,
-                "repo_path": str(repo_path),
-                "ref": ref,
-            },
-            config=config,
-        )
+        pipeline.invoke(initial, config=config)
     return run_id
 
 

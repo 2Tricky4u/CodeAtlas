@@ -4,7 +4,8 @@ Evidence-driven code review and project-visualization platform. Given a reposito
 pinned revision (or a GitHub pull request), a completed run produces:
 
 - a **deterministic project graph** (packages, symbols, references, dependencies) with an
-  extractor receipt for every fact;
+  extractor receipt for every fact — and for a pull request, **one graph per revision**, so
+  the run can describe what the code did before as well as after;
 - **validated review findings** (correctness, security, architecture) — every finding is
   adversarially validated and only publication-eligible with deterministic evidence;
 - **Structurizr C4** architecture views, **Mermaid** protocol/sequence/state diagrams, and a
@@ -12,6 +13,19 @@ pinned revision (or a GitHub pull request), a completed run produces:
 - **ADR links and drift detection** against accepted architecture decisions;
 - a **read-only dashboard** where every claim drills down to pinned source;
 - **manual human approval gating every external write** (PR comments, ADR changes, fixes).
+
+## Pipeline
+
+```
+source_lock -> extract -> build_graph -> base_revision -> export_cytoscape -> review -> finalize
+```
+
+`source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
+and derives the changed-path and added-line sets from the mirror. `base_revision` analyzes
+the revision the change is measured against; it is a no-op for a whole-repository run, and
+reuses an already-analyzed base when the extractor toolchain that produced it still matches
+(ADR-0013). Each graph is stored as a snapshot with an explicit `role` of `base` or `head` —
+"the run's graph" is not a well-formed question once a run holds two.
 
 ## Design principle
 
@@ -32,7 +46,7 @@ presentation artifacts. No stage may launder inference into fact — the JSON Sc
 | `docs/runbooks/` | Setup, operations, rollback |
 | `fixtures/` | Deliberately-flawed and clean Rust fixture crates for evaluation |
 | `tests/` | unit / integration / e2e / security / regression + cassettes + golden files |
-| `scripts/` | `verify_env.py` tool-matrix probe, dev helpers |
+| `scripts/` | `verify_env.py` tool-matrix probe, live-integration validators, dev helpers |
 | `infra/` | Install/validate scripts, receipts, DB init |
 
 ## Setup
@@ -52,3 +66,12 @@ Toolchain beyond Python is installed and validated per milestone — see
 Default `pytest` runs unit tests. Markers gate everything needing external capability:
 `subproc` (git/cargo/rust-analyzer), `pg` (local PostgreSQL), `agent_live` (logged-in
 claude CLI), `network` (GitHub), `e2e_ui` (Playwright).
+
+External integrations are also validated directly against the live service before anything
+depends on them, since a fixture cannot prove that authentication, ref fetching or caching
+work against the real thing:
+
+```powershell
+uv run python scripts/validate_github.py             # GitHub read paths and refusals
+uv run python scripts/validate_two_revisions.py owner/repo N   # both revisions, live PR
+```

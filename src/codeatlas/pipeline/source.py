@@ -44,19 +44,7 @@ def prepare_source(
     remote = is_remote(source)
     mirror = mirror_path(deps, repository_id)
     deps.git.ensure_mirror(source, mirror)
-
-    try:
-        head_sha = deps.git.resolve_sha(mirror, ref)
-    except Exception:
-        if not remote:
-            raise
-        # A pull request head is often not on a mirrored branch. Fetch the ref
-        # explicitly, then resolve again.
-        deps.git.run(["fetch", "origin", ref], cwd=mirror, check=False)
-        deps.git.run(
-            ["fetch", "origin", "+refs/pull/*/head:refs/pull/*/head"], cwd=mirror, check=False
-        )
-        head_sha = deps.git.resolve_sha(mirror, ref)
+    head_sha = resolve_in_mirror(deps, mirror, ref, remote=remote)
 
     return PreparedSource(
         mirror=mirror,
@@ -64,3 +52,23 @@ def prepare_source(
         provider="github" if remote else "local",
         remote_url=source if remote else None,
     )
+
+
+def resolve_in_mirror(deps: PipelineDeps, mirror: Path, ref: str, remote: bool) -> str:
+    """Resolve `ref` in an existing mirror, fetching it first if it is unknown.
+
+    A mirror clone brings branch tips. A pull request head — and, on a repository
+    whose base branch has moved on, the base commit a pull request was opened
+    against — can live outside them, so an unknown ref is fetched rather than
+    treated as a hard failure.
+    """
+    try:
+        return deps.git.resolve_sha(mirror, ref)
+    except Exception:
+        if not remote:
+            raise
+        deps.git.run(["fetch", "origin", ref], cwd=mirror, check=False)
+        deps.git.run(
+            ["fetch", "origin", "+refs/pull/*/head:refs/pull/*/head"], cwd=mirror, check=False
+        )
+        return deps.git.resolve_sha(mirror, ref)

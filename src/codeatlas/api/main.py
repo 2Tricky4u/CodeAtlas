@@ -140,25 +140,45 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
 
 def _run_summary(s: Session, run: RunRow) -> dict[str, object]:
     head = s.get(RevisionRow, run.head_revision_id)
-    snapshot = s.scalar(select(GraphSnapshotRow).where(GraphSnapshotRow.run_id == run.id))
+    base = s.get(RevisionRow, run.base_revision_id) if run.base_revision_id else None
+    # A pull-request run holds two snapshots; "the graph" here means the head.
+    snapshot = s.scalar(
+        select(GraphSnapshotRow).where(
+            GraphSnapshotRow.run_id == run.id, GraphSnapshotRow.role == "head"
+        )
+    )
+    base_snapshot = (
+        s.scalar(
+            select(GraphSnapshotRow).where(
+                GraphSnapshotRow.run_id == run.id, GraphSnapshotRow.role == "base"
+            )
+        )
+        if base
+        else None
+    )
     return {
         "id": run.id,
         "repositoryId": run.repository_id,
         "kind": run.kind,
         "status": run.status,
         "headSha": head.sha if head else None,
+        "baseSha": base.sha if base else None,
+        "prNumber": run.pr_number,
         "createdAt": run.created_at.isoformat(),
         "manifestSha256": run.manifest_sha256,
-        "graph": (
-            {
-                "snapshotId": snapshot.id,
-                "nodeCount": snapshot.node_count,
-                "edgeCount": snapshot.edge_count,
-                "canonicalSha256": snapshot.canonical_sha256,
-            }
-            if snapshot
-            else None
-        ),
+        "graph": _graph_summary(snapshot),
+        "baseGraph": _graph_summary(base_snapshot),
+    }
+
+
+def _graph_summary(snapshot: GraphSnapshotRow | None) -> dict[str, object] | None:
+    if snapshot is None:
+        return None
+    return {
+        "snapshotId": snapshot.id,
+        "nodeCount": snapshot.node_count,
+        "edgeCount": snapshot.edge_count,
+        "canonicalSha256": snapshot.canonical_sha256,
     }
 
 

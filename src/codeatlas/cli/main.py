@@ -127,7 +127,7 @@ def review_pr(
 ) -> None:
     """Review a GitHub pull request in shadow mode — analyze and post NOTHING.
 
-    Fetches the PR, pins base and head SHAs, analyzes the head revision, and
+    Fetches the PR, pins base and head SHAs, analyzes *both* revisions, and
     prepares the exact review payload. Publishing it is a separate, explicit act
     (`codeatlas approve --publish`), so this command can never surprise anyone.
     """
@@ -160,7 +160,14 @@ def review_pr(
     deps.git.github_token = token_from_keyring()
 
     clone_url = f"https://github.com/{owner}/{repo_name}.git"
-    run_id = start_run(deps, repo_path=clone_url, repository_id=slug, ref=pr.head_sha)
+    run_id = start_run(
+        deps,
+        repo_path=clone_url,
+        repository_id=slug,
+        ref=pr.head_sha,
+        base_ref=pr.base_sha,
+        pr_number=pr_number,
+    )
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
     typer.echo("nothing was published; review the payload with `codeatlas show-approval`")

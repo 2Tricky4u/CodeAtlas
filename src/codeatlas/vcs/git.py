@@ -137,6 +137,28 @@ class GitClient:
         proc = self.run(["diff", "--name-only", "-z", f"{base}..{head}"], cwd=repo)
         return sorted(p for p in proc.stdout.split("\0") if p)
 
+    def unified_diff(self, repo: Path, base: str, head: str, context: int = 0) -> str:
+        """The textual diff between two pinned revisions.
+
+        Zero context by default: the only consumer is added-line extraction, and
+        context lines are lines the change did not add. Rename detection is off
+        so a moved file reports as a delete plus an add — every line of the new
+        file is then correctly "added", which is what scoping a finding to the
+        change requires.
+        """
+        proc = self.run(
+            [
+                "diff",
+                f"--unified={context}",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-renames",
+                f"{base}..{head}",
+            ],
+            cwd=repo,
+        )
+        return proc.stdout
+
     def ls_tree(self, repo: Path, sha: str) -> list[TreeEntry]:
         proc = self.run(["ls-tree", "-r", "-z", sha], cwd=repo)
         entries: list[TreeEntry] = []
@@ -185,11 +207,27 @@ class GitClient:
         self.run(["fetch", "--all", "--prune"], cwd=repo)
 
     def is_repository(self, path: Path) -> bool:
-        """True iff `path` is a git repository git itself can read."""
+        """True iff `path` is *itself* a git repository root.
+
+        Not `rev-parse --git-dir` from inside `path`: git's discovery walks
+        upward, so that answers "is this path somewhere under a repository?" —
+        and mirrors and checkouts live under `var/`, inside CodeAtlas's own
+        working copy, where the answer is always yes. A half-deleted mirror then
+        read as healthy and the fetch that followed operated on the enclosing
+        project repository instead.
+
+        `--resolve-git-dir` asks about one directory and does not search.
+        """
         if not path.is_dir():
             return False
-        proc = self.run(["rev-parse", "--git-dir"], cwd=path, check=False)
-        return proc.returncode == 0
+        parent = path.parent
+        return any(
+            self.run(
+                ["rev-parse", "--resolve-git-dir", str(candidate)], cwd=parent, check=False
+            ).returncode
+            == 0
+            for candidate in (path, path / ".git")  # bare mirror, then worktree
+        )
 
     def ensure_mirror(self, source: str, mirror: Path) -> None:
         """A usable mirror at `mirror`, rebuilding it if what is there is scrap.
@@ -201,7 +239,7 @@ class GitClient:
             self.fetch(mirror)
             return
         if mirror.exists():
-            _force_remove(mirror)
+            force_remove(mirror)
         self.mirror_clone(source, mirror)
 
     def ensure_checkout(self, mirror: Path, sha: str, dest: Path) -> None:
@@ -212,7 +250,7 @@ class GitClient:
                 and self.run(["rev-parse", "HEAD"], cwd=dest, check=False).stdout.strip() == sha
             ):
                 return
-            _force_remove(dest)
+            force_remove(dest)
         self.pinned_checkout(mirror, sha, dest)
 
     def pinned_checkout(self, mirror: Path, sha: str, dest: Path) -> None:
@@ -232,7 +270,7 @@ class GitClient:
         _make_tree_read_only(dest)
 
 
-def _force_remove(path: Path) -> None:
+def force_remove(path: Path) -> None:
     """Delete a tree that may contain read-only files (checkouts are read-only,
     and git's object store is read-only by design)."""
     import shutil

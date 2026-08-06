@@ -55,11 +55,15 @@ def main(run_id: str | None) -> int:
                 f"  {receipt.extractor:<20} exit={receipt.exit_code}  {receipt.extractor_version}"
             )
 
-        snapshot = s.scalar(select(GraphSnapshotRow).where(GraphSnapshotRow.run_id == run.id))
-        if snapshot:
+        snapshots = s.scalars(
+            select(GraphSnapshotRow)
+            .where(GraphSnapshotRow.run_id == run.id)
+            .order_by(GraphSnapshotRow.role.desc())
+        ).all()
+        for snapshot in snapshots:
             print(
-                f"\ngraph: {snapshot.node_count} nodes, {snapshot.edge_count} edges, "
-                f"hash {snapshot.canonical_sha256[7:19]}"
+                f"\ngraph ({snapshot.role}): {snapshot.node_count} nodes, "
+                f"{snapshot.edge_count} edges, hash {snapshot.canonical_sha256[7:19]}"
             )
 
         invocations = s.scalars(
