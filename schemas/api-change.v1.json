@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/api-change.v1.json",
+  "title": "Public API Change",
+  "description": "What a change did to the public API of a workspace: a set difference over two api-surface.v1 documents, plus cargo-semver-checks severity. Deterministic and model-free — this is the before/after nothing can hallucinate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "baseRevision",
+    "headRevision",
+    "packages",
+    "skipped",
+    "tools"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "baseRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "headRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/packageDelta" }
+    },
+    "skipped": {
+      "description": "Packages whose delta could not be computed. A package measured on only one side belongs here, never in `packages` with everything reported as added or removed.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skipped" }
+    },
+    "tools": {
+      "description": "Tool identity, including the nightly rustdoc that rendered the surfaces.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "packageDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "added", "removed", "unchangedCount", "requiredBump"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "added": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "removed": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "unchangedCount": { "type": "integer", "minimum": 0 },
+        "requiredBump": {
+          "description": "'unknown' when cargo-semver-checks did not analyze this package: silence from a tool that never ran is not a clean bill of health.",
+          "enum": ["major", "minor", "none", "unknown"]
+        },
+        "lints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lint" }
+        }
+      }
+    },
+    "lint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "level", "summary"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["major", "minor"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "locations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "skipped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "reason"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

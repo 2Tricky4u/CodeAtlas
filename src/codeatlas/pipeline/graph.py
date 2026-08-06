@@ -74,6 +74,16 @@ def _load_file_table(
         )
 
 
+def _semver_version() -> str:
+    from codeatlas.extractors.base import ExtractorError
+    from codeatlas.extractors.rust.semver_checks import tool_version
+
+    try:
+        return tool_version()
+    except ExtractorError:
+        return "absent"
+
+
 def _validated_graph(
     session: Session, graph: ProjectGraph, revision_db_id: int, stage: str
 ) -> None:
@@ -395,6 +405,113 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             "base_cache_hit": cached is not None,
         }
 
+    def api_change(state: PipelineState) -> dict[str, Any]:
+        """What the change did to the public API, decided by tools not opinions.
+
+        A no-op without a base. Failure here is recorded and survived rather than
+        fatal: an unavailable nightly toolchain should cost the run its API
+        narrative, not its review. What it must never do is report *no* API
+        change — every unmeasured package is named in `skipped`, and a package
+        cargo-semver-checks could not classify keeps `requiredBump: unknown`.
+        """
+        base_sha = state.get("base_sha")
+        if not base_sha:
+            return {}
+
+        from codeatlas.extractors.base import ExtractorError
+        from codeatlas.extractors.rust.public_api import PublicApiExtractor
+        from codeatlas.extractors.rust.semver_checks import check_package, lint_levels
+
+        run_id = state["run_id"]
+        head_checkout = Path(state["checkout_path"])
+        base_checkout = deps.checkouts / base_sha
+        if not base_checkout.exists():
+            from codeatlas.pipeline.source import mirror_path
+
+            deps.git.ensure_checkout(
+                mirror_path(deps, state["repository_id"]), base_sha, base_checkout
+            )
+
+        extractor = PublicApiExtractor()
+        try:
+            base_surface, base_receipts = extractor.extract(base_checkout, base_sha)
+            head_surface, head_receipts = extractor.extract(head_checkout, state["head_sha"])
+        except ExtractorError as exc:
+            with Session(deps.engine) as session:
+                repo.add_run_event(
+                    session,
+                    run_id=run_id,
+                    stage="api_change",
+                    event="api_surface_unavailable",
+                    level="warning",
+                    data={"error": str(exc)[:500]},
+                )
+                session.commit()
+            return {"api_change_sha256": None}
+
+        with Session(deps.engine) as session:
+            for receipt in [*base_receipts, *head_receipts]:
+                repo.record_receipt(session, run_id=run_id, receipt=receipt)
+            session.commit()
+
+        # Severity is only asked about packages both revisions actually exposed.
+        comparable = {p.name for p in base_surface.packages} & {
+            p.name for p in head_surface.packages
+        }
+        lints: dict[str, list[Any]] = {}
+        analyzed: set[str] = set()
+        try:
+            levels = lint_levels()
+        except ExtractorError:
+            levels = {}
+        if levels:
+            with Session(deps.engine) as session:
+                for name in sorted(comparable):
+                    result = check_package(
+                        head_checkout, base_checkout, name, state["head_sha"], levels=levels
+                    )
+                    repo.record_receipt(session, run_id=run_id, receipt=result.receipt)
+                    lints[name] = result.lints
+                    if result.analyzed:
+                        analyzed.add(name)
+                session.commit()
+
+        from codeatlas.change.api import diff_surfaces
+
+        change = diff_surfaces(
+            base_surface,
+            head_surface,
+            lints=lints,
+            semver_ran_for=analyzed,
+            tools={"cargoPublicApi": base_surface.tool, "cargoSemverChecks": _semver_version()},
+        )
+        payload = canonical_json(change.contract_dump())
+        sha = deps.cas.put(payload)
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=sha,
+                kind="api-change",
+                media_type="application/json",
+                size_bytes=len(payload),
+                producer="pipeline",
+                produced_by_run_id=run_id,
+                schema_id="api-change.v1",
+            )
+            repo.add_run_event(
+                session,
+                run_id=run_id,
+                stage="api_change",
+                event="api_change_computed",
+                data={
+                    "breaking": change.has_breaking_change,
+                    "packages": len(change.packages),
+                    "skipped": len(change.skipped),
+                },
+            )
+            session.commit()
+        return {"api_change_sha256": sha}
+
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         payload = to_cytoscape(graph)
@@ -492,6 +609,11 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         if state.get("base_graph_sha256")
                         else {}
                     ),
+                    **(
+                        {"apiChange": api_change_sha}
+                        if (api_change_sha := state.get("api_change_sha256"))
+                        else {}
+                    ),
                     **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
@@ -522,6 +644,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "extract": extract,
         "build_graph": build_graph,
         "base_revision": base_revision,
+        "api_change": api_change,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -534,7 +657,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")
     builder.add_edge("build_graph", "base_revision")
-    builder.add_edge("base_revision", "export_cytoscape")
+    builder.add_edge("base_revision", "api_change")
+    builder.add_edge("api_change", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

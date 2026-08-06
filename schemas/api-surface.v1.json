@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/api-surface.v1.json",
+  "title": "Public API Surface",
+  "description": "The public API of every library package in a workspace at one pinned revision, as reported by cargo-public-api. A fact, not an inference: no model is involved in producing it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "tool", "packages", "skipped"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "tool": { "type": "string", "minLength": 1 },
+    "packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/package" }
+    },
+    "skipped": {
+      "description": "Packages whose API was not measured, and why. Recorded explicitly so 'no API change' can never be confused with 'nothing was measured'.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skipped" }
+    }
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "manifestPath", "items"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "manifestPath": {
+          "description": "Repository-relative path to Cargo.toml, forward slashes.",
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "description": "One rendered public API item per entry, sorted. Comparing two revisions is a set operation on these.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "skipped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "reason"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

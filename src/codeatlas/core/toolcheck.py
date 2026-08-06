@@ -8,6 +8,8 @@ milestone is missing.
 
 from __future__ import annotations
 
+import glob
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -15,6 +17,12 @@ from pathlib import Path
 
 _DEFAULT_TIMEOUT_S = 15.0
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_WINGET_PACKAGES = Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
+
+# A tool belonging to designed-but-unbuilt work. Reported in the matrix so the
+# dependency is visible, but it gates nothing: no shipped stage can need it.
+FUTURE = "future"
+_FUTURE_ORDINAL = 10_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +34,10 @@ class ToolRequirement:
     Files, and the Structurizr CLI is a pinned zip under infra/tools — so a
     PATH-only probe would report a working install as missing and send someone
     chasing a setup problem that does not exist.
+
+    A fallback may contain `*`, resolved as a glob. WinGet installs into a
+    directory whose name embeds a source hash, so a literal path there is a
+    guess that stops being true on the next reinstall.
     """
 
     name: str
@@ -48,7 +60,16 @@ class ToolStatus:
 
 REQUIRED_TOOLS: tuple[ToolRequirement, ...] = (
     ToolRequirement("python", "python", ("--version",), "M0"),
-    ToolRequirement("uv", "uv", ("--version",), "M0"),
+    ToolRequirement(
+        "uv",
+        "uv",
+        ("--version",),
+        "M0",
+        fallback_paths=(
+            str(_WINGET_PACKAGES / "astral-sh.uv_*" / "uv.exe"),
+            str(Path.home() / ".local" / "bin" / "uv.exe"),
+        ),
+    ),
     ToolRequirement("git", "git", ("--version",), "M0"),
     ToolRequirement("cargo", "cargo", ("--version",), "M3"),
     ToolRequirement("rustc", "rustc", ("--version",), "M3"),
@@ -66,7 +87,13 @@ REQUIRED_TOOLS: tuple[ToolRequirement, ...] = (
     ToolRequirement("node", "node", ("--version",), "M7"),
     ToolRequirement("npm", "npm", ("--version",), "M7"),
     ToolRequirement("claude", "claude", ("--version",), "M8"),
-    ToolRequirement("gh", "gh", ("--version",), "M12"),
+    ToolRequirement(
+        "gh",
+        "gh",
+        ("--version",),
+        "M12",
+        fallback_paths=(r"C:\Program Files\GitHub CLI\gh.exe",),
+    ),
     ToolRequirement("java", "java", ("-version",), "M13"),
     ToolRequirement(
         "structurizr",
@@ -82,12 +109,56 @@ REQUIRED_TOOLS: tuple[ToolRequirement, ...] = (
         "M13",
         fallback_paths=(str(Path.home() / "AppData" / "Roaming" / "npm" / "mmdc.cmd"),),
     ),
-    ToolRequirement("clangd", "clangd", ("--version",), "M17"),
+    # The C++ extractor is designed and unbuilt, and phase 2 is Rust-only by
+    # decision. Gating a current check on its tool would report a milestone
+    # bookkeeping gap as an environment problem.
+    ToolRequirement("clangd", "clangd", ("--version",), FUTURE),
+    # Phase 2: the deterministic before/after of a Rust change. Both are cargo
+    # subcommands installed into ~/.cargo/bin, which is not always on PATH.
+    ToolRequirement(
+        "cargo-public-api",
+        "cargo-public-api",
+        ("--version",),
+        "P2",
+        fallback_paths=(str(Path.home() / ".cargo" / "bin" / "cargo-public-api.exe"),),
+    ),
+    ToolRequirement(
+        "cargo-semver-checks",
+        "cargo-semver-checks",
+        ("semver-checks", "--version"),
+        "P2",
+        fallback_paths=(str(Path.home() / ".cargo" / "bin" / "cargo-semver-checks.exe"),),
+    ),
+    # Both of the above build rustdoc JSON, which only nightly emits. Probing
+    # rustup alone would say "installed" for a machine that cannot run either.
+    ToolRequirement("rust-nightly", "rustup", ("run", "nightly", "rustc", "--version"), "P2"),
 )
+
+_MILESTONE = re.compile(r"^(?P<phase>[MP])(?P<number>\d+)", re.IGNORECASE)
+
+# Phase 2 milestones are labelled P1, P2a, ... and all follow every M milestone.
+_PHASE_OFFSET = {"M": 0, "P": 100}
 
 
 def _milestone_ordinal(milestone: str) -> int:
-    return int(milestone.lstrip("Mm"))
+    if milestone.strip().lower() == FUTURE:
+        return _FUTURE_ORDINAL
+    match = _MILESTONE.match(milestone.strip())
+    if match is None:
+        raise ValueError(f"unrecognized milestone label: {milestone!r}")
+    return _PHASE_OFFSET[match.group("phase").upper()] + int(match.group("number"))
+
+
+def _first_existing(candidates: tuple[str, ...]) -> str | None:
+    """The first candidate that exists. Globs resolve to their sorted first match."""
+    for candidate in candidates:
+        if "*" in candidate:
+            matches = sorted(glob.glob(candidate))  # noqa: PTH207 - pattern spans drive roots
+            if matches:
+                return matches[0]
+        elif Path(candidate).exists():
+            return candidate
+    return None
 
 
 def probe_tool(req: ToolRequirement, timeout_s: float = _DEFAULT_TIMEOUT_S) -> ToolStatus:
@@ -96,9 +167,7 @@ def probe_tool(req: ToolRequirement, timeout_s: float = _DEFAULT_TIMEOUT_S) -> T
     Never raises. A tool that exists but whose version command fails or hangs is
     still `found=True`, with the failure captured in `error`.
     """
-    path = shutil.which(req.command)
-    if path is None:
-        path = next((p for p in req.fallback_paths if Path(p).exists()), None)
+    path = shutil.which(req.command) or _first_existing(req.fallback_paths)
     if path is None:
         return ToolStatus(
             req.name,
@@ -153,13 +222,13 @@ def build_matrix(timeout_s: float = _DEFAULT_TIMEOUT_S) -> list[ToolStatus]:
 def format_matrix(statuses: list[ToolStatus]) -> str:
     """Human-readable matrix table."""
     by_name = {r.name: r for r in REQUIRED_TOOLS}
-    lines = [f"{'tool':<15} {'state':<8} {'needed':<7} detail"]
-    lines.append("-" * 70)
+    lines = [f"{'tool':<20} {'state':<8} {'needed':<7} detail"]
+    lines.append("-" * 78)
     for s in statuses:
         state = "OK" if s.found and s.error is None else ("FOUND*" if s.found else "MISSING")
         needed = by_name[s.name].required_for if s.name in by_name else "?"
         detail = s.version if s.version else (s.error or "")
-        lines.append(f"{s.name:<15} {state:<8} {needed:<7} {detail}")
+        lines.append(f"{s.name:<20} {state:<8} {needed:<7} {detail}")
     return "\n".join(lines)
 
 

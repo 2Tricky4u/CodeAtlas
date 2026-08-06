@@ -87,6 +87,74 @@ def build_pr_fixture_repo(
     return base_sha, head_sha
 
 
+_EVICT_OLDEST = """    /// Evict the `n` oldest entries.
+    pub fn evict_oldest(&mut self, n: usize) {
+        for _ in 0..=n {
+            if let Some(oldest) = self.order.pop_front() {
+                self.map.remove(&oldest);
+            }
+        }
+    }
+"""
+
+_EVICT_REPLACEMENT = """    /// Evict the `n` oldest entries, returning how many were removed.
+    pub fn evict(&mut self, n: usize) -> usize {
+        let mut removed = 0;
+        for _ in 0..n {
+            match self.order.pop_front() {
+                Some(oldest) => {
+                    self.map.remove(&oldest);
+                    removed += 1;
+                }
+                None => break,
+            }
+        }
+        removed
+    }
+
+    /// The configured maximum number of entries.
+    pub fn capacity(&self) -> usize {
+        self.max_entries
+    }
+"""
+
+
+def build_api_change_fixture_repo(
+    source_dir: Path, dest_dir: Path, git: GitClient | None = None
+) -> tuple[str, str]:
+    """Build a repo whose feature branch changes the crate's *public API*.
+
+    Returns (base_sha, head_sha). `Cache::evict_oldest` is removed and replaced
+    by `Cache::evict`, and `Cache::capacity` is added — one breaking removal and
+    two additions. The other pull-request fixture deliberately changes only
+    function bodies, which is the right shape for scope enforcement and the wrong
+    shape for proving an API delta: a before/after that reports no change cannot
+    tell "nothing changed" apart from "nothing was measured".
+    """
+    g = git or GitClient()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    _copy_tree(source_dir, dest_dir)
+
+    g.run(["init", "-b", "main"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["add", "-A"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["commit", "-m", "kvstore at base revision"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    base_sha = g.resolve_sha(dest_dir, "HEAD")
+
+    cache = dest_dir / "kvstore" / "src" / "cache.rs"
+    before = cache.read_text(encoding="utf-8")
+    if _EVICT_OLDEST not in before:
+        raise RuntimeError("API fixture: evict_oldest is not where the builder expects it")
+    after = before.replace(_EVICT_OLDEST, _EVICT_REPLACEMENT).replace(
+        "self.evict_oldest(overflow + 1);", "self.evict(overflow + 1);"
+    )
+    cache.write_text(after, encoding="utf-8", newline="\n")
+
+    g.run(["checkout", "-b", "feature"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["add", "-A"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    g.run(["commit", "-m", "replace evict_oldest with evict"], cwd=dest_dir, extra_env=_FIXED_ENV)
+    return base_sha, g.resolve_sha(dest_dir, "HEAD")
+
+
 def build_fixture_repo(source_dir: Path, dest_dir: Path, git: GitClient | None = None) -> str:
     """Materialize `source_dir` as a fresh git repo at `dest_dir`; returns head SHA.
 

@@ -30,6 +30,8 @@ EXPECTED_SCHEMAS = {
     "agent-task.v1.json",
     "agent-result.v1.json",
     "run-manifest.v1.json",
+    "api-surface.v1.json",
+    "api-change.v1.json",
 }
 
 
@@ -213,6 +215,49 @@ MANIFEST_EXAMPLE: dict[str, Any] = {
     "cost": {"totalPromptTokens": 0, "totalCompletionTokens": 0, "totalCostUsd": None},
 }
 
+API_SURFACE_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "revision": "a" * 40,
+    "tool": "cargo-public-api 0.52.0 (rustdoc: rustc 1.99.0-nightly)",
+    "packages": [
+        {
+            "name": "kvstore",
+            "version": "0.1.0",
+            "manifestPath": "kvstore/Cargo.toml",
+            "items": [
+                "pub fn kvstore::cache::Cache::evict_oldest(&mut self, usize)",
+                "pub struct kvstore::cache::Cache",
+            ],
+        }
+    ],
+    "skipped": [{"name": "kvstore-cli", "reason": "no library target to expose an API"}],
+}
+
+API_CHANGE_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "baseRevision": "a" * 40,
+    "headRevision": "b" * 40,
+    "packages": [
+        {
+            "name": "kvstore",
+            "added": ["pub fn kvstore::cache::Cache::evict(&mut self, usize) -> usize"],
+            "removed": ["pub fn kvstore::cache::Cache::evict_oldest(&mut self, usize)"],
+            "unchangedCount": 112,
+            "requiredBump": "major",
+            "lints": [
+                {
+                    "id": "inherent_method_missing",
+                    "level": "major",
+                    "summary": "inherent method is no longer available",
+                    "locations": ["kvstore/src/cache.rs:41"],
+                }
+            ],
+        }
+    ],
+    "skipped": [{"name": "kvstore-cli", "reason": "at base: no library target to expose an API"}],
+    "tools": {"cargoPublicApi": "0.52.0", "cargoSemverChecks": "0.44.0"},
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -223,6 +268,8 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "agent-task.v1.json": AGENT_TASK_EXAMPLE,
     "agent-result.v1.json": AGENT_RESULT_EXAMPLE,
     "run-manifest.v1.json": MANIFEST_EXAMPLE,
+    "api-surface.v1.json": API_SURFACE_EXAMPLE,
+    "api-change.v1.json": API_CHANGE_EXAMPLE,
 }
 
 

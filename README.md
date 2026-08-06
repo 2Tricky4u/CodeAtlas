@@ -6,6 +6,8 @@ pinned revision (or a GitHub pull request), a completed run produces:
 - a **deterministic project graph** (packages, symbols, references, dependencies) with an
   extractor receipt for every fact — and for a pull request, **one graph per revision**, so
   the run can describe what the code did before as well as after;
+- a **model-free before/after of the public API** for a pull request: the item-level delta
+  from `cargo public-api` and the breaking-change severity from `cargo-semver-checks`;
 - **validated review findings** (correctness, security, architecture) — every finding is
   adversarially validated and only publication-eligible with deterministic evidence;
 - **Structurizr C4** architecture views, **Mermaid** protocol/sequence/state diagrams, and a
@@ -17,7 +19,8 @@ pinned revision (or a GitHub pull request), a completed run produces:
 ## Pipeline
 
 ```
-source_lock -> extract -> build_graph -> base_revision -> export_cytoscape -> review -> finalize
+source_lock -> extract -> build_graph -> base_revision -> api_change -> export_cytoscape
+            -> review -> finalize
 ```
 
 `source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
@@ -26,6 +29,12 @@ the revision the change is measured against; it is a no-op for a whole-repositor
 reuses an already-analyzed base when the extractor toolchain that produced it still matches
 (ADR-0013). Each graph is stored as a snapshot with an explicit `role` of `base` or `head` —
 "the run's graph" is not a well-formed question once a run holds two.
+
+`api_change` answers "what did this crate expose before, and what does it expose now"
+without a model: `cargo public-api` renders the public surface of each revision and the
+difference is arithmetic, then `cargo-semver-checks` classifies the severity. A package that
+could not be measured on both sides is listed in `skipped` with the reason, never reported as
+unchanged — "no API change" and "nothing was measured" must not look alike.
 
 ## Design principle
 
