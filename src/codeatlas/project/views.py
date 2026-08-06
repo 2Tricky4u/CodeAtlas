@@ -43,7 +43,7 @@ from codeatlas.models.views import (
     ViewEdge,
     ViewNode,
 )
-from codeatlas.project.overview import DEPENDENCY_EDGE_KINDS
+from codeatlas.project.overview import DEPENDENCY_EDGE_KINDS, levelize
 
 # Past roughly this many nodes a node-link view stops being readable at a size
 # that fits a screen. Twenty-five is the generous end of the published range.
@@ -196,11 +196,19 @@ def _package_view(
         if source_package and target_package and source_package != target_package:
             weights[(source_package, target_package)] += weight
 
+    # Levelized like the modules are, so the client can lay packages out from
+    # data instead of running a layout algorithm whose output nobody pinned.
+    package_deps: dict[str, set[str]] = {str(p): set() for p in packages}
+    for source, target in weights:
+        package_deps[source].add(target)
+    levels = levelize(set(package_deps), package_deps)
+
     nodes = [
         ViewNode(
             id=f"pkg:{name}",
             label=str(name),
             kind="package",
+            level=levels.get(str(name), 0),
             fan_in=sum(1 for (_, t) in weights if t == name),
             fan_out=sum(1 for (s, _) in weights if s == name),
         )

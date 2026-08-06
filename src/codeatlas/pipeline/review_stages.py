@@ -406,7 +406,23 @@ def stage_explain_change(
         return
 
     ctx.explanation = explanation
-    ctx.artifacts["changeExplanation"] = deps.cas.put_json(explanation.contract_dump())
+    explanation_bytes = json.dumps(explanation.contract_dump()).encode("utf-8")
+    explanation_sha = deps.cas.put_json(explanation.contract_dump())
+    ctx.artifacts["changeExplanation"] = explanation_sha
+    # Indexed with membership, not just stored: the dashboard fetches it by
+    # role, and an artifact only the manifest knows about is not fetchable.
+    with Session(deps.engine) as session:
+        repo.index_artifact(
+            session,
+            sha256=explanation_sha,
+            kind="change-explanation",
+            media_type="application/json",
+            size_bytes=len(explanation_bytes),
+            producer="change-explainer",
+            produced_by_run_id=ctx.run_id,
+            schema_id="change-explanation.v1",
+        )
+        session.commit()
     if dropped:
         ctx.notes.append(
             f"{len(dropped)} explanation claim(s) removed: their citations did not "

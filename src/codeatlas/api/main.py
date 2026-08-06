@@ -30,6 +30,7 @@ from codeatlas.vcs.git import GitClient, GitError
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _ARTIFACT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,59}$")
 
 
 def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
@@ -94,6 +95,60 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
         if sha is None:
             raise HTTPException(404, "no project overview for this run")
         return json.loads(cas.get(sha))  # type: ignore[no-any-return]
+
+    @app.get("/api/runs/{run_id}/artifact/{role}")
+    def run_artifact(
+        run_id: str,
+        role: str,
+        s: Session = Depends(session),  # noqa: B008
+    ) -> object:
+        """One of this run's JSON artifacts, addressed by its role.
+
+        Roles are membership rows this run actually owns (`run_artifact`), so
+        the endpoint can never serve another run's content, and an arbitrary
+        role string is simply not found rather than an error to reason about.
+        """
+        from codeatlas.db.repositories import artifact_for_run
+
+        if not _ROLE_RE.match(role):
+            raise HTTPException(400, "malformed artifact role")
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        sha = artifact_for_run(s, run_id, role)
+        if sha is None:
+            raise HTTPException(404, f"this run has no {role!r} artifact")
+        row = s.get(ArtifactRow, sha)
+        if row is None or row.media_type != "application/json":
+            raise HTTPException(415, "artifact is not JSON-servable")
+        return json.loads(cas.get(sha))
+
+    @app.get("/api/runs/{run_id}/findings")
+    def run_findings(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        from codeatlas.db.tables import FindingRow
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(
+            select(FindingRow).where(FindingRow.run_id == run_id).order_by(FindingRow.finding_id)
+        ).all()
+        return [
+            {
+                "findingId": r.finding_id,
+                "category": r.category,
+                "severity": r.severity,
+                "confidence": r.confidence,
+                "claim": r.claim,
+                "path": r.path,
+                "startLine": r.start_line,
+                "endLine": r.end_line,
+                "status": r.status,
+                "publicationEligible": r.publication_eligible,
+                "introducedByChange": r.introduced_by_change,
+                "discoveredBySkill": r.discovered_by_skill,
+                "validation": r.validation,
+            }
+            for r in rows
+        ]
 
     @app.get("/api/runs/{run_id}/views")
     def run_views(run_id: str, s: Session = Depends(session)) -> dict[str, object]:  # noqa: B008

@@ -144,6 +144,56 @@ class TestArtifacts:
         client, _, _ = seeded
         assert client.get("/api/artifacts/md5:abc").status_code in (400, 404, 422)
 
+
+class TestProjectComprehensionEndpoints:
+    """What the dashboard's map and overview pages are built on."""
+
+    def test_overview_names_where_to_start(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, head_sha = seeded
+        payload = client.get(f"/api/runs/{run_id}/overview").json()
+        assert payload["revision"] == head_sha
+        assert payload["startHere"], "an overview with no starting point is not one"
+        assert all(entry["reason"] for entry in payload["startHere"])
+
+    def test_views_are_bounded_and_state_their_checks(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        payload = client.get(f"/api/runs/{run_id}/views").json()
+        assert payload["views"], "at least the package view and the matrix"
+        for view in payload["views"]:
+            assert view["readability"]["passed"], view["id"]
+        assert any(view["kind"] == "matrix" for view in payload["views"])
+
+    def test_findings_endpoint_exists_and_is_a_list(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        response = client.get(f"/api/runs/{run_id}/findings")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+
+class TestArtifactByRole:
+    """Role-addressed artifacts: the change view fetches everything this way."""
+
+    def test_a_role_this_run_owns_is_served(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        payload = client.get(f"/api/runs/{run_id}/artifact/project-overview").json()
+        assert payload["schemaVersion"] == "1.0.0"
+
+    def test_a_role_this_run_does_not_own_is_not_found(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        """A repository run has no change artifacts; that is 404, not someone else's."""
+        client, run_id, _ = seeded
+        assert client.get(f"/api/runs/{run_id}/artifact/graph-diff").status_code == 404
+
+    def test_a_malformed_role_is_refused_before_any_lookup(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        for role in ("../secrets", "Role", "a" * 80, "role;drop"):
+            assert client.get(f"/api/runs/{run_id}/artifact/{role}").status_code in (400, 404)
+
+    def test_an_unknown_run_is_not_found(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/runs/nope/artifact/project-overview").status_code == 404
+
+
+class TestWriteMethods:
     def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded
         for method in ("post", "put", "delete", "patch"):

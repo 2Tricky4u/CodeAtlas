@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CodeAtlas</title>
     <style>
-      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-      body { margin: 0; }
+      /* Pre-paint background so a slow first render is not a white flash. */
+      html { background: #0b0e14; color-scheme: dark; }
     </style>
   </head>
   <body>

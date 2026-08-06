@@ -1,0 +1,327 @@
+/* CodeAtlas design system: instrument panel, not brochure.
+ *
+ * Monospace-forward, dark-first, dense but breathable. Every color is a token;
+ * severity and evidence colors are semantic, not decorative. No external fonts:
+ * ui-monospace resolves to Cascadia Code / SF Mono / JetBrains Mono locally.
+ */
+
+:root {
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-ui: var(--font-mono);
+
+  /* surface layers, darkest to lightest */
+  --bg-0: #0b0e14;
+  --bg-1: #11151f;
+  --bg-2: #171c28;
+  --bg-3: #1f2534;
+
+  --border: #232a3b;
+  --border-strong: #303952;
+
+  --fg-0: #e6e9f0;
+  --fg-1: #a8b0c2;
+  --fg-2: #6b7489;
+
+  /* the one accent */
+  --accent: #7aa2f7;
+  --accent-dim: #7aa2f733;
+
+  /* semantic */
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --bad: #f7768e;
+  --info: #7dcfff;
+  --purple: #bb9af7;
+
+  /* graph node kinds */
+  --kind-package: #7aa2f7;
+  --kind-file: #7dcfff;
+  --kind-module: #e0af68;
+  --kind-type: #bb9af7;
+  --kind-function: #9ece6a;
+  --kind-constant: #ff9e64;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+::selection {
+  background: var(--accent-dim);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+  border: 2px solid var(--bg-0);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --- primitives ---------------------------------------------------------- */
+
+.panel {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.panel-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-1);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.panel-title .count {
+  color: var(--fg-2);
+}
+
+.panel-body {
+  padding: 10px 12px;
+}
+
+.microlabel {
+  color: var(--fg-2);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.badge.ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+.badge.warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+.badge.bad {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+}
+.badge.info {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+}
+.badge.accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.mono-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.kbd {
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  font-size: 11px;
+  color: var(--fg-1);
+}
+
+/* data tables */
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.data th {
+  text-align: left;
+  padding: 5px 10px;
+  color: var(--fg-2);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.data td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.data tr:last-child td {
+  border-bottom: none;
+}
+table.data tr.clickable:hover td {
+  background: var(--bg-2);
+  cursor: pointer;
+}
+
+/* code block */
+.codeblock {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.codeblock .line {
+  display: flex;
+  white-space: pre;
+}
+.codeblock .line.hl {
+  background: var(--accent-dim);
+}
+.codeblock .ln {
+  min-width: 3.5em;
+  padding: 0 10px 0 6px;
+  text-align: right;
+  color: var(--fg-2);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* nav tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+}
+.tabs a {
+  padding: 8px 14px;
+  color: var(--fg-1);
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tabs a:hover {
+  color: var(--fg-0);
+  text-decoration: none;
+}
+.tabs a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* sidebar run entries */
+.run-entry {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  color: var(--fg-1);
+}
+.run-entry:hover {
+  background: var(--bg-2);
+  text-decoration: none;
+}
+.run-entry.active {
+  background: var(--bg-2);
+  border-color: var(--border-strong);
+  color: var(--fg-0);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+/* graph containers */
+.graph-canvas {
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 1px 1px, #ffffff08 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-0);
+}
+
+/* matrix */
+.matrix-cell {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--bg-2);
+}
+
+.empty-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--fg-2);
+}
+
+.note {
+  color: var(--fg-2);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.caveat {
+  border-left: 3px solid var(--warn);
+  padding: 6px 10px;
+  color: var(--fg-1);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+  border-radius: 0 4px 4px 0;
+}

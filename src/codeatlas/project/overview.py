@@ -266,6 +266,17 @@ def _strongly_connected(paths: object, depends_on: dict[str, set[str]]) -> list[
     return sorted(components)
 
 
+def levelize(nodes: set[str], depends_on: dict[str, set[str]]) -> dict[str, int]:
+    """Level per node over any dependency map: one above everything it depends on.
+
+    The same computation the module overview uses, exposed for other graphs —
+    the package condensation in the views is levelized with this.
+    """
+    components = _strongly_connected(nodes, depends_on)
+    levels = _levels(components, depends_on)
+    return {node: levels[_component_of(components, node)] for node in nodes}
+
+
 def _component_of(components: list[tuple[str, ...]], path: str) -> tuple[str, ...]:
     for component in components:
         if path in component:

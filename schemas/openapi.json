@@ -165,6 +165,99 @@
         "summary": "Run Detail"
       }
     },
+    "/api/runs/{run_id}/artifact/{role}": {
+      "get": {
+        "description": "One of this run's JSON artifacts, addressed by its role.\n\nRoles are membership rows this run actually owns (`run_artifact`), so\nthe endpoint can never serve another run's content, and an arbitrary\nrole string is simply not found rather than an error to reason about.",
+        "operationId": "run_artifact_api_runs__run_id__artifact__role__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Run Artifact Api Runs  Run Id  Artifact  Role  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Artifact"
+      }
+    },
+    "/api/runs/{run_id}/findings": {
+      "get": {
+        "operationId": "run_findings_api_runs__run_id__findings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Run Findings Api Runs  Run Id  Findings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Findings"
+      }
+    },
     "/api/runs/{run_id}/graph": {
       "get": {
         "operationId": "run_graph_api_runs__run_id__graph_get",
