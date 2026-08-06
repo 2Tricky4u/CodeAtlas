@@ -22,12 +22,19 @@ def _alias(value: str, index: int) -> str:
 
 
 def sequence_diagram(model: ProtocolModel) -> str:
-    """Message exchange between participants, in declaration order."""
+    """Message exchange between participants, in declaration order.
+
+    Empty when there is no protocol. A project without one must not get a
+    diagram — that is the whole point of the model being allowed to say `null`.
+    """
     protocol = model.protocol
-    aliases = {name: _alias(name, i) for i, name in enumerate(protocol.participants)}
+    if protocol is None:
+        return ""
+    names = [p.name for p in protocol.participants]
+    aliases = {name: _alias(name, i) for i, name in enumerate(names)}
 
     lines = ["sequenceDiagram", "    autonumber"]
-    for name in protocol.participants:
+    for name in names:
         lines.append(f"    participant {aliases[name]} as {_label(name)}")
 
     for message in protocol.messages:
@@ -42,7 +49,7 @@ def sequence_diagram(model: ProtocolModel) -> str:
 
     for timeout in protocol.timeouts:
         lines.append(
-            f"    Note over {aliases.get(protocol.participants[0], 'P0')}: "
+            f"    Note over {aliases.get(names[0], 'P0')}: "
             f"{_label(timeout.state)} times out after {_label(timeout.duration)} "
             f"-> {_label(timeout.transition)}"
         )
@@ -50,8 +57,14 @@ def sequence_diagram(model: ProtocolModel) -> str:
 
 
 def state_diagram(model: ProtocolModel) -> str:
-    """Legal states and the timeout transitions between them."""
+    """Legal states and the timeout transitions between them.
+
+    Empty when there is no protocol, or when the exchange is stateless — most
+    request/response protocols are, and an empty state chart is not information.
+    """
     protocol = model.protocol
+    if protocol is None or not protocol.states:
+        return ""
     lines = ["stateDiagram-v2"]
     if protocol.states:
         lines.append(f"    [*] --> {_alias(protocol.states[0], 0)}")

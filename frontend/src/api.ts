@@ -302,6 +302,55 @@ export interface Architecture {
   notes?: string[];
 }
 
+// --- protocol ---------------------------------------------------------------
+
+export interface ProtocolEvidence {
+  path: string;
+  symbol?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface ProtocolParticipant {
+  name: string;
+  description?: string;
+  evidence: ProtocolEvidence;
+}
+
+export interface ProtocolMessage {
+  name: string;
+  producer: string;
+  consumer: string;
+  schema?: string | null;
+  evidence: ProtocolEvidence;
+}
+
+export interface ProtocolTimeout {
+  state: string;
+  duration: string;
+  transition: string;
+  evidence?: ProtocolEvidence;
+}
+
+export interface Protocol {
+  id: string;
+  version: string;
+  transport: string;
+  framing: string;
+  participants: ProtocolParticipant[];
+  states: string[];
+  messages: ProtocolMessage[];
+  timeouts: ProtocolTimeout[];
+  evidence: ProtocolEvidence[];
+}
+
+export interface ProtocolModel {
+  /** Absent when this project has no protocol — the common case. */
+  protocol?: Protocol | null;
+  droppedElements?: { kind: string; name: string; reason: string }[];
+  notes?: string[];
+}
+
 // --- architecture decisions -------------------------------------------------
 
 export type AuditResult =
@@ -415,6 +464,10 @@ export const api = {
     getOptional<Architecture>(`/api/runs/${id}/artifact/architecture`),
   structurizrDsl: (id: string) => getOptionalText(`/api/runs/${id}/artifact/structurizr-dsl`),
   adrAudit: (id: string) => getOptional<AdrAudit>(`/api/runs/${id}/artifact/adr-audit`),
+  protocolModel: (id: string) =>
+    getOptional<ProtocolModel>(`/api/runs/${id}/artifact/protocol-model`),
+  protocolDiagram: (id: string, kind: "sequence" | "state") =>
+    getOptionalText(`/api/runs/${id}/artifact/protocol-${kind}`),
   source: (revision: string, path: string, start?: number, end?: number) => {
     const params = new URLSearchParams({ path });
     if (start !== undefined) params.set("start", String(start));

@@ -2,11 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codeatlas.local/schemas/protocol-model.v1.json",
   "title": "Protocol Model",
-  "description": "Machine-readable protocol description; sequence/state diagrams are derived views of this model, never independent artifacts.",
+  "description": "Machine-readable protocol description; sequence and state diagrams are derived views of this model, never independent artifacts. `protocol` may be null — most projects have no protocol worth modelling, and a batch program forced into a sequence diagram produces a confident-looking picture of something that does not exist. Every participant and every message carries the source range it was read from, so an element nobody can point at is removed rather than drawn.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocol"],
+  "required": ["schemaVersion"],
   "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "protocol": {
+      "description": "Absent or null when this project has no protocol. Both forms are accepted because a producer naturally writes an explicit null; canonical output omits the key, as it does for every nullable field in these contracts.",
+      "oneOf": [{ "$ref": "#/$defs/protocol" }, { "type": "null" }]
+    },
+    "droppedElements": {
+      "description": "Participants, messages and timeouts removed because their evidence did not resolve, with the reason. Present so a thin model is visibly thin rather than quietly so.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/droppedElement" }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
     "protocol": {
       "type": "object",
       "additionalProperties": false,
@@ -19,8 +32,7 @@
         "participants": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true
+          "items": { "$ref": "#/$defs/participant" }
         },
         "states": {
           "type": "array",
@@ -32,12 +44,20 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "producer", "consumer"],
+            "required": ["name", "producer", "consumer", "evidence"],
             "properties": {
               "name": { "type": "string", "minLength": 1 },
-              "producer": { "type": "string", "minLength": 1 },
+              "producer": {
+                "description": "A participant name declared above.",
+                "type": "string",
+                "minLength": 1
+              },
               "consumer": { "type": "string", "minLength": 1 },
-              "schema": { "type": ["string", "null"] }
+              "schema": { "type": ["string", "null"] },
+              "evidence": {
+                "description": "Where this message is sent or handled. Required: a message with no source range is a claim about a protocol nobody can check.",
+                "$ref": "#/$defs/evidence"
+              }
             }
           }
         },
@@ -50,25 +70,51 @@
             "properties": {
               "state": { "type": "string", "minLength": 1 },
               "duration": { "type": "string", "pattern": "^P" },
-              "transition": { "type": "string", "minLength": 1 }
+              "transition": { "type": "string", "minLength": 1 },
+              "evidence": { "$ref": "#/$defs/evidence" }
             }
           }
         },
         "evidence": {
+          "description": "Where the protocol as a whole is defined — the module that owns the wire format.",
           "type": "array",
           "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["path"],
-            "properties": {
-              "path": { "type": "string", "minLength": 1 },
-              "symbol": { "type": "string" },
-              "startLine": { "type": "integer", "minimum": 1 },
-              "endLine": { "type": "integer", "minimum": 1 }
-            }
-          }
+          "items": { "$ref": "#/$defs/evidence" }
         }
+      }
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "evidence"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "symbol": {
+          "description": "A graph node id, when the element corresponds to one.",
+          "type": "string"
+        },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "droppedElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "reason"],
+      "properties": {
+        "kind": { "enum": ["participant", "message", "timeout"] },
+        "name": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
       }
     }
   }

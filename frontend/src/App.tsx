@@ -17,6 +17,7 @@ import { DetailView } from "./views/DetailView";
 import { FindingsView } from "./views/FindingsView";
 import { MapView } from "./views/MapView";
 import { OverviewView } from "./views/OverviewView";
+import { ProtocolView } from "./views/ProtocolView";
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
             <Route path="map" element={<MapView />} />
             <Route path="architecture" element={<ArchitectureView />} />
             <Route path="adr" element={<AdrView />} />
+            <Route path="protocol" element={<ProtocolView />} />
             <Route path="change" element={<ChangeView />} />
             <Route path="findings" element={<FindingsView />} />
             <Route path="detail" element={<DetailView />} />
@@ -133,6 +135,7 @@ const TABS = [
   { path: "map", label: "map" },
   { path: "architecture", label: "architecture" },
   { path: "adr", label: "decisions" },
+  { path: "protocol", label: "protocol" },
   { path: "change", label: "change" },
   { path: "findings", label: "findings" },
   { path: "detail", label: "run detail" },

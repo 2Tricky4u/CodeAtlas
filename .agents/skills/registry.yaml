@@ -109,3 +109,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: protocol-modeler
+    version: "1.0.0"
+    path: protocol-modeler/
+    content_sha256: "sha256:c3d1da7f488628db088915fb2647e23fe23479a1b320af7d9bcb5c2ccc043ef3"
+    purpose: "Model the protocol a project speaks, or state that it speaks none"
+    output_schema: protocol-model.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"

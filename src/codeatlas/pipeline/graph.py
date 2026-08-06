@@ -801,6 +801,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             return {"review_notes": [f"project narrative skipped: {reason}"]}
 
         from codeatlas.pipeline.narrate_stage import narrate_project
+        from codeatlas.pipeline.protocol_stage import model_project_protocol
 
         result = narrate_project(
             deps,
@@ -811,6 +812,18 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             revision_db_id=state["revision_db_id"],
             project_overview_sha=state["project_overview_sha256"],
         )
+        # What a project speaks is a fact about the project, so it belongs with
+        # the narrative rather than with the review of a change to it.
+        protocol = model_project_protocol(
+            deps,
+            run_id=state["run_id"],
+            revision_sha=state["head_sha"],
+            checkout=Path(state["checkout_path"]),
+            repository_id=state["repository_id"],
+            revision_db_id=state["revision_db_id"],
+            graph_sha=state["graph_sha256"],
+            project_overview_sha=state["project_overview_sha256"],
+        )
         with Session(deps.engine) as session:
             repo.add_run_event(
                 session,
@@ -818,12 +831,17 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 stage="narrate",
                 event="narrated" if result.sha256 else "narration_failed",
                 level="info" if result.sha256 else "warning",
-                data={"droppedClaims": result.dropped},
+                data={
+                    "droppedClaims": result.dropped,
+                    "hasProtocol": protocol.has_protocol,
+                    "droppedProtocolElements": protocol.dropped,
+                },
             )
             session.commit()
         return {
             "project_explanation_sha256": result.sha256,
-            "review_notes": result.notes,
+            "protocol_model_sha256": protocol.sha256,
+            "review_notes": [*result.notes, *protocol.notes],
         }
 
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:

@@ -281,6 +281,70 @@ export const ARCHITECTURE = {
   notes: ["3 package(s) resolved by the build but not present in this repository are not drawn: they are dependencies, not containers"],
 };
 
+export const PROTOCOL_MODEL = {
+  protocol: {
+    id: "kvstore-wire",
+    version: "1",
+    transport: "in-process call from the CLI binary",
+    framing: "colon-separated fields (`verb:arg[:arg]`)",
+    participants: [
+      {
+        name: "client",
+        description: "Sends one colon-separated command per argument.",
+        evidence: { path: "kvstore-cli/src/main.rs", startLine: 5, endLine: 12 },
+      },
+      {
+        name: "store",
+        description: "Parses the command and answers from the cache.",
+        evidence: { path: "kvstore/src/api.rs", startLine: 15, endLine: 33 },
+      },
+    ],
+    states: [],
+    messages: [
+      {
+        name: "get",
+        producer: "client",
+        consumer: "store",
+        schema: "get:<key>",
+        evidence: { path: "kvstore/src/api.rs", startLine: 18, endLine: 24 },
+      },
+      {
+        name: "Response::Value | Response::Error",
+        producer: "store",
+        consumer: "client",
+        evidence: { path: "kvstore/src/api.rs", startLine: 5, endLine: 10 },
+      },
+    ],
+    timeouts: [],
+    evidence: [{ path: "kvstore/src/api.rs", startLine: 12, endLine: 14 }],
+  },
+  droppedElements: [
+    {
+      kind: "message",
+      name: "Subscribe",
+      reason: "kvstore/src/pubsub.rs does not exist at this revision",
+    },
+  ],
+  notes: [
+    "The exchange is stateless: each request is dispatched independently and no session state is carried between requests.",
+  ],
+};
+
+/** The common case. ripgrep, a compiler, a linter — none of them speak one. */
+export const PROTOCOL_NONE = {
+  notes: [
+    "This project is a batch search tool: it walks directories, matches lines against a regex and writes results to stdout. Nothing is exchanged with another party over time, so there is no protocol to model.",
+  ],
+};
+
+export const PROTOCOL_SEQUENCE = `sequenceDiagram
+    autonumber
+    participant client as client
+    participant store as store
+    client->>store: get
+    store->>client: Response::Value | Response::Error
+`;
+
 export const ADR_AUDIT = {
   revision: HEAD,
   decisions: [

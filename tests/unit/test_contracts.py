@@ -157,17 +157,44 @@ INTENT_EXAMPLE: dict[str, Any] = {
 }
 
 PROTOCOL_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
     "protocol": {
         "id": "kvstore-wire",
         "version": "1",
         "transport": "tcp",
         "framing": "length-prefixed JSON",
-        "participants": ["client", "server"],
+        "participants": [
+            {"name": "client", "description": "", "evidence": {"path": "src/main.rs"}},
+            {"name": "server", "description": "", "evidence": {"path": "src/proto.rs"}},
+        ],
         "states": ["Idle", "AwaitingReply"],
-        "messages": [{"name": "Get", "producer": "client", "consumer": "server", "schema": None}],
+        "messages": [
+            {
+                "name": "Get",
+                "producer": "client",
+                "consumer": "server",
+                "schema": None,
+                "evidence": {"path": "src/proto.rs", "startLine": 12, "endLine": 20},
+            }
+        ],
         "timeouts": [{"state": "AwaitingReply", "duration": "PT5S", "transition": "Idle"}],
         "evidence": [{"path": "src/proto.rs", "symbol": "handle_get"}],
-    }
+    },
+    "droppedElements": [
+        {
+            "kind": "message",
+            "name": "Subscribe",
+            "reason": "src/pubsub.rs does not exist at this revision",
+        }
+    ],
+    "notes": [],
+}
+
+# The common case, and the one the skill is written to reach for.
+PROTOCOL_NONE_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "protocol": None,
+    "notes": ["this project is a batch tool; nothing is exchanged with another party"],
 }
 
 AGENT_TASK_EXAMPLE: dict[str, Any] = {
@@ -701,6 +728,20 @@ def test_model_roundtrip_revalidates_against_schema(name: str) -> None:
     validator = Draft202012Validator(_load_schema(name))
     errors = sorted(validator.iter_errors(dumped), key=str)
     assert not errors, "\n".join(e.message for e in errors)
+
+
+def test_a_project_with_no_protocol_is_expressible() -> None:
+    """The common case, and the one the schema exists to allow.
+
+    Before this, `protocol` was required — so a batch tool could only be
+    described by inventing a protocol for it, which is precisely the artifact
+    this pipeline refuses to produce.
+    """
+    validator = Draft202012Validator(_load_schema("protocol-model.v1.json"))
+    assert not sorted(validator.iter_errors(PROTOCOL_NONE_EXAMPLE), key=str)
+
+    model = CONTRACT_MODELS["protocol-model.v1.json"].model_validate(PROTOCOL_NONE_EXAMPLE)
+    assert not sorted(validator.iter_errors(model.contract_dump()), key=str)
 
 
 def test_models_reject_unknown_fields() -> None:

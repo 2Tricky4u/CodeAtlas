@@ -24,7 +24,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from codeatlas.artifacts.mermaid.gen import sequence_diagram, state_diagram
 from codeatlas.artifacts.mermaid.validate import mmdc_path, render
 from codeatlas.artifacts.structurizr.validate import (
     cli_path,
@@ -277,31 +276,6 @@ def stage_diagrams(deps: PipelineDeps, ctx: ReviewContext, dsl: str) -> None:
             render(view, out / "svg" / (view.stem + ".svg"))
         except Exception as exc:
             ctx.notes.append(f"render failed for {view.name}: {exc}")
-
-
-def stage_protocol_diagrams(
-    deps: PipelineDeps, ctx: ReviewContext, model_json: dict[str, Any] | None
-) -> None:
-    if model_json is None:
-        return
-    from codeatlas.models.protocol import ProtocolModel
-
-    model = ProtocolModel.model_validate(model_json)
-    out = deps.artifacts_dir / ctx.run_id / "protocol"
-    for name, text in (
-        ("sequence", sequence_diagram(model)),
-        ("state", state_diagram(model)),
-    ):
-        ctx.publish(deps, f"protocol-{name}", text, media_type="text/plain")
-        if mmdc_path() is None:
-            continue
-        source = out / f"{name}.mmd"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text(text, encoding="utf-8", newline="\n")
-        try:
-            render(source, out / f"{name}.svg")
-        except Exception as exc:
-            ctx.notes.append(f"protocol {name} render failed: {exc}")
 
 
 def _module_root(graph: ProjectGraph) -> str:

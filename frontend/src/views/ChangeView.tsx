@@ -14,6 +14,7 @@ import {
   type RunSummary,
 } from "../api";
 import { Badge, BUMP_TONE, Empty, KindDot, Loading, Panel, shortSha, type Tone } from "../ui";
+import { Mermaid } from "./Mermaid";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 const RANK_TONE: Record<string, Tone> = {
@@ -100,6 +101,15 @@ export function ChangeView() {
               </ul>
             </div>
           ))}
+          {/* Present only when the change moved an interaction — the skill is
+              told most changes should have `null` here. It has been produced
+              and validated since P3 and never displayed until now. */}
+          {explanation.sequenceDiagram && (
+            <Mermaid
+              source={explanation.sequenceDiagram}
+              caption="how the components involved talk to each other after this change"
+            />
+          )}
           {(explanation.droppedClaims?.length ?? 0) > 0 && (
             <div className="caveat">
               {explanation.droppedClaims!.length} statement(s) were removed because their

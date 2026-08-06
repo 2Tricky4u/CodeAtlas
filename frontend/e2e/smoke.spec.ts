@@ -17,6 +17,9 @@ import {
   IMPACT,
   OVERVIEW,
   PROJECT_EXPLANATION,
+  PROTOCOL_MODEL,
+  PROTOCOL_NONE,
+  PROTOCOL_SEQUENCE,
   RUN,
   RUN_ID,
   SOURCE,
@@ -63,6 +66,15 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/artifact/adr-audit`, (route) =>
     route.fulfill({ json: ADR_AUDIT }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-model`, (route) =>
+    route.fulfill({ json: PROTOCOL_MODEL }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-sequence`, (route) =>
+    route.fulfill({ body: PROTOCOL_SEQUENCE, headers: { "content-type": "text/plain" } }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-state`, (route) =>
+    route.fulfill({ status: 404, json: { detail: "stateless" } }),
   );
 }
 
@@ -296,6 +308,73 @@ test.describe("decisions view", () => {
     await page.goto(`/#/runs/${RUN_ID}/adr`);
     await expect(page.getByTestId("adr-notes")).toContainText("no ADRs found");
     await expect(page.getByTestId("empty-state")).toContainText("records no architecture decisions");
+  });
+});
+
+test.describe("protocol view", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a project with no protocol says so, and why", async ({ page }) => {
+    // The primary state of this page, not an error state: most projects have
+    // no protocol, and inventing one is the worst thing this tool could do.
+    await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-model`, (route) =>
+      route.fulfill({ json: PROTOCOL_NONE }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("no-protocol")).toContainText("no protocol to model");
+    await expect(page.getByTestId("protocol-view")).toContainText("batch search tool");
+  });
+
+  test("a protocol names its transport and framing", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("protocol-view")).toContainText("in-process call");
+    await expect(page.getByTestId("protocol-view")).toContainText("colon-separated");
+  });
+
+  test("the sequence diagram is rendered, not shown as source", async ({ page }) => {
+    // The mermaid dependency has been installed and unimported since P5.
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("mermaid").locator("svg")).toBeVisible();
+  });
+
+  test("every message says where it was read from", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("messages")).toContainText("api.rs:18");
+  });
+
+  test("an evidence chip opens the source it points at", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await page.getByTestId("protocol-evidence").first().click();
+    await expect(page.getByTestId("source-panel")).toBeVisible();
+  });
+
+  test("elements removed by validation are disclosed", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("protocol-dropped")).toContainText("Subscribe");
+  });
+
+  test("what was deliberately not modelled is shown as such", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("protocol-notes")).toContainText("stateless");
+  });
+
+  test("a diagram that will not parse shows its source, not a broken image", async ({ page }) => {
+    // Mermaid's own error output is a red box with a stack trace, which reads
+    // as "this project is broken" rather than "this diagram is".
+    await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-sequence`, (route) =>
+      route.fulfill({ body: "sequenceDiagram\n    !!! not mermaid", headers: { "content-type": "text/plain" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("mermaid-error")).toContainText("could not be drawn");
+  });
+
+  test("an oversized diagram is refused rather than drawn illegibly", async ({ page }) => {
+    const huge = ["sequenceDiagram", ...Array.from({ length: 200 }, (_, i) => `    a->>b: m${i}`)];
+    await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-sequence`, (route) =>
+      route.fulfill({ body: huge.join("\n"), headers: { "content-type": "text/plain" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("mermaid-refused")).toContainText("stops being followable");
   });
 });
 

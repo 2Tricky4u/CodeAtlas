@@ -18,6 +18,7 @@ from codeatlas.models.protocol import (
     ProtocolEvidence,
     ProtocolMessage,
     ProtocolModel,
+    ProtocolParticipant,
     ProtocolTimeout,
 )
 
@@ -30,6 +31,17 @@ def _require_mmdc() -> None:
         pytest.skip("mmdc not installed")
 
 
+EVIDENCE = ProtocolEvidence(path="kvstore/src/api.rs")
+
+
+def _party(name: str) -> ProtocolParticipant:
+    return ProtocolParticipant(name=name, evidence=EVIDENCE)
+
+
+def _message(name: str, producer: str, consumer: str) -> ProtocolMessage:
+    return ProtocolMessage(name=name, producer=producer, consumer=consumer, evidence=EVIDENCE)
+
+
 def _model() -> ProtocolModel:
     return ProtocolModel(
         protocol=Protocol(
@@ -37,13 +49,13 @@ def _model() -> ProtocolModel:
             version="1",
             transport="tcp",
             framing="line-delimited",
-            participants=["client", "kvstore-api", "file-store"],
+            participants=[_party("client"), _party("kvstore-api"), _party("file-store")],
             states=["Idle", "AwaitingReply", "Stored"],
             messages=[
-                ProtocolMessage(name="Get key", producer="client", consumer="kvstore-api"),
-                ProtocolMessage(name="Read blob", producer="kvstore-api", consumer="file-store"),
-                ProtocolMessage(name="Value", producer="file-store", consumer="kvstore-api"),
-                ProtocolMessage(name="Response", producer="kvstore-api", consumer="client"),
+                _message("Get key", "client", "kvstore-api"),
+                _message("Read blob", "kvstore-api", "file-store"),
+                _message("Value", "file-store", "kvstore-api"),
+                _message("Response", "kvstore-api", "client"),
             ],
             timeouts=[ProtocolTimeout(state="AwaitingReply", duration="PT5S", transition="Idle")],
             evidence=[ProtocolEvidence(path="kvstore/src/api.rs", symbol="handle_request")],
@@ -75,13 +87,9 @@ def test_hostile_labels_still_render(tmp_path: Path) -> None:
             version="1",
             transport="tcp",
             framing="json",
-            participants=['weird "client"', "a;b", "x-->y"],
+            participants=[_party('weird "client"'), _party("a;b"), _party("x-->y")],
             states=["S1"],
-            messages=[
-                ProtocolMessage(
-                    name='msg "with" quotes; and -->', producer='weird "client"', consumer="a;b"
-                )
-            ],
+            messages=[_message('msg "with" quotes; and -->', 'weird "client"', "a;b")],
             timeouts=[],
             evidence=[ProtocolEvidence(path="a.rs")],
         )

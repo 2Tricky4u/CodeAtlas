@@ -65,6 +65,13 @@ test.describe("live", () => {
     await page.screenshot({ path: "../var/ui-shots/live-adr.png" });
   });
 
+  test("protocol", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN}/protocol`);
+    await expect(page.getByTestId("protocol-view")).toBeVisible();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: "../var/ui-shots/live-protocol.png" });
+  });
+
   test("focus on a real symbol", async ({ page }) => {
     await page.goto(`/#/runs/${RUN}/map`);
     await page.getByTestId("focus-tab").click();

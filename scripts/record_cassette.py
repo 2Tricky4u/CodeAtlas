@@ -63,7 +63,8 @@ def main(skill_id: str) -> int:
             inputs = _reviewer_inputs(checkout, cas)
         elif skill_id == "finding-validator":
             inputs = _validator_inputs(cas)
-        elif skill_id == "project-explainer":
+        elif skill_id in ("project-explainer", "protocol-modeler"):
+            # Both are handed the deterministic overview and nothing else.
             inputs = _project_explainer_inputs(checkout, sha, cas)
         else:
             inputs = {}
