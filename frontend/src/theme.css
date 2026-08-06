@@ -327,6 +327,14 @@ table.data tr.clickable:hover td {
   font-weight: 500;
 }
 
+/* The definition marker inside a source line: present only where the graph
+   has a node, floated right so the code column stays aligned. */
+.defmark {
+  float: right;
+  margin-left: 8px;
+  font-size: 9px;
+}
+
 .empty-state {
   padding: 32px;
   text-align: center;

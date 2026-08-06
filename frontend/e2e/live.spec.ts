@@ -88,6 +88,35 @@ test.describe("live", () => {
     await page.screenshot({ path: "../var/ui-shots/live-module.png", fullPage: true });
   });
 
+  test("path at real size", async ({ page }) => {
+    // Endpoints verified against the payload: search (core/main.rs) reaches
+    // byte (matcher/src/lib.rs) in two hops via hiargs.rs.
+    await page.goto(`/#/runs/${RUN}/map`);
+    await page.getByTestId("path-tab").click();
+    await page.getByTestId("path-from").fill("search");
+    await page
+      .getByTestId("path-from-match")
+      .filter({ hasText: "function · search" })
+      .first()
+      .click();
+    await page.getByTestId("path-to").fill("byte");
+    await page
+      .getByTestId("path-to-match")
+      .filter({ hasText: "function · byte" })
+      .first()
+      .click();
+    await expect(page.getByTestId("path-summary")).toBeVisible();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: "../var/ui-shots/live-path.png" });
+  });
+
+  test("linked source at real size", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN}/module/crates/ignore/src/walk.rs`);
+    await page.getByRole("button", { name: "open source" }).click();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: "../var/ui-shots/live-source.png", fullPage: true });
+  });
+
   test("focus on a real symbol", async ({ page }) => {
     await page.goto(`/#/runs/${RUN}/map`);
     await page.getByTestId("focus-tab").click();

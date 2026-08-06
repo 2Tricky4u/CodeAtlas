@@ -14,6 +14,7 @@ import cytoscape from "cytoscape";
 import { api, type GraphPayload, type GraphView, type GraphViews } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
 import { ModuleLink } from "./links";
+import { PathView } from "./PathView";
 import {
   applyFilters,
   type Filters,
@@ -80,6 +81,18 @@ export function MapView() {
         >
           focus a symbol…
         </button>
+        <button
+          className="badge"
+          onClick={() => setActiveId("path")}
+          style={{
+            cursor: "pointer",
+            color: activeId === "path" ? "var(--accent)" : undefined,
+            borderColor: activeId === "path" ? "var(--accent)" : undefined,
+          }}
+          data-testid="path-tab"
+        >
+          how does A reach B…
+        </button>
       </div>
 
       {views.refused.length > 0 && (
@@ -94,6 +107,8 @@ export function MapView() {
 
       {activeId === "focus" ? (
         <FocusView runId={runId!} onOpenSource={openSource} />
+      ) : activeId === "path" ? (
+        <PathView runId={runId!} onOpenSource={openSource} />
       ) : active.kind === "matrix" ? (
         <MatrixView view={active} />
       ) : (

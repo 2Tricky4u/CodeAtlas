@@ -130,12 +130,20 @@ export const GRAPH = {
       { data: { id: "file:kvstore/src/cache.rs", label: "kvstore/src/cache.rs", kind: "file", path: "kvstore/src/cache.rs", producers: ["rust-analyzer"] } },
       { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, producers: ["rust-analyzer"] } },
       { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23, producers: ["rust-analyzer"] } },
+      // A second connected component, so "no path" stays expressible: handle
+      // calls parse, and neither touches the cache symbols.
+      { data: { id: "file:kvstore/src/api.rs", label: "kvstore/src/api.rs", kind: "file", path: "kvstore/src/api.rs", producers: ["rust-analyzer"] } },
+      { data: { id: "sym:handle", label: "handle_request", kind: "function", path: "kvstore/src/api.rs", startLine: 15, producers: ["rust-analyzer"] } },
+      { data: { id: "sym:parse", label: "parse", kind: "function", path: "kvstore/src/api.rs", startLine: 40, producers: ["rust-analyzer"] } },
     ],
     edges: [
       { data: { id: "e0", source: "pkg:kvstore", target: "file:kvstore/src/cache.rs", kind: "contains" } },
       { data: { id: "e1", source: "file:kvstore/src/cache.rs", target: "sym:evict", kind: "contains" } },
       { data: { id: "e1b", source: "file:kvstore/src/cache.rs", target: "sym:put", kind: "contains" } },
       { data: { id: "e2", source: "sym:put", target: "sym:evict", kind: "calls" } },
+      { data: { id: "e3", source: "file:kvstore/src/api.rs", target: "sym:handle", kind: "contains" } },
+      { data: { id: "e4", source: "file:kvstore/src/api.rs", target: "sym:parse", kind: "contains" } },
+      { data: { id: "e5", source: "sym:handle", target: "sym:parse", kind: "calls" } },
     ],
   },
 };

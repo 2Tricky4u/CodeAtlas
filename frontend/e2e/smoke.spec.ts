@@ -281,6 +281,63 @@ test.describe("module page", () => {
   });
 });
 
+test.describe("linked source", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a line that defines a measured symbol links to it, with its fan-in", async ({
+    page,
+  }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByRole("button", { name: "open source" }).click();
+    const marker = page.getByTestId("source-symbol").first();
+    await expect(marker).toBeVisible();
+    await expect(marker).toContainText("←");
+    await expect(page.getByTestId("source-link-note")).toContainText("plain text");
+  });
+});
+
+test.describe("path-finding", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("A to B draws the dependency chain with its edge kinds", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await page.getByTestId("path-from").fill("put");
+    await page.getByTestId("path-from-match").first().click();
+    await page.getByTestId("path-to").fill("evict");
+    await page.getByTestId("path-to-match").first().click();
+    await expect(page.getByTestId("path-summary")).toContainText("1 hop(s)");
+    await expect(page.locator('[data-testid="path-graph"] canvas').first()).toBeVisible();
+  });
+
+  test("no path is an answer, not an empty canvas", async ({ page }) => {
+    // handle_request and evict_oldest live in different components: nothing
+    // connects the api chain to the cache chain in this fixture.
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await page.getByTestId("path-from").fill("handle");
+    await page.getByTestId("path-from-match").first().click();
+    await page.getByTestId("path-to").fill("evict");
+    await page.getByTestId("path-to-match").first().click();
+    await expect(page.getByTestId("no-path")).toContainText("nothing in this graph connects");
+  });
+
+  test("an endpoint that cannot start a path is never offered", async ({ page }) => {
+    // evict depends on nothing; offering it as a start guarantees failure
+    // before the search begins, so the picker refuses it up front.
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await page.getByTestId("path-from").fill("evict");
+    await expect(page.getByTestId("path-from-match")).toHaveCount(0);
+  });
+
+  test("nothing is drawn until both ends are named", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await expect(page.getByTestId("empty-state")).toContainText("name both ends");
+  });
+});
+
 test.describe("architecture view", () => {
   test.beforeEach(({ page }) => mockApi(page));
 
