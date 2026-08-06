@@ -8,6 +8,7 @@ from pydantic import Field
 
 from codeatlas.models.base import ContractModel
 from codeatlas.models.graph import GIT_SHA_PATTERN
+from codeatlas.models.labels import ChangeLabel
 
 
 class DiffNode(ContractModel):
@@ -86,6 +87,10 @@ class GraphDiff(ContractModel):
     edges: EdgeDelta
     package_version_changes: list[VersionChange] = Field(default_factory=list)
     likely_renamed: list[RenameGuess] = Field(default_factory=list)
+    #: Only the labels the diff can prove; each carries the basis it was decided
+    #: on. Interpretation stays in the change explanation, where a claim without
+    #: a resolvable citation is deleted.
+    labels: list[ChangeLabel] = Field(default_factory=list)
     unnormalized_identities: int = Field(default=0, ge=0)
     summary: DiffSummary
 

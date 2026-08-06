@@ -168,6 +168,12 @@ export interface DiffEdge {
   targetPath?: string;
 }
 
+/** Only the labels the diff can prove; interpretation stays in the narrative. */
+export interface ChangeLabel {
+  name: string;
+  basis: string;
+}
+
 export interface GraphDiff {
   baseRevision: string;
   headRevision: string;
@@ -175,6 +181,7 @@ export interface GraphDiff {
   edges: { added: DiffEdge[]; removed: DiffEdge[] };
   packageVersionChanges: { name: string; before: string; after: string }[];
   likelyRenamed: RenameGuess[];
+  labels?: ChangeLabel[];
   unnormalizedIdentities: number;
   summary: Record<string, number>;
 }

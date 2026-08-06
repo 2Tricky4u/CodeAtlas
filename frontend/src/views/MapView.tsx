@@ -13,7 +13,14 @@ import { useParams } from "react-router-dom";
 import cytoscape from "cytoscape";
 import { api, type GraphPayload, type GraphView, type GraphViews } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
-import { kindColor, positionsFromLevels, rankMatches, shortLabels } from "./layout";
+import {
+  applyFilters,
+  type Filters,
+  kindColor,
+  positionsFromLevels,
+  rankMatches,
+  shortLabels,
+} from "./layout";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 export function MapView() {
@@ -365,6 +372,67 @@ function MatrixView({
 
 const NEIGHBOR_LIMIT = 24;
 
+/** Toggles for what a neighbourhood shows. Unset means "everything", so the
+ *  bar starts as a description of the graph rather than as a restriction. */
+function FilterBar({
+  available,
+  filters,
+  onChange,
+}: {
+  available: { kinds: string[]; edgeKinds: string[]; producers: string[] };
+  filters: Filters;
+  onChange: (filters: Filters) => void;
+}) {
+  const groups: { key: keyof Filters; label: string; values: string[] }[] = [
+    { key: "kinds", label: "node", values: available.kinds },
+    { key: "edgeKinds", label: "edge", values: available.edgeKinds },
+    { key: "producers", label: "from", values: available.producers },
+  ];
+
+  const toggle = (key: keyof Filters, value: string, all: string[]) => {
+    const current = filters[key] ?? new Set(all);
+    const next = new Set(current);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    // Back to every value means no filter at all, not a filter that happens to
+    // match everything — so the "hid N" line disappears rather than saying zero.
+    onChange({ ...filters, [key]: next.size === all.length ? undefined : next });
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 4, marginTop: 8 }} data-testid="filters">
+      {groups
+        .filter((group) => group.values.length > 1)
+        .map((group) => (
+          <div key={group.key} style={{ display: "flex", gap: 4, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span className="microlabel" style={{ minWidth: 34 }}>
+              {group.label}
+            </span>
+            {group.values.map((value) => {
+              const on = !filters[group.key] || filters[group.key]!.has(value);
+              return (
+                <button
+                  key={value}
+                  className="badge"
+                  data-testid="filter-toggle"
+                  aria-pressed={on}
+                  onClick={() => toggle(group.key, value, group.values)}
+                  style={{
+                    cursor: "pointer",
+                    opacity: on ? 1 : 0.4,
+                    borderColor: on ? "var(--accent)" : undefined,
+                  }}
+                >
+                  {value}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function FocusView({
   runId,
   onOpenSource,
@@ -375,11 +443,33 @@ function FocusView({
   const [graph, setGraph] = useState<GraphPayload | null>(null);
   const [query, setQuery] = useState("");
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>({});
+  const [hidden, setHidden] = useState({ nodes: 0, edges: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.runGraph(runId).then(setGraph).catch(() => setGraph(null));
   }, [runId]);
+
+  // What this graph actually contains, so the filters offer real choices rather
+  // than a fixed list that might be empty or missing something.
+  const available = useMemo(() => {
+    const kinds = new Set<string>();
+    const producers = new Set<string>();
+    const edgeKinds = new Set<string>();
+    for (const node of graph?.elements.nodes ?? []) {
+      kinds.add(String(node.data.kind ?? ""));
+      for (const producer of (node.data.producers as string[] | undefined) ?? []) {
+        producers.add(producer);
+      }
+    }
+    for (const edge of graph?.elements.edges ?? []) edgeKinds.add(String(edge.data.kind ?? ""));
+    return {
+      kinds: [...kinds].filter(Boolean).sort(),
+      edgeKinds: [...edgeKinds].filter(Boolean).sort(),
+      producers: [...producers].filter(Boolean).sort(),
+    };
+  }, [graph]);
 
   const matches = useMemo(() => {
     if (!graph) return [];
@@ -413,11 +503,34 @@ function FocusView({
     }
     const shown = [...neighbors].slice(0, NEIGHBOR_LIMIT + 1);
     const shownSet = new Set(shown);
-    const nodes = graph.elements.nodes.filter((node) => shownSet.has(node.data.id));
-    const visibleEdges = edges.filter(
+    const inScope = graph.elements.nodes.filter((node) => shownSet.has(node.data.id));
+    const scopedEdges = edges.filter(
       (edge) =>
         shownSet.has(String(edge.data.source)) && shownSet.has(String(edge.data.target)),
     );
+
+    const filtered = applyFilters(
+      inScope.map((node) => ({
+        id: String(node.data.id),
+        label: String(node.data.label ?? ""),
+        kind: String(node.data.kind ?? ""),
+        producers: (node.data.producers as string[] | undefined) ?? [],
+        node,
+      })),
+      scopedEdges.map((edge) => ({
+        id: String(edge.data.id ?? `${edge.data.source}->${edge.data.target}`),
+        source: String(edge.data.source),
+        target: String(edge.data.target),
+        kind: String(edge.data.kind ?? ""),
+        edge,
+      })),
+      filters,
+      focusId,
+    );
+    setHidden({ nodes: filtered.hiddenNodes, edges: filtered.hiddenEdges });
+
+    const nodes = filtered.nodes.map((entry) => entry.node);
+    const visibleEdges = filtered.edges.map((entry) => entry.edge);
 
     const shortNeighbours = shortLabels(nodes.map((node) => String(node.data.label ?? "")));
     const cy = cytoscape({
@@ -493,7 +606,7 @@ function FocusView({
       }
     });
     return () => cy.destroy();
-  }, [graph, focusId, onOpenSource]);
+  }, [graph, focusId, filters, onOpenSource]);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, minHeight: 380 }}>
@@ -533,10 +646,21 @@ function FocusView({
           </div>
         )}
         {focusId && (
-          <p className="note" style={{ marginBottom: 0 }}>
-            showing the 1-hop neighborhood · tap a neighbor to refocus, tap the center to
-            open its source
-          </p>
+          <>
+            <FilterBar available={available} filters={filters} onChange={setFilters} />
+            <p className="note" style={{ marginBottom: 0 }}>
+              showing the 1-hop neighborhood · tap a neighbor to refocus, tap the center to
+              open its source
+              {hidden.nodes + hidden.edges > 0 && (
+                <>
+                  {" · "}
+                  <span data-testid="filter-hidden">
+                    filters hid {hidden.nodes} node(s) and {hidden.edges} edge(s)
+                  </span>
+                </>
+              )}
+            </p>
+          </>
         )}
       </Panel>
       {focusId ? (

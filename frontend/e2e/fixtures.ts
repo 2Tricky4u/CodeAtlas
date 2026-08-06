@@ -123,12 +123,16 @@ export const GRAPH = {
   revision: HEAD,
   repository: "local/kvstore",
   elements: {
+    // `producers` is on every node in the real payload — `artifacts/cytoscape.py`
+    // has carried it since M6 so the dashboard could filter on evidence type.
     nodes: [
-      { data: { id: "file:kvstore/src/cache.rs", label: "kvstore/src/cache.rs", kind: "file", path: "kvstore/src/cache.rs" } },
-      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41 } },
-      { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23 } },
+      { data: { id: "pkg:kvstore", label: "kvstore 0.1.0", kind: "package", producers: ["cargo"] } },
+      { data: { id: "file:kvstore/src/cache.rs", label: "kvstore/src/cache.rs", kind: "file", path: "kvstore/src/cache.rs", producers: ["rust-analyzer"] } },
+      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, producers: ["rust-analyzer"] } },
+      { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23, producers: ["rust-analyzer"] } },
     ],
     edges: [
+      { data: { id: "e0", source: "pkg:kvstore", target: "file:kvstore/src/cache.rs", kind: "contains" } },
       { data: { id: "e1", source: "file:kvstore/src/cache.rs", target: "sym:evict", kind: "contains" } },
       { data: { id: "e2", source: "sym:put", target: "sym:evict", kind: "calls" } },
     ],
@@ -151,6 +155,13 @@ export const DIFF = {
     ],
   },
   packageVersionChanges: [{ name: "kvstore", before: "0.1.0", after: "0.2.0" }],
+  labels: [
+    {
+      name: "rename",
+      basis: "evict_oldest appears to have become evict (overlapping range, confidence 0.86)",
+    },
+    { name: "internal-interface", basis: "3 symbol(s) changed and none appear in the public API delta" },
+  ],
   likelyRenamed: [
     { beforeKey: "sym:evict_oldest", afterKey: "sym:evict", beforeLabel: "evict_oldest", afterLabel: "evict", path: "kvstore/src/cache.rs", confidence: 0.75, basis: "same file and overlapping source range" },
   ],

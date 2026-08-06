@@ -241,6 +241,27 @@ function StructuralPanel({
         {diff.nodes.moved.length > 0 && <Badge tone="warn">{diff.nodes.moved.length} moved</Badge>}
       </div>
 
+      {/* Only what the diff can prove. Each label hovers to the evidence that
+          decided it; the interpretive labels live in the narrative above,
+          where a claim without a citation is deleted. */}
+      {(diff.labels?.length ?? 0) > 0 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+          <span className="microlabel" style={{ alignSelf: "center" }}>
+            kind of change
+          </span>
+          {diff.labels!.map((label) => (
+            <span
+              key={label.name}
+              className="badge accent"
+              title={label.basis}
+              data-testid="change-label"
+            >
+              {label.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {diff.edges.removed.length > 0 && (
         <>
           <div className="microlabel">relationships that no longer exist</div>

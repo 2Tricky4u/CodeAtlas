@@ -254,6 +254,79 @@ function componentsWithin(
   return [...grouped.entries()].sort((a, b) => a[0] - b[0]).map(([, group]) => group);
 }
 
+// --- filtering ---------------------------------------------------------------
+
+export interface FilterableNode {
+  id: string;
+  label: string;
+  kind: string;
+  producers?: string[];
+}
+
+export interface FilterableEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+}
+
+export interface Filters {
+  /** Node kinds to keep. Absent means every kind. */
+  kinds?: ReadonlySet<string>;
+  /** Edge kinds to keep. Absent means every kind. */
+  edgeKinds?: ReadonlySet<string>;
+  /** Extractors to keep. A node passes if any of its producers is enabled. */
+  producers?: ReadonlySet<string>;
+}
+
+export interface FilterResult<N, E> {
+  nodes: N[];
+  edges: E[];
+  hiddenNodes: number;
+  hiddenEdges: number;
+}
+
+/**
+ * Narrow a neighbourhood by kind and by which extractor produced it.
+ *
+ * Two rules the counts depend on. An edge whose other end was hidden goes with
+ * it — an arrow to a node that is not drawn is the same defect the protocol
+ * model refuses. And the node the reader named is never hidden: filtering away
+ * the thing just searched for produces a blank page with no explanation.
+ */
+export function applyFilters<N extends FilterableNode, E extends FilterableEdge>(
+  nodes: readonly N[],
+  edges: readonly E[],
+  filters: Filters,
+  pinned?: string,
+): FilterResult<N, E> {
+  const keepNode = (node: N): boolean => {
+    if (node.id === pinned) return true;
+    if (filters.kinds && !filters.kinds.has(node.kind)) return false;
+    if (filters.producers) {
+      const producers = node.producers ?? [];
+      if (!producers.some((p) => filters.producers!.has(p))) return false;
+    }
+    return true;
+  };
+
+  const kept = nodes.filter(keepNode);
+  const visible = new Set(kept.map((node) => node.id));
+  const keptEdges = edges.filter(
+    (edge) =>
+      (!filters.edgeKinds || filters.edgeKinds.has(edge.kind)) &&
+      visible.has(edge.source) &&
+      visible.has(edge.target),
+  );
+
+  return {
+    nodes: kept,
+    edges: keptEdges,
+    hiddenNodes: nodes.length - kept.length,
+    hiddenEdges: edges.length - keptEdges.length,
+  };
+}
+
 // --- search ------------------------------------------------------------------
 
 export interface SearchableNode {

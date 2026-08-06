@@ -4,7 +4,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KIND_COLORS, kindColor, positionsFromLevels, rankMatches, shortLabels } from "./layout";
+import {
+  applyFilters,
+  KIND_COLORS,
+  kindColor,
+  positionsFromLevels,
+  rankMatches,
+  shortLabels,
+} from "./layout";
 
 const node = (id: string, level: number, label = id) => ({ id, label, level, kind: "module" });
 
@@ -188,6 +195,65 @@ describe("positionsFromLevels", () => {
     const first = positionsFromLevels(nodes, []);
     const second = positionsFromLevels([...nodes].reverse(), []);
     for (const id of ["a", "b", "c"]) expect(first.get(id)).toEqual(second.get(id));
+  });
+});
+
+describe("applyFilters", () => {
+  const nodes = [
+    { id: "f", label: "api.rs", kind: "file", producers: ["rust-analyzer"] },
+    { id: "t", label: "Response", kind: "type", producers: ["rust-analyzer"] },
+    { id: "p", label: "kvstore", kind: "package", producers: ["cargo"] },
+  ];
+  const edges = [
+    { id: "e1", source: "f", target: "t", kind: "contains" },
+    { id: "e2", source: "p", target: "f", kind: "contains" },
+    { id: "e3", source: "f", target: "p", kind: "imports" },
+  ];
+
+  it("keeps everything when nothing is filtered out", () => {
+    const result = applyFilters(nodes, edges, {}, "f");
+    expect(result.nodes).toHaveLength(3);
+    expect(result.hiddenNodes).toBe(0);
+  });
+
+  it("hides nodes of a disabled kind and counts them", () => {
+    const result = applyFilters(nodes, edges, { kinds: new Set(["file", "type"]) }, "f");
+    expect(result.nodes.map((n) => n.id)).toEqual(["f", "t"]);
+    expect(result.hiddenNodes).toBe(1);
+  });
+
+  it("drops an edge whose other end was hidden", () => {
+    // An arrow to a node that is not drawn is the same defect the protocol
+    // model refuses: the reader sees a relationship with one end missing.
+    const result = applyFilters(nodes, edges, { kinds: new Set(["file", "type"]) }, "f");
+    expect(result.edges.map((e) => e.id)).toEqual(["e1"]);
+    expect(result.hiddenEdges).toBe(2);
+  });
+
+  it("hides edges of a disabled kind but keeps their endpoints", () => {
+    const result = applyFilters(nodes, edges, { edgeKinds: new Set(["imports"]) }, "f");
+    expect(result.edges.map((e) => e.id)).toEqual(["e3"]);
+    expect(result.nodes).toHaveLength(3);
+  });
+
+  it("filters by which extractor produced the node", () => {
+    const result = applyFilters(nodes, edges, { producers: new Set(["cargo"]) }, "p");
+    expect(result.nodes.map((n) => n.id)).toEqual(["p"]);
+  });
+
+  it("never hides the node the reader named", () => {
+    // Filtering away the thing you just searched for is not a filter, it is a
+    // blank page with no explanation.
+    const result = applyFilters(nodes, edges, { kinds: new Set(["package"]) }, "f");
+    expect(result.nodes.map((n) => n.id)).toContain("f");
+  });
+
+  it("is a pure function of its inputs", () => {
+    const filters = { kinds: new Set(["file"]) };
+    expect(applyFilters(nodes, edges, filters, "f")).toEqual(
+      applyFilters(nodes, edges, filters, "f"),
+    );
+    expect(nodes).toHaveLength(3);
   });
 });
 

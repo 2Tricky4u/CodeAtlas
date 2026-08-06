@@ -54,6 +54,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/renameGuess" }
     },
+    "labels": {
+      "description": "What kind of change this is — but only the kinds the diff can prove. Seven of the twelve labels in the published taxonomy are decidable from the structural delta and the paths involved; the other five (logic change, error handling, logging, output handling, retype semantics) require reading the code and deciding what it means, and are left to the change explanation where every claim carries a citation. A label that looked mechanical but was actually a guess would put inference inside a deterministic artifact.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/changeLabel" }
+    },
     "unnormalizedIdentities": {
       "description": "Node ids whose identity could not be normalized to a version-independent key. They are compared raw, so a version bump can still show as churn for these.",
       "type": "integer",
@@ -62,6 +67,29 @@
     "summary": { "$ref": "#/$defs/summary" }
   },
   "$defs": {
+    "changeLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "basis"],
+      "properties": {
+        "name": {
+          "enum": [
+            "rename",
+            "code-move",
+            "testing",
+            "documentation",
+            "style",
+            "external-interface",
+            "internal-interface"
+          ]
+        },
+        "basis": {
+          "description": "What decided it. A label without a stated basis cannot be audited afterwards.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "node": {
       "type": "object",
       "additionalProperties": false,

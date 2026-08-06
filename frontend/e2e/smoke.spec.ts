@@ -421,6 +421,23 @@ test.describe("change view", () => {
     await expect(view).toContainText("likely renamed (inference, not fact)");
   });
 
+  test("the change carries only labels the diff could prove", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/change`);
+    const labels = page.getByTestId("change-label");
+    await expect(labels.filter({ hasText: "rename" })).toBeVisible();
+    // The five that need reading code stay in the cited narrative.
+    for (const invented of ["logic-change", "error-handling", "logging"]) {
+      await expect(labels.filter({ hasText: invented })).toHaveCount(0);
+    }
+  });
+
+  test("a label says what decided it", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/change`);
+    await expect(
+      page.getByTestId("change-label").filter({ hasText: "rename" }),
+    ).toHaveAttribute("title", /overlapping range/);
+  });
+
   test("a version bump is shown as excluded, not as churn", async ({ page }) => {
     await page.goto(`/#/runs/${RUN_ID}/change`);
     await expect(page.getByTestId("change-view")).toContainText(
@@ -474,6 +491,39 @@ test.describe("project map", () => {
     await page.getByTestId("focus-search").fill("evict");
     await page.getByTestId("focus-match").first().click();
     await expect(page.locator('[data-testid="focus-graph"] canvas').first()).toBeVisible();
+  });
+
+  test("a filter narrows the neighborhood and says how much it hid", async ({ page }) => {
+    // The cytoscape export has carried evidence producers since M6 with a
+    // comment saying the dashboard can filter on them; nothing ever did.
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("cache");
+    await page.getByTestId("focus-match").first().click();
+    await expect(page.getByTestId("filters")).toBeVisible();
+    await page.getByTestId("filter-toggle").filter({ hasText: "function" }).click();
+    await expect(page.getByTestId("filter-hidden")).toContainText("hid 1 node(s)");
+  });
+
+  test("the node you searched for is never filtered away", async ({ page }) => {
+    // Filtering out the thing just named leaves a blank canvas with no
+    // explanation, which is not a filter.
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("cache");
+    await page.getByTestId("focus-match").first().click();
+    await page.getByTestId("filter-toggle").filter({ hasText: "file" }).click();
+    await expect(page.locator('[data-testid="focus-graph"] canvas').first()).toBeVisible();
+  });
+
+  test("filters offer the kinds this graph actually contains", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("cache");
+    await page.getByTestId("focus-match").first().click();
+    const filters = page.getByTestId("filters");
+    await expect(filters).toContainText("rust-analyzer");
+    await expect(filters).toContainText("cargo");
   });
 
   test("nothing is drawn until the reader names something", async ({ page }) => {

@@ -418,12 +418,14 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             return {}
 
         from codeatlas.change.graph import diff_graphs
+        from codeatlas.change.labels import label_change
 
         base_graph = ProjectGraph.model_validate(json.loads(deps.cas.get(base_graph_sha)))
         head_graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         added = {path: set(lines) for path, lines in (state.get("added_lines") or {}).items()}
 
         diff = diff_graphs(base_graph, head_graph, added_lines=added or None)
+        diff.labels = label_change(diff, api_changed=_api_changed_symbols(deps, state))
         payload = canonical_json(diff.contract_dump())
         sha = deps.cas.put(payload)
         with Session(deps.engine) as session:
@@ -644,6 +646,26 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             )
             session.commit()
         return {"change_impact_sha256": sha}
+
+    def _api_changed_symbols(deps: PipelineDeps, state: PipelineState) -> set[str] | None:
+        """Symbol names the public API delta reported, or None if it never ran.
+
+        None and the empty set mean different things: no delta at all makes no
+        claim about the interface, while an empty delta says the change stayed
+        behind the published surface.
+        """
+        sha = state.get("api_change_sha256")
+        if not sha:
+            return None
+        from codeatlas.models.api import ApiChange
+
+        change = ApiChange.model_validate(json.loads(deps.cas.get(sha)))
+        return {
+            item.split("(")[0].split()[-1]
+            for package in change.packages
+            for item in [*package.added, *package.removed]
+            if item.strip()
+        }
 
     def project_overview(state: PipelineState) -> dict[str, Any]:
         """What this project is and where to start reading it.
@@ -1030,9 +1052,13 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("source_lock", "extract")
     builder.add_edge("extract", "build_graph")
     builder.add_edge("build_graph", "base_revision")
-    builder.add_edge("base_revision", "graph_diff")
-    builder.add_edge("graph_diff", "api_change")
-    builder.add_edge("api_change", "change_impact")
+    # `api_change` before `graph_diff`, though neither reads the other's output:
+    # the diff's interface labels need to know which symbols the public API
+    # delta named, and "changed but not exported" is only expressible once that
+    # delta exists.
+    builder.add_edge("base_revision", "api_change")
+    builder.add_edge("api_change", "graph_diff")
+    builder.add_edge("graph_diff", "change_impact")
     builder.add_edge("change_impact", "project_overview")
     builder.add_edge("project_overview", "architecture")
     builder.add_edge("architecture", "narrate")
