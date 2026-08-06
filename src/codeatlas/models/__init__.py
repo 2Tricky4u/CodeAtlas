@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from codeatlas.models.adr_audit import AdrAudit
 from codeatlas.models.agent import AgentResult, AgentTask
 from codeatlas.models.api import ApiChange, ApiSurface
 from codeatlas.models.architecture import Architecture
@@ -31,6 +32,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "agent-task.v1.json": AgentTask,
     "agent-result.v1.json": AgentResult,
     "run-manifest.v1.json": RunManifest,
+    "adr-audit.v1.json": AdrAudit,
     "architecture.v1.json": Architecture,
     "api-surface.v1.json": ApiSurface,
     "api-change.v1.json": ApiChange,
@@ -44,6 +46,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
 
 __all__ = [
     "CONTRACT_MODELS",
+    "AdrAudit",
     "AgentResult",
     "AgentTask",
     "ApiChange",

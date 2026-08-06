@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import { api, type RunSummary } from "./api";
 import { Badge, ErrorBox, Loading, shortSha, STATUS_TONE } from "./ui";
+import { AdrView } from "./views/AdrView";
 import { ArchitectureView } from "./views/ArchitectureView";
 import { ChangeView } from "./views/ChangeView";
 import { DetailView } from "./views/DetailView";
@@ -28,6 +29,7 @@ export function App() {
             <Route path="overview" element={<OverviewView />} />
             <Route path="map" element={<MapView />} />
             <Route path="architecture" element={<ArchitectureView />} />
+            <Route path="adr" element={<AdrView />} />
             <Route path="change" element={<ChangeView />} />
             <Route path="findings" element={<FindingsView />} />
             <Route path="detail" element={<DetailView />} />
@@ -130,6 +132,7 @@ const TABS = [
   { path: "overview", label: "overview" },
   { path: "map", label: "map" },
   { path: "architecture", label: "architecture" },
+  { path: "adr", label: "decisions" },
   { path: "change", label: "change" },
   { path: "findings", label: "findings" },
   { path: "detail", label: "run detail" },

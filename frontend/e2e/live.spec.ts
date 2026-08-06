@@ -58,6 +58,13 @@ test.describe("live", () => {
     await page.screenshot({ path: "../var/ui-shots/live-architecture.png" });
   });
 
+  test("decisions", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN}/adr`);
+    await expect(page.getByTestId("adr-view")).toBeVisible();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: "../var/ui-shots/live-adr.png" });
+  });
+
   test("focus on a real symbol", async ({ page }) => {
     await page.goto(`/#/runs/${RUN}/map`);
     await page.getByTestId("focus-tab").click();

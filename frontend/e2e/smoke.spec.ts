@@ -5,6 +5,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import {
+  ADR_AUDIT,
   API_CHANGE,
   ARCHITECTURE,
   DETAIL,
@@ -59,6 +60,9 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/artifact/structurizr-dsl`, (route) =>
     route.fulfill({ body: STRUCTURIZR_DSL, headers: { "content-type": "text/plain" } }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/adr-audit`, (route) =>
+    route.fulfill({ json: ADR_AUDIT }),
   );
 }
 
@@ -239,6 +243,59 @@ test.describe("architecture view", () => {
     );
     await page.goto(`/#/runs/${RUN_ID}/architecture`);
     await expect(page.getByTestId("empty-state")).toContainText("no architecture model");
+  });
+});
+
+test.describe("decisions view", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("decisions read in the order they were taken", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    const entries = page.getByTestId("adr-timeline").locator("li");
+    // `allInnerTexts` does not auto-wait, so anchor on the count first.
+    await expect(entries).toHaveCount(3);
+    const labels = await entries.locator(".panel-title").allInnerTexts();
+    expect(labels.join(" ")).toMatch(/ADR-0001[\s\S]*ADR-0002[\s\S]*ADR-0003/);
+  });
+
+  test("drift is stated, not softened", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    await expect(page.getByTestId("adr-view")).toContainText("probable-drift");
+    await expect(page.getByTestId("adr-view")).toContainText("contradicts this decision");
+  });
+
+  test("unverifiable is not allowed to look like conformance", async ({ page }) => {
+    // The distinction the whole audit exists to preserve.
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    await expect(page.getByTestId("adr-view")).toContainText(
+      "no evidence in the graph could check this either way",
+    );
+  });
+
+  test("a decision needing a person says the audit may not choose", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    await expect(page.getByTestId("needs-human")).toContainText("not allowed to choose");
+  });
+
+  test("a superseded decision says what replaced it", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    await expect(page.getByTestId("superseded-by")).toContainText("ADR-0005");
+  });
+
+  test("a project with no ADRs states that rather than showing a blank tab", async ({ page }) => {
+    // The common case: ripgrep has no docs/adr at all.
+    await page.route(`**/api/runs/${RUN_ID}/artifact/adr-audit`, (route) =>
+      route.fulfill({
+        json: {
+          revision: HEAD,
+          decisions: [],
+          notes: ["no ADRs found; architecture conformance was not audited"],
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/adr`);
+    await expect(page.getByTestId("adr-notes")).toContainText("no ADRs found");
+    await expect(page.getByTestId("empty-state")).toContainText("records no architecture decisions");
   });
 });
 

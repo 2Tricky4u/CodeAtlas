@@ -707,16 +707,18 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         return {"project_overview_sha256": sha, "graph_views_sha256": view_sha}
 
     def architecture(state: PipelineState) -> dict[str, Any]:
-        """The C4 Context + Container model, and the Structurizr DSL for it.
+        """The C4 model, the Structurizr DSL, and the ADR conformance audit.
 
-        Deterministic, so it belongs here rather than in the review half: an
-        architecture diagram of a repository does not depend on anyone having
+        All three are deterministic, so they belong here rather than in the
+        review half: an architecture diagram of a repository, and whether its
+        code still does what its ADRs decided, do not depend on anyone having
         reviewed a change to it. The DSL's *validation* still lives in `review`,
         because that needs the Structurizr CLI installed.
         """
         from codeatlas.artifacts.structurizr.gen import generate_dsl, map_graph_to_c4
         from codeatlas.pipeline.artifacts_out import publish_artifact
         from codeatlas.project.architecture import build_architecture
+        from codeatlas.project.decisions import audit_decisions
 
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         overview = ProjectOverview.model_validate(
@@ -742,6 +744,14 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             deps, state["run_id"], "structurizr-dsl", dsl, media_type="text/plain"
         )
 
+        # Published even when empty: "this project records no architecture
+        # decisions" is a fact about it, and a missing artifact is
+        # indistinguishable from a stage that failed.
+        audit = audit_decisions(Path(state["checkout_path"]), graph, state["head_sha"])
+        audit_sha = publish_artifact(
+            deps, state["run_id"], "adr-audit", audit.contract_dump(), schema_id="adr-audit.v1"
+        )
+
         with Session(deps.engine) as session:
             repo.add_run_event(
                 session,
@@ -752,10 +762,19 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     "containers": len(model.containers),
                     "relationships": len(model.relationships),
                     "readable": bool(model.readability and model.readability.passed),
+                    "decisions": len(audit.decisions),
+                    "drifting": sum(
+                        1 for d in audit.decisions if d.audit_result == "probable-drift"
+                    ),
                 },
             )
             session.commit()
-        return {"architecture_sha256": sha, "structurizr_dsl_sha256": dsl_sha}
+        return {
+            "architecture_sha256": sha,
+            "structurizr_dsl_sha256": dsl_sha,
+            "adr_audit_sha256": audit_sha,
+            "review_notes": audit.notes,
+        }
 
     def narrate(state: PipelineState) -> dict[str, Any]:
         """Say what this project is, checked against the overview above.
@@ -837,7 +856,6 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
 
         from codeatlas.pipeline.review_stages import (
             ReviewContext,
-            stage_adr_audit,
             stage_diagrams,
             stage_explain_change,
             stage_intent,
@@ -885,7 +903,6 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         stage_validate(deps, ctx, revision_db_id=state["revision_db_id"])
         stage_synthesize(deps, ctx)
         stage_diagrams(deps, ctx, deps.cas.get(state["structurizr_dsl_sha256"]).decode("utf-8"))
-        stage_adr_audit(deps, ctx)
         payload = stage_payload(deps, ctx, scope=scope)
 
         assert ctx.validation is not None

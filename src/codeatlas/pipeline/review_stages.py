@@ -1,5 +1,10 @@
 """The review half of the pipeline: intent, reviewers, verification, validation,
-synthesis, diagrams, ADR audit, and the dry-run payload.
+synthesis, C4 validation, and the dry-run payload.
+
+Everything here needs an agent engine or an external toolchain. What does not —
+the project overview, the architecture model, the ADR conformance audit, the
+project narrative's own node — lives in the deterministic half, where it can be
+had without paying for a review.
 
 Each stage is a plain function over the dependency container so it can be tested
 directly, then composed into the LangGraph in `graph.py`. They persist their own
@@ -19,8 +24,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from codeatlas.adr.audit import LayeringRule, audit_layering
-from codeatlas.adr.parser import parse_adr_directory
 from codeatlas.artifacts.mermaid.gen import sequence_diagram, state_diagram
 from codeatlas.artifacts.mermaid.validate import mmdc_path, render
 from codeatlas.artifacts.structurizr.validate import (
@@ -299,37 +302,6 @@ def stage_protocol_diagrams(
             render(source, out / f"{name}.svg")
         except Exception as exc:
             ctx.notes.append(f"protocol {name} render failed: {exc}")
-
-
-def stage_adr_audit(deps: PipelineDeps, ctx: ReviewContext) -> None:
-    decisions = parse_adr_directory(ctx.checkout / "docs" / "adr", root=ctx.checkout)
-    if not decisions:
-        ctx.notes.append("no ADRs found; architecture conformance was not audited")
-        return
-    layers = _infer_layers(ctx.graph)
-    audits = []
-    for decision in decisions:
-        result = audit_layering(
-            decision, LayeringRule(layers=layers, module_root=_module_root(ctx.graph)), ctx.graph
-        )
-        audits.append(
-            {
-                "adr": result.adr_path,
-                "label": result.adr_label,
-                "status": result.status,
-                "assertion": result.assertion,
-                "auditResult": result.audit_result,
-                "confidence": result.confidence,
-                "requiresHumanDecision": result.requires_human_decision,
-                "affectedNodes": result.affected_node_ids,
-                "evidence": result.evidence,
-                "detail": result.detail,
-            }
-        )
-    ctx.publish(deps, "adr-audit", audits)
-    drifting = [a for a in audits if a["auditResult"] == "probable-drift"]
-    if drifting:
-        ctx.notes.append(f"{len(drifting)} ADR(s) show probable drift")
 
 
 def _module_root(graph: ProjectGraph) -> str:

@@ -38,6 +38,7 @@ EXPECTED_SCHEMAS = {
     "project-explanation.v1.json",
     "project-overview.v1.json",
     "architecture.v1.json",
+    "adr-audit.v1.json",
     "graph-view.v1.json",
 }
 
@@ -471,6 +472,30 @@ PROJECT_EXPLANATION_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+ADR_AUDIT_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "revision": "a" * 40,
+    "decisions": [
+        {
+            "adr": "docs/adr/adr-0001-layering.md",
+            "label": "ADR-0001",
+            "number": 1,
+            "title": "Layering",
+            "status": "accepted",
+            "date": "2026-01-15",
+            "supersededBy": None,
+            "assertion": "Dependencies flow downward through api -> cache -> storage.",
+            "auditResult": "probable-drift",
+            "confidence": 0.85,
+            "requiresHumanDecision": True,
+            "affectedNodes": ["file:kvstore/src/storage.rs"],
+            "evidence": [{"edge": "edge:70615f911899", "from": "storage", "to": "api"}],
+            "detail": "storage.rs imports crate::api::Response, which the decision prohibits.",
+        }
+    ],
+    "notes": ["1 decision(s) show probable drift from the code"],
+}
+
 ARCHITECTURE_EXAMPLE: dict[str, Any] = {
     "schemaVersion": "1.0.0",
     "repositoryId": "local/kvstore",
@@ -640,6 +665,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "project-explanation.v1.json": PROJECT_EXPLANATION_EXAMPLE,
     "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
     "architecture.v1.json": ARCHITECTURE_EXAMPLE,
+    "adr-audit.v1.json": ADR_AUDIT_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
 }
 

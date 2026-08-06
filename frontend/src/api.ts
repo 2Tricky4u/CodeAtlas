@@ -302,6 +302,37 @@ export interface Architecture {
   notes?: string[];
 }
 
+// --- architecture decisions -------------------------------------------------
+
+export type AuditResult =
+  | "conformant"
+  | "probable-drift"
+  | "unverifiable"
+  | "intentionally-superseded";
+
+export interface AuditedDecision {
+  adr: string;
+  label: string;
+  number?: number | null;
+  title?: string | null;
+  status: string;
+  date?: string | null;
+  supersededBy?: string | null;
+  assertion: string;
+  auditResult: AuditResult;
+  confidence: number;
+  requiresHumanDecision: boolean;
+  affectedNodes?: string[];
+  evidence?: Record<string, unknown>[];
+  detail?: string;
+}
+
+export interface AdrAudit {
+  revision: string;
+  decisions: AuditedDecision[];
+  notes?: string[];
+}
+
 // --- project narrative ------------------------------------------------------
 
 /** One revision, so no `revision` field — see project-explanation.v1. */
@@ -383,6 +414,7 @@ export const api = {
   architecture: (id: string) =>
     getOptional<Architecture>(`/api/runs/${id}/artifact/architecture`),
   structurizrDsl: (id: string) => getOptionalText(`/api/runs/${id}/artifact/structurizr-dsl`),
+  adrAudit: (id: string) => getOptional<AdrAudit>(`/api/runs/${id}/artifact/adr-audit`),
   source: (revision: string, path: string, start?: number, end?: number) => {
     const params = new URLSearchParams({ path });
     if (start !== undefined) params.set("start", String(start));

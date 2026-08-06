@@ -281,6 +281,64 @@ export const ARCHITECTURE = {
   notes: ["3 package(s) resolved by the build but not present in this repository are not drawn: they are dependencies, not containers"],
 };
 
+export const ADR_AUDIT = {
+  revision: HEAD,
+  decisions: [
+    {
+      adr: "docs/adr/adr-0001-layering.md",
+      label: "ADR-0001",
+      number: 1,
+      title: "Layering",
+      status: "accepted",
+      date: "2026-01-15",
+      supersededBy: null,
+      assertion: "Dependencies flow downward through api -> cache -> storage.",
+      auditResult: "probable-drift",
+      confidence: 0.85,
+      requiresHumanDecision: true,
+      affectedNodes: ["file:kvstore/src/storage.rs"],
+      evidence: [{ edge: "edge:70615f911899" }],
+      detail: "storage.rs imports crate::api::Response, which the decision prohibits.",
+    },
+    {
+      adr: "docs/adr/adr-0002-cache.md",
+      label: "ADR-0002",
+      number: 2,
+      title: "Bounded cache",
+      status: "superseded",
+      date: "2026-02-02",
+      supersededBy: "ADR-0005",
+      assertion: "The cache is bounded by entry count.",
+      auditResult: "intentionally-superseded",
+      confidence: 1,
+      requiresHumanDecision: false,
+      affectedNodes: [],
+      evidence: [],
+      detail: "",
+    },
+    {
+      adr: "docs/adr/adr-0003-protocol.md",
+      label: "ADR-0003",
+      number: 3,
+      title: "Wire protocol",
+      status: "accepted",
+      date: "2026-03-09",
+      supersededBy: null,
+      assertion: "Requests are colon-separated verb forms.",
+      auditResult: "unverifiable",
+      confidence: 0.2,
+      requiresHumanDecision: false,
+      affectedNodes: [],
+      evidence: [],
+      detail: "",
+    },
+  ],
+  notes: [
+    "1 decision(s) show probable drift from the code",
+    "1 decision(s) could not be checked: there was no evidence in the graph to check them against, which is not the same as conformance",
+  ],
+};
+
 export const STRUCTURIZR_DSL = `workspace "kvstore" "Architecture derived from the CodeAtlas project graph" {
     model {
         sys_kvstore = softwareSystem "kvstore" {

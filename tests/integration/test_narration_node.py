@@ -87,8 +87,19 @@ class TestNarrationWithoutReview:
         run_id = _run(deps, tmp_path)
         roles = _roles(db_engine, run_id)
         assert "project-explanation" in roles
-        # and none of the review's own output
-        assert not roles & {"candidate-findings", "review-markdown", "adr-audit", "intent"}
+        # and none of the review's own output. `architecture` and `adr-audit`
+        # are deliberately absent from this set: they need no agent, so they are
+        # produced deterministically and are present on every run.
+        assert not roles & {"candidate-findings", "review-markdown", "intent"}
+
+    def test_the_deterministic_project_artifacts_do_not_wait_for_a_review(
+        self, db_engine, tmp_path
+    ) -> None:  # type: ignore[no-untyped-def]
+        """Whether the code still matches its ADRs is a question about a
+        repository, not about a change to it."""
+        deps = _deps(db_engine, tmp_path, review_enabled=False, narration_enabled=False)
+        run_id = _run(deps, tmp_path)
+        assert {"architecture", "structurizr-dsl", "adr-audit"} <= _roles(db_engine, run_id)
 
     def test_no_findings_are_recorded_when_review_is_off(self, db_engine, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from sqlalchemy import func, select

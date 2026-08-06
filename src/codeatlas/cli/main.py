@@ -103,9 +103,14 @@ def run(
     from codeatlas.pipeline.runner import run_status, start_run
     from codeatlas.pipeline.source import is_remote
 
-    if not is_remote(repo) and not Path(repo).is_dir():
-        typer.echo(f"--repo {repo!r} is neither a directory nor a clone URL", err=True)
-        raise typer.Exit(2)
+    if not is_remote(repo):
+        local = Path(repo)
+        if not local.is_dir():
+            typer.echo(f"--repo {repo!r} is neither a directory nor a clone URL", err=True)
+            raise typer.Exit(2)
+        # Resolved because the mirror clone runs with its own working directory:
+        # a relative path passes the check here and then fails to exist there.
+        repo = str(local.resolve())
 
     deps = _deps(workdir, test_db, review=review, narrate=narrate, replay=replay)
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
