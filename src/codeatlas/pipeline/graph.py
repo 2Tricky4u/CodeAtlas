@@ -672,6 +672,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             ReviewContext,
             stage_adr_audit,
             stage_diagrams,
+            stage_explain_change,
             stage_intent,
             stage_payload,
             stage_reviewers,
@@ -693,6 +694,24 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         # not introduce is reported without blocking. In repository mode it is
         # None, which means the whole tree is in scope and everything blocks.
         scope = scope_from_state(deps, dict(state))
+
+        # Explaining the change comes first: it is what a reviewer reads before
+        # any finding, and it depends only on artifacts already computed.
+        graph_diff_sha = state.get("graph_diff_sha256")
+        if state.get("base_sha") and graph_diff_sha:
+            lock = SourceLock.model_validate(json.loads(deps.cas.get(state["source_lock_sha256"])))
+            stage_explain_change(
+                deps,
+                ctx,
+                repository_id=state["repository_id"],
+                base_sha=state["base_sha"],
+                merge_base_sha=lock.merge_base_sha or state["base_sha"],
+                base_revision_db_id=state["base_revision_db_id"],
+                head_revision_db_id=state["revision_db_id"],
+                graph_diff_sha=graph_diff_sha,
+                api_change_sha=state.get("api_change_sha256"),
+                impact_sha=state.get("change_impact_sha256"),
+            )
 
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)

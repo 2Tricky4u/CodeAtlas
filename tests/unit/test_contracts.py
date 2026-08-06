@@ -34,6 +34,7 @@ EXPECTED_SCHEMAS = {
     "api-change.v1.json",
     "graph-diff.v1.json",
     "change-impact.v1.json",
+    "change-explanation.v1.json",
 }
 
 
@@ -372,6 +373,57 @@ CHANGE_IMPACT_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+IMPACT_KEY = "sym:scip/rust-analyzer cargo kvstore api/handle_request()."
+
+CHANGE_EXPLANATION_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "summary": "Replaces Cache::evict_oldest with Cache::evict and adds Cache::capacity.",
+    "sections": [
+        {
+            "id": "before",
+            "title": "What it did before",
+            "claims": [
+                {
+                    "text": "evict_oldest looped 0..=n, removing one entry more than asked for.",
+                    "citations": [
+                        {
+                            "kind": "source",
+                            "revision": "base",
+                            "path": "kvstore/src/cache.rs",
+                            "startLine": 41,
+                            "endLine": 48,
+                        }
+                    ],
+                }
+            ],
+        },
+        {
+            "id": "impact",
+            "title": "What else could be affected",
+            "claims": [
+                {
+                    "text": "handle_request reaches this code and could be affected.",
+                    "citations": [
+                        {
+                            "kind": "impact",
+                            "stableKey": IMPACT_KEY,
+                        }
+                    ],
+                }
+            ],
+        },
+    ],
+    "sequenceDiagram": None,
+    "droppedClaims": [
+        {
+            "sectionId": "risks",
+            "text": "The retry loop was removed.",
+            "reason": "kvstore/src/scheduler.rs does not exist at the head revision",
+        }
+    ],
+    "notes": [],
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -386,6 +438,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "api-change.v1.json": API_CHANGE_EXAMPLE,
     "graph-diff.v1.json": GRAPH_DIFF_EXAMPLE,
     "change-impact.v1.json": CHANGE_IMPACT_EXAMPLE,
+    "change-explanation.v1.json": CHANGE_EXPLANATION_EXAMPLE,
 }
 
 

@@ -76,12 +76,16 @@ def build_payload(
     pr_number: int,
     commit_sha: str,
     changed_paths: set[str] | None = None,
+    explanation_markdown: str | None = None,
 ) -> ReviewPayload:
     """Render a report into a PR review payload.
 
     Inline comments are only produced for findings inside changed files — GitHub
     rejects comments outside the diff, and commenting on untouched code in a PR
     is noise regardless. Everything else stays in the summary body.
+
+    The change explanation leads the body when there is one: a reviewer needs to
+    know what the change does before being told what might be wrong with it.
     """
     comments: list[ReviewComment] = []
     for entry in report.publishable:
@@ -98,12 +102,16 @@ def build_payload(
             )
         )
 
+    body = render_markdown(report)
+    if explanation_markdown:
+        body = f"## What this change does\n\n{explanation_markdown}\n\n---\n\n{body}"
+
     return ReviewPayload(
         owner=owner,
         repo=repo,
         pr_number=pr_number,
         commit_sha=commit_sha,
-        body=render_markdown(report),
+        body=body,
         comments=comments,
     )
 

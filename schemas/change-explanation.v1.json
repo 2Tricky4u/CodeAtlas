@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/change-explanation.v1.json",
+  "title": "Change Explanation",
+  "description": "A narrative account of what a change did — before, after, structure, impact, risks — in which every claim carries a citation that can be resolved against the pinned revisions and the deterministic artifacts. Claims whose citations do not resolve are removed, not softened, and the removal is recorded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "summary", "sections"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "summary": {
+      "description": "One paragraph a reviewer can read before anything else.",
+      "type": "string",
+      "minLength": 1
+    },
+    "sections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/section" }
+    },
+    "sequenceDiagram": {
+      "description": "Mermaid source, present only when the change alters how components talk to each other. Rendered before publication; an unrenderable diagram is dropped rather than shipped.",
+      "type": ["string", "null"]
+    },
+    "droppedClaims": {
+      "description": "Claims removed by citation validation, with the reason. Present so a thin explanation is visibly thin rather than quietly so.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/droppedClaim" }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "claims"],
+      "properties": {
+        "id": { "enum": ["before", "after", "structural", "impact", "risks"] },
+        "title": { "type": "string", "minLength": 1 },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "citations"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "citations": {
+          "description": "At least one. A claim with no citation is not publishable, whatever it says.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/citation" }
+        }
+      }
+    },
+    "citation": {
+      "oneOf": [
+        { "$ref": "#/$defs/sourceCitation" },
+        { "$ref": "#/$defs/edgeCitation" },
+        { "$ref": "#/$defs/apiCitation" },
+        { "$ref": "#/$defs/impactCitation" }
+      ]
+    },
+    "sourceCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "revision", "path"],
+      "properties": {
+        "kind": { "const": "source" },
+        "revision": { "enum": ["base", "head"] },
+        "path": { "type": "string", "minLength": 1 },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "edgeCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "edgeId"],
+      "properties": {
+        "kind": { "const": "graph-edge" },
+        "edgeId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "apiCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "item"],
+      "properties": {
+        "kind": { "const": "api-item" },
+        "item": { "type": "string", "minLength": 1 }
+      }
+    },
+    "impactCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "stableKey"],
+      "properties": {
+        "kind": { "const": "impact" },
+        "stableKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "droppedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sectionId", "text", "reason"],
+      "properties": {
+        "sectionId": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

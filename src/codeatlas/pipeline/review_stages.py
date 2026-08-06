@@ -9,10 +9,12 @@ a stage that failed leaves the reason behind.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from codeatlas.adr.audit import LayeringRule, audit_layering
@@ -29,6 +31,7 @@ from codeatlas.artifacts.structurizr.validate import (
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
 from codeatlas.db.tables import FileRow, FindingRow
+from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
@@ -62,6 +65,7 @@ class ReviewContext:
     failed_skills: list[str] = field(default_factory=list)
     validation: ValidationOutcome | None = None
     report: ReviewReport | None = None
+    explanation: ChangeExplanation | None = None
     artifacts: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -126,8 +130,6 @@ def stage_validate(deps: PipelineDeps, ctx: ReviewContext, revision_db_id: int) 
         ctx.notes.append(f"verification tools unavailable: {', '.join(battery.tools_unavailable)}")
 
     with Session(deps.engine) as session:
-        from sqlalchemy import select
-
         paths = session.scalars(
             select(FileRow.path).where(FileRow.revision_id == revision_db_id)
         ).all()
@@ -321,6 +323,103 @@ def _infer_layers(graph: ProjectGraph) -> list[str]:
     return ordered + [n for n in names if n not in ordered]
 
 
+def stage_explain_change(
+    deps: PipelineDeps,
+    ctx: ReviewContext,
+    *,
+    repository_id: str,
+    base_sha: str,
+    merge_base_sha: str,
+    base_revision_db_id: int,
+    head_revision_db_id: int,
+    graph_diff_sha: str,
+    api_change_sha: str | None,
+    impact_sha: str | None,
+) -> None:
+    """Explain the change, then delete every claim that does not check out.
+
+    The diff is recomputed here with context rather than reused from
+    `source_lock`: that one is zero-context because its only consumer is
+    added-line extraction, and a reader — human or model — needs the lines
+    around a change to say what it did.
+    """
+    from codeatlas.models.api import ApiChange
+    from codeatlas.models.diff import GraphDiff
+    from codeatlas.models.impact import ChangeImpact
+    from codeatlas.pipeline.source import mirror_path
+    from codeatlas.review.explainer import build_index, explain_change
+
+    mirror = mirror_path(deps, repository_id)
+    diff_text = deps.git.unified_diff(mirror, merge_base_sha, ctx.revision_sha, context=3)
+
+    diff = GraphDiff.model_validate(json.loads(deps.cas.get(graph_diff_sha)))
+    api_change = (
+        ApiChange.model_validate(json.loads(deps.cas.get(api_change_sha)))
+        if api_change_sha
+        else None
+    )
+    impact = (
+        ChangeImpact.model_validate(json.loads(deps.cas.get(impact_sha))) if impact_sha else None
+    )
+
+    index = build_index(
+        db_engine=deps.engine,
+        base_revision_id=base_revision_db_id,
+        head_revision_id=head_revision_db_id,
+        base_sha=base_sha,
+        head_sha=ctx.revision_sha,
+        diff=diff,
+        api_change=api_change,
+        impact=impact,
+    )
+
+    def read_lines(revision: str, path: str) -> int:
+        revision_id = base_revision_db_id if revision == base_sha else head_revision_db_id
+        with Session(deps.engine) as session:
+            row = session.scalar(
+                select(FileRow).where(FileRow.revision_id == revision_id, FileRow.path == path)
+            )
+        if row is None:
+            raise FileNotFoundError(path)
+        blob = deps.git.cat_file(mirror, row.git_blob_sha)
+        return len(blob.decode("utf-8", "replace").splitlines())
+
+    explanation, dropped = explain_change(
+        engine=deps.agent_engine,  # type: ignore[arg-type]
+        registry=deps.registry(),
+        run_id=ctx.run_id,
+        head_sha=ctx.revision_sha,
+        checkout=ctx.checkout,
+        db_engine=deps.engine,
+        cas=deps.cas,
+        diff_text=diff_text,
+        diff=diff,
+        api_change=api_change,
+        impact=impact,
+        index=index,
+        budget=deps.budget,
+        read_lines=read_lines,
+    )
+    if explanation is None:
+        ctx.failed_skills.append("change-explainer")
+        ctx.notes.append("change explanation unavailable: the explainer did not complete")
+        return
+
+    ctx.explanation = explanation
+    ctx.artifacts["changeExplanation"] = deps.cas.put_json(explanation.contract_dump())
+    if dropped:
+        ctx.notes.append(
+            f"{len(dropped)} explanation claim(s) removed: their citations did not "
+            "resolve against this run's evidence"
+        )
+    log.info(
+        "review.explained",
+        run_id=ctx.run_id,
+        claims=explanation.claim_count,
+        dropped=len(dropped),
+    )
+
+
 def stage_payload(
     deps: PipelineDeps, ctx: ReviewContext, scope: ChangedScope | None
 ) -> dict[str, Any] | None:
@@ -328,6 +427,7 @@ def stage_payload(
     if ctx.report is None or deps.github_owner is None or deps.pr_number is None:
         return None
     from codeatlas.publication.shadow import run_shadow
+    from codeatlas.review.explainer import condensed_markdown
 
     with Session(deps.engine) as session:
         result = run_shadow(
@@ -341,6 +441,7 @@ def stage_payload(
             repo=deps.github_repo or "",
             pr_number=deps.pr_number,
             commit_sha=ctx.revision_sha,
+            explanation_markdown=(condensed_markdown(ctx.explanation) if ctx.explanation else None),
         )
         session.commit()
     ctx.artifacts["reviewPayload"] = result.dry_run.payload_sha256

@@ -9,6 +9,9 @@ pinned revision (or a GitHub pull request), a completed run produces:
 - a **model-free before/after of a change**: the structural delta (symbols and edges added,
   removed, moved, touched) plus the public-API delta from `cargo public-api` and the
   breaking-change severity from `cargo-semver-checks`;
+- a **narrative explanation of the change** — before, after, structure, impact, risks —
+  in which every claim cites a pinned line, a graph edge, an API item or an impact entry,
+  and any claim whose citation does not resolve is deleted rather than softened;
 - **validated review findings** (correctness, security, architecture) — every finding is
   adversarially validated and only publication-eligible with deterministic evidence;
 - **Structurizr C4** architecture views, **Mermaid** protocol/sequence/state diagrams, and a
@@ -49,6 +52,13 @@ removed. One hop by default and two at the most: static change-impact precision 
 none of it. Results are ranked (public API, crate-crossing, internal, test-only), the surplus
 past the report limit is counted rather than dropped, and the precision caveat is a field of
 the artifact so nothing can render the list without it.
+
+The `review` stage then explains the change before reviewing it, because a reviewer needs to
+know what a change does before being told what might be wrong with it. The explanation is
+the one artifact a model writes, and what makes it usable is not the model's care but the
+validator behind it: each claim must cite something this run measured, and a claim whose
+citations do not resolve is removed and listed in `droppedClaims`. A softened false claim is
+still a false claim, and it keeps the authority of appearing in the report.
 
 ## Design principle
 

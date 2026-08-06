@@ -49,15 +49,27 @@ class ClaudeAgentEngine:
         self.cas = cas
 
     def _resolve_inputs(self, task: AgentTask) -> dict[str, Any] | None:
+        """Dereference each input to the content the agent will actually see.
+
+        Not every input is JSON. A unified diff is plain text, and treating a
+        failed `json.loads` as an unresolvable input discarded *every* input for
+        that task — the agent then reasoned with nothing, which is precisely the
+        failure this inlining was introduced to fix. Non-JSON content is passed
+        through as text; only a genuinely missing artifact is unresolvable.
+        """
         if self.cas is None or not task.inputs:
             return None
         resolved: dict[str, Any] = {}
         for name, ref in task.inputs.items():
             try:
-                resolved[name] = json.loads(self.cas.get(ref))
-            except (KeyError, ValueError) as exc:
-                log.error("agent.input_unresolvable", input=name, ref=ref, error=str(exc))
+                raw = self.cas.get(ref)
+            except KeyError as exc:
+                log.error("agent.input_missing", input=name, ref=ref, error=str(exc))
                 return None
+            try:
+                resolved[name] = json.loads(raw)
+            except ValueError:
+                resolved[name] = raw.decode("utf-8", "replace")
         return resolved
 
     def health_check(self) -> EngineHealth:

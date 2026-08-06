@@ -50,6 +50,7 @@ def run_shadow(
     repo: str,
     pr_number: int,
     commit_sha: str,
+    explanation_markdown: str | None = None,
 ) -> ShadowResult:
     by_id = {f.finding_id: f for f in findings}
     blocking: list[str] = []
@@ -74,6 +75,7 @@ def run_shadow(
         pr_number=pr_number,
         commit_sha=commit_sha,
         changed_paths=scope.changed_paths if scope else None,
+        explanation_markdown=explanation_markdown,
     )
     result = dry_run(session, run_id=run_id, report=report, payload=payload, cas=cas)
 

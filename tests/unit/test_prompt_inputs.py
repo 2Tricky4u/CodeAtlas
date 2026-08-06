@@ -90,3 +90,45 @@ def test_empty_inputs_produce_no_inputs_section() -> None:
     prompt = _build_prompt(_task({}), "INSTRUCTIONS", None)
     assert "## Inputs" not in prompt
     assert "## Output contract" in prompt
+
+
+def test_a_plain_text_input_is_inlined_as_text(tmp_path: Path) -> None:
+    """Not every input is JSON. A unified diff is the obvious one."""
+    cas = ArtifactStore(tmp_path / "objects")
+    diff = "--- a/cache.rs\n+++ b/cache.rs\n@@ -41,8 +41,10 @@\n-    pub fn evict_oldest(\n"
+    ref = cas.put(diff.encode("utf-8"))
+    engine = ClaudeAgentEngine(cas=cas)
+    task = _task({"unifiedDiff": ref})
+
+    resolved = engine._resolve_inputs(task)
+    assert resolved == {"unifiedDiff": diff}
+    assert "evict_oldest" in _build_prompt(task, "INSTRUCTIONS", resolved)
+
+
+def test_one_text_input_does_not_discard_the_json_ones(tmp_path: Path) -> None:
+    """The bug this replaces: a failed json.loads dropped *every* input.
+
+    The task then reached the model with no evidence at all — the same silent
+    starvation that made the validator rule on a finding it had never seen.
+    """
+    cas = ArtifactStore(tmp_path / "objects")
+    task = _task(
+        {
+            "unifiedDiff": cas.put(b"@@ -1 +1 @@\n-old\n+new\n"),
+            "structuralDiff": cas.put_json({"nodes": {"removed": [{"label": "evict_oldest"}]}}),
+        }
+    )
+
+    resolved = engine_resolved = ClaudeAgentEngine(cas=cas)._resolve_inputs(task)
+    assert engine_resolved is not None
+    assert set(resolved) == {"unifiedDiff", "structuralDiff"}
+    prompt = _build_prompt(task, "INSTRUCTIONS", resolved)
+    assert "evict_oldest" in prompt
+    assert "+new" in prompt
+
+
+def test_a_genuinely_missing_artifact_is_still_unresolvable(tmp_path: Path) -> None:
+    """Malformed content is tolerated; an absent artifact is not."""
+    cas = ArtifactStore(tmp_path / "objects")
+    task = _task({"present": cas.put(b"text"), "absent": "sha256:" + "0" * 64})
+    assert ClaudeAgentEngine(cas=cas)._resolve_inputs(task) is None

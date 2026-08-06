@@ -49,18 +49,22 @@ def main(skill_id: str) -> int:
     registry = SkillRegistry.load(REPO_ROOT / ".agents" / "skills")
     skill = registry.get(skill_id)
 
-    checkout = tmp / "repo"
-    sha = build_fixture_repo(REPO_ROOT / "fixtures" / "rust-flawed-crate", checkout)
-
-    if skill_id == "intent-reconstructor":
-        sources = collect_intent_sources(checkout)
-        inputs = {"documents": cas.put_json([s.path for s in sources])}
-    elif skill_id.startswith("reviewer-"):
-        inputs = _reviewer_inputs(checkout, cas)
-    elif skill_id == "finding-validator":
-        inputs = _validator_inputs(cas)
+    if skill_id == "change-explainer":
+        # This skill explains a *change*, so its fixture is the two-revision one.
+        checkout, sha, inputs = _change_explainer_inputs(tmp, cas)
     else:
-        inputs = {}
+        checkout = tmp / "repo"
+        sha = build_fixture_repo(REPO_ROOT / "fixtures" / "rust-flawed-crate", checkout)
+
+        if skill_id == "intent-reconstructor":
+            sources = collect_intent_sources(checkout)
+            inputs = {"documents": cas.put_json([s.path for s in sources])}
+        elif skill_id.startswith("reviewer-"):
+            inputs = _reviewer_inputs(checkout, cas)
+        elif skill_id == "finding-validator":
+            inputs = _validator_inputs(cas)
+        else:
+            inputs = {}
 
     task = build_task(
         skill=skill, run_id=new_run_id(), revision_sha=sha, checkout=checkout, inputs=inputs
@@ -111,6 +115,29 @@ def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:
         intent=intent,
         source_paths=source_paths,
         graph_slice=slice_graph_for_review(graph, source_paths),
+    )
+
+
+def _change_explainer_inputs(tmp: Path, cas: ArtifactStore) -> tuple[Path, str, dict[str, str]]:
+    """The full deterministic change analysis, exactly as the pipeline assembles it.
+
+    Everything here is the same computation the `graph_diff`, `api_change` and
+    `change_impact` stages perform; recording against anything less would freeze
+    the skill's behaviour on inputs it never actually receives.
+    """
+    from make_fixture_repos import build_api_change_fixture_repo
+
+    from codeatlas.change.analysis import assemble_change_analysis
+
+    repo = tmp / "pr-repo"
+    base_sha, head_sha = build_api_change_fixture_repo(
+        REPO_ROOT / "fixtures" / "rust-flawed-crate", repo
+    )
+    analysis = assemble_change_analysis(repo, base_sha, head_sha, workdir=tmp)
+    return (
+        analysis.head_tree,
+        head_sha,
+        analysis.agent_inputs(cas.put, cas.put_json),
     )
 
 

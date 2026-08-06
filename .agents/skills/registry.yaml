@@ -83,3 +83,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: change-explainer
+    version: "1.0.0"
+    path: change-explainer/
+    content_sha256: "sha256:b7dcd923cd7e48c5f5906a89e5c4b713b14a03c5d3a163936ed5d0f6f3ff3630"
+    purpose: "Explain what a change did: before, after, structure, impact, risks"
+    output_schema: change-explanation.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"
