@@ -238,6 +238,48 @@ export const EXPLANATION = {
   notes: [],
 };
 
+// Independent of the change: "what is this project" is answerable for a
+// repository run that has no diff at all.
+export const PROJECT_EXPLANATION = {
+  summary:
+    "kvstore is a single-crate in-process key-value store with an HTTP front end, bounded by an LRU cache.",
+  sections: [
+    {
+      id: "entry",
+      title: "Where to start reading",
+      claims: [
+        {
+          text: "main.rs binds the listener and constructs the store the rest of the code shares.",
+          citations: [
+            { kind: "module", key: "kvstore/src/main.rs" },
+            { kind: "source", path: "kvstore/src/main.rs", startLine: 1, endLine: 24 },
+          ],
+        },
+      ],
+    },
+    {
+      id: "caution",
+      title: "What will surprise you",
+      claims: [
+        {
+          text: "api.rs and storage.rs depend on each other, so neither can be read alone.",
+          citations: [
+            { kind: "cycle", members: ["kvstore/src/api.rs", "kvstore/src/storage.rs"] },
+          ],
+        },
+      ],
+    },
+  ],
+  droppedClaims: [
+    {
+      sectionId: "hotspots",
+      text: "The scheduler is the busiest module.",
+      reason: "kvstore/src/scheduler.rs is not a module this overview measured",
+    },
+  ],
+  notes: [],
+};
+
 export const FINDINGS = [
   {
     findingId: "F-0001",

@@ -20,7 +20,9 @@ reader check it.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol, TypeVar
 
 from codeatlas.models.explanation import (
     ApiCitation,
@@ -32,6 +34,89 @@ from codeatlas.models.explanation import (
     ExplanationSection,
     ImpactCitation,
     SourceCitation,
+)
+
+# Covariant: these protocols only ever read citations out of a claim, and both
+# explanation models must satisfy them with their own citation union.
+CitationT_co = TypeVar("CitationT_co", covariant=True)
+
+
+class ClaimLike(Protocol[CitationT_co]):
+    """The part of a claim this module reads. Both explanations satisfy it."""
+
+    @property
+    def text(self) -> str: ...
+
+    @property
+    def citations(self) -> Sequence[CitationT_co]: ...
+
+
+class SectionLike(Protocol[CitationT_co]):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def claims(self) -> Sequence[ClaimLike[CitationT_co]]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class KeptSection[CitationT]:
+    """One surviving section: the original, plus each claim's surviving cites."""
+
+    id: str
+    title: str
+    claims: list[tuple[str, list[CitationT]]]
+
+
+def partition_claims[CitationT](
+    sections: Sequence[SectionLike[CitationT]],
+    problem_for: Callable[[CitationT], str | None],
+) -> tuple[list[KeptSection[CitationT]], list[DroppedClaim]]:
+    """Split claims into those with a resolvable citation and those without.
+
+    The rule lives here, once, because it is the product: a claim that cannot be
+    checked is deleted rather than hedged, a claim keeps the citations that do
+    resolve, and a section left with nothing is removed — an empty heading reads
+    as "we looked and found nothing", which is a different claim.
+
+    The two explanations differ only in what a citation may point at, which is
+    the callable.
+    """
+    kept: list[KeptSection[CitationT]] = []
+    dropped: list[DroppedClaim] = []
+
+    for section in sections:
+        surviving: list[tuple[str, list[CitationT]]] = []
+        for claim in section.claims:
+            resolved: list[CitationT] = []
+            reasons: list[str] = []
+            for citation in claim.citations:
+                problem = problem_for(citation)
+                if problem is None:
+                    resolved.append(citation)
+                else:
+                    reasons.append(problem)
+            if resolved:
+                surviving.append((claim.text, resolved))
+            else:
+                dropped.append(
+                    DroppedClaim(
+                        section_id=section.id,
+                        text=claim.text,
+                        reason="; ".join(reasons) or "no citations",
+                    )
+                )
+        if surviving:
+            kept.append(KeptSection(id=section.id, title=section.title, claims=surviving))
+    return kept, dropped
+
+
+NOTHING_SURVIVED = (
+    "no claim in this explanation survived citation validation; "
+    "nothing here is supported by the run's own evidence"
 )
 
 
@@ -59,43 +144,21 @@ def validate_explanation(
     explanation: ChangeExplanation, index: CitationIndex
 ) -> tuple[ChangeExplanation, list[DroppedClaim]]:
     """Return the explanation with only checkable claims, plus what was removed."""
-    sections: list[ExplanationSection] = []
-    dropped: list[DroppedClaim] = []
-
-    for section in explanation.sections:
-        kept_claims: list[Claim] = []
-        for claim in section.claims:
-            resolved: list[Citation] = []
-            reasons: list[str] = []
-            for citation in claim.citations:
-                problem = citation_problem(citation, index)
-                if problem is None:
-                    resolved.append(citation)
-                else:
-                    reasons.append(problem)
-            if resolved:
-                kept_claims.append(Claim(text=claim.text, citations=resolved))
-            else:
-                dropped.append(
-                    DroppedClaim(
-                        section_id=section.id,
-                        text=claim.text,
-                        reason="; ".join(reasons) or "no citations",
-                    )
-                )
-        # A section with nothing left is removed: an empty heading in a report
-        # reads as "we looked and found nothing", which is a different claim.
-        if kept_claims:
-            sections.append(
-                ExplanationSection(id=section.id, title=section.title, claims=kept_claims)
-            )
+    kept, dropped = partition_claims(
+        explanation.sections, lambda citation: citation_problem(citation, index)
+    )
+    sections = [
+        ExplanationSection(
+            id=section.id,  # type: ignore[arg-type]
+            title=section.title,
+            claims=[Claim(text=text, citations=citations) for text, citations in section.claims],
+        )
+        for section in kept
+    ]
 
     notes = list(explanation.notes)
     if not sections and not any("no claim" in note.lower() for note in notes):
-        notes.append(
-            "no claim in this explanation survived citation validation; "
-            "nothing here is supported by the run's own evidence"
-        )
+        notes.append(NOTHING_SURVIVED)
 
     validated = ChangeExplanation(
         summary=explanation.summary,

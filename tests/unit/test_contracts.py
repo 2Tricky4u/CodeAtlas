@@ -35,6 +35,7 @@ EXPECTED_SCHEMAS = {
     "graph-diff.v1.json",
     "change-impact.v1.json",
     "change-explanation.v1.json",
+    "project-explanation.v1.json",
     "project-overview.v1.json",
     "graph-view.v1.json",
 }
@@ -426,6 +427,49 @@ CHANGE_EXPLANATION_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+PROJECT_EXPLANATION_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "summary": "kvstore is a small in-process key-value store with an HTTP front end.",
+    "sections": [
+        {
+            "id": "entry",
+            "title": "Where to start",
+            "claims": [
+                {
+                    "text": "Execution starts in the binary root, which wires store to API.",
+                    "citations": [
+                        {"kind": "source", "path": "kvstore/src/main.rs", "startLine": 1},
+                        {"kind": "module", "key": "kvstore/src/main.rs"},
+                    ],
+                }
+            ],
+        },
+        {
+            "id": "caution",
+            "title": "What will surprise you",
+            "claims": [
+                {
+                    "text": "api and storage depend on each other, so neither can be read alone.",
+                    "citations": [
+                        {
+                            "kind": "cycle",
+                            "members": ["kvstore/src/api.rs", "kvstore/src/storage.rs"],
+                        }
+                    ],
+                }
+            ],
+        },
+    ],
+    "droppedClaims": [
+        {
+            "sectionId": "hotspots",
+            "text": "The scheduler is the busiest module.",
+            "reason": "kvstore/src/scheduler.rs is not a module this overview measured",
+        }
+    ],
+    "notes": [],
+}
+
 PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
     "schemaVersion": "1.0.0",
     "repositoryId": "local/kvstore",
@@ -548,6 +592,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "graph-diff.v1.json": GRAPH_DIFF_EXAMPLE,
     "change-impact.v1.json": CHANGE_IMPACT_EXAMPLE,
     "change-explanation.v1.json": CHANGE_EXPLANATION_EXAMPLE,
+    "project-explanation.v1.json": PROJECT_EXPLANATION_EXAMPLE,
     "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
 }

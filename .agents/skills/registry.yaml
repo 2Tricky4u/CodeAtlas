@@ -96,3 +96,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: project-explainer
+    version: "1.0.0"
+    path: project-explainer/
+    content_sha256: "sha256:b2c5bf303c500273b28734ae9094eec45c5e24107a0596f8f2f65562a2ee7be6"
+    purpose: "Explain what a project is and how to find your way around it"
+    output_schema: project-explanation.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"

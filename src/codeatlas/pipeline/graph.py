@@ -738,6 +738,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             stage_adr_audit,
             stage_diagrams,
             stage_explain_change,
+            stage_explain_project,
             stage_intent,
             stage_payload,
             stage_reviewers,
@@ -777,6 +778,16 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 api_change_sha=state.get("api_change_sha256"),
                 impact_sha=state.get("change_impact_sha256"),
             )
+
+        # Project comprehension is independent of the change: a repository with
+        # no pull request still gets narrated.
+        stage_explain_project(
+            deps,
+            ctx,
+            repository_id=state["repository_id"],
+            revision_db_id=state["revision_db_id"],
+            project_overview_sha=state["project_overview_sha256"],
+        )
 
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)

@@ -269,6 +269,27 @@ export interface ChangeExplanation {
   notes?: string[];
 }
 
+// --- project narrative ------------------------------------------------------
+
+/** One revision, so no `revision` field — see project-explanation.v1. */
+export type ProjectCitation =
+  | { kind: "source"; path: string; startLine?: number; endLine?: number }
+  | { kind: "module"; key: string }
+  | { kind: "package"; name: string }
+  | { kind: "cycle"; members: string[] };
+
+export interface ProjectClaim {
+  text: string;
+  citations: ProjectCitation[];
+}
+
+export interface ProjectExplanation {
+  summary: string;
+  sections: { id: string; title: string; claims: ProjectClaim[] }[];
+  droppedClaims?: { sectionId: string; text: string; reason: string }[];
+  notes?: string[];
+}
+
 export interface Finding {
   findingId: string;
   category: string;
@@ -317,6 +338,8 @@ export const api = {
   impact: (id: string) => getOptional<ChangeImpact>(`/api/runs/${id}/artifact/change-impact`),
   explanation: (id: string) =>
     getOptional<ChangeExplanation>(`/api/runs/${id}/artifact/change-explanation`),
+  projectExplanation: (id: string) =>
+    getOptional<ProjectExplanation>(`/api/runs/${id}/artifact/project-explanation`),
   source: (revision: string, path: string, start?: number, end?: number) => {
     const params = new URLSearchParams({ path });
     if (start !== undefined) params.set("start", String(start));

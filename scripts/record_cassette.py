@@ -63,6 +63,8 @@ def main(skill_id: str) -> int:
             inputs = _reviewer_inputs(checkout, cas)
         elif skill_id == "finding-validator":
             inputs = _validator_inputs(cas)
+        elif skill_id == "project-explainer":
+            inputs = _project_explainer_inputs(checkout, sha, cas)
         else:
             inputs = {}
 
@@ -116,6 +118,27 @@ def _reviewer_inputs(checkout: Path, cas: ArtifactStore) -> dict[str, str]:
         source_paths=source_paths,
         graph_slice=slice_graph_for_review(graph, source_paths),
     )
+
+
+def _project_explainer_inputs(checkout: Path, sha: str, cas: ArtifactStore) -> dict[str, str]:
+    """The deterministic overview, built exactly as the `project_overview` stage does.
+
+    Recording against a hand-written overview would freeze the skill's behaviour
+    on input it never receives — and this is the one input, so it has to be the
+    real one.
+    """
+    from codeatlas.extractors.rust.cargo_meta import CargoMetadataExtractor
+    from codeatlas.extractors.rust.ra_scip import RaScipExtractor
+    from codeatlas.graph.merge import merge_fragments
+    from codeatlas.project.overview import build_overview
+
+    cargo_fragment, _ = CargoMetadataExtractor().extract(checkout, sha)
+    scip_fragment, _ = RaScipExtractor().extract(checkout, sha)
+    graph = merge_fragments(
+        repository_id="local/kvstore", head_sha=sha, fragments=[cargo_fragment, scip_fragment]
+    )
+    overview = build_overview(graph, repository_id="local/kvstore")
+    return {"overview": cas.put_json(overview.contract_dump())}
 
 
 def _change_explainer_inputs(tmp: Path, cas: ArtifactStore) -> tuple[Path, str, dict[str, str]]:

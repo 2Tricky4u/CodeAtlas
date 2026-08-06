@@ -14,14 +14,19 @@ import {
   HEAD,
   IMPACT,
   OVERVIEW,
+  PROJECT_EXPLANATION,
   RUN,
   RUN_ID,
   SOURCE,
   VIEWS,
 } from "./fixtures";
 
-async function mockApi(page: Page, options: { withChange?: boolean } = {}) {
+async function mockApi(
+  page: Page,
+  options: { withChange?: boolean; withNarrative?: boolean } = {},
+) {
   const withChange = options.withChange ?? true;
+  const withNarrative = options.withNarrative ?? true;
   await page.route("**/api/runs", (route) => route.fulfill({ json: [RUN] }));
   await page.route(`**/api/runs/${RUN_ID}`, (route) => route.fulfill({ json: DETAIL }));
   await page.route(`**/api/runs/${RUN_ID}/overview`, (route) => route.fulfill({ json: OVERVIEW }));
@@ -39,6 +44,31 @@ async function mockApi(page: Page, options: { withChange?: boolean } = {}) {
   await artifact("api-change", API_CHANGE);
   await artifact("change-impact", IMPACT);
   await artifact("change-explanation", EXPLANATION);
+
+  // Routed outside the `artifact` helper on purpose: the project narrative does
+  // not depend on there being a change to explain.
+  await page.route(`**/api/runs/${RUN_ID}/artifact/project-explanation`, (route) =>
+    withNarrative
+      ? route.fulfill({ json: PROJECT_EXPLANATION })
+      : route.fulfill({ status: 404, json: { detail: "none" } }),
+  );
+}
+
+/** A narrative past the collapse threshold, built from the fixture's one section. */
+function longNarrative() {
+  const [entry] = PROJECT_EXPLANATION.sections;
+  return {
+    ...PROJECT_EXPLANATION,
+    sections: [
+      {
+        ...entry!,
+        claims: Array.from({ length: 12 }, (_, i) => ({
+          ...entry!.claims[0]!,
+          text: `${entry!.claims[0]!.text} (${i})`,
+        })),
+      },
+    ],
+  };
 }
 
 test.describe("shell and navigation", () => {
@@ -85,6 +115,67 @@ test.describe("project overview", () => {
     await page.goto(`/#/runs/${RUN_ID}/overview`);
     await page.getByRole("button", { name: "kvstore/src/cache.rs" }).first().click();
     await expect(page.getByTestId("source-panel")).toContainText("pub fn evict");
+  });
+
+  test("the narrative comes after the measurements, and every claim is cited", async ({
+    page,
+  }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("narrative-summary")).toContainText(
+      "in-process key-value store",
+    );
+    await expect(page.getByTestId("narrative-entry")).toContainText("binds the listener");
+    // Counts are measured; the prose interpreting them comes below.
+    const stats = await page.getByTestId("overview-view").locator(".stat").first().boundingBox();
+    const prose = await page.getByTestId("narrative-summary").boundingBox();
+    expect(prose!.y).toBeGreaterThan(stats!.y);
+  });
+
+  test("a cycle citation names its members rather than gesturing at them", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    const chip = page.getByTestId("narrative-citation").filter({ hasText: "cycle of 2" });
+    await expect(chip).toHaveAttribute("title", /api\.rs ⇄ .*storage\.rs/);
+  });
+
+  test("a narrative citation opens the file it points at", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await page.getByTestId("narrative-citation").filter({ hasText: "main.rs:1" }).click();
+    await expect(page.getByTestId("source-panel")).toBeVisible();
+  });
+
+  test("a module citation is distinguishable from a citation of the same file", async ({
+    page,
+  }) => {
+    // Both point at main.rs but they are different things: one is a node the
+    // graph measured, the other is text at a line.
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(
+      page.getByTestId("narrative-citation").filter({ hasText: "mod main.rs" }),
+    ).toBeVisible();
+  });
+
+  test("a long narrative keeps the measured panels reachable", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/project-explanation`, (route) =>
+      route.fulfill({ json: longNarrative() }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    // The summary always shows; the claims are behind one click, so "start
+    // here" is not pushed off the page by prose.
+    await expect(page.getByTestId("narrative-summary")).toBeVisible();
+    await expect(page.getByTestId("narrative-entry")).toHaveCount(0);
+    await page.getByTestId("narrative-toggle").click();
+    await expect(page.getByTestId("narrative-entry")).toBeVisible();
+  });
+
+  test("claims removed by validation are disclosed, not quietly missing", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("narrative-dropped")).toContainText("1 statement(s)");
+  });
+
+  test("a run with no narrative says so instead of showing a blank panel", async ({ page }) => {
+    await mockApi(page, { withNarrative: false });
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("no-narrative")).toContainText("everything above is measured");
   });
 });
 

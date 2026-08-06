@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/project-explanation.v1.json",
+  "title": "Project Explanation",
+  "description": "A narrative account of what a project is and how to find your way around it, in which every claim resolves against `project-overview.v1` or a file at the pinned revision. Unlike the change explanation there is one revision, so citations carry no side. Claims whose citations do not resolve are removed, not softened, and the removal is recorded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "summary", "sections"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "summary": {
+      "description": "One paragraph telling a newcomer what this project is and what it does.",
+      "type": "string",
+      "minLength": 1
+    },
+    "sections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/section" }
+    },
+    "droppedClaims": {
+      "description": "Claims removed by citation validation, with the reason. Present so a thin explanation is visibly thin rather than quietly so.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/droppedClaim" }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "claims"],
+      "properties": {
+        "id": {
+          "description": "what = what the project is; structure = how it is organised; entry = where to start reading; hotspots = what everything leans on; caution = what will surprise a newcomer.",
+          "enum": ["what", "structure", "entry", "hotspots", "caution"]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "citations"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "citations": {
+          "description": "At least one. A claim with no citation is not publishable, whatever it says.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/citation" }
+        }
+      }
+    },
+    "citation": {
+      "oneOf": [
+        { "$ref": "#/$defs/sourceCitation" },
+        { "$ref": "#/$defs/moduleCitation" },
+        { "$ref": "#/$defs/packageCitation" },
+        { "$ref": "#/$defs/cycleCitation" }
+      ]
+    },
+    "sourceCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": { "const": "source" },
+        "path": { "type": "string", "minLength": 1 },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "moduleCitation": {
+      "description": "A module the deterministic overview measured, by its stable key.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "key"],
+      "properties": {
+        "kind": { "const": "module" },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "packageCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "const": "package" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cycleCitation": {
+      "description": "A dependency cycle, named by its exact member set. Naming the members rather than an index is what makes the claim checkable: the set must match a cycle the deterministic pass actually found.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "members"],
+      "properties": {
+        "kind": { "const": "cycle" },
+        "members": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "droppedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sectionId", "text", "reason"],
+      "properties": {
+        "sectionId": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

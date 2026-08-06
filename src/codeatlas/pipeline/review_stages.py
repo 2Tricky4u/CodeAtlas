@@ -35,6 +35,7 @@ from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
+from codeatlas.models.overview import ProjectOverview
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.publication.payload import build_payload
 from codeatlas.review.intent_node import reconstruct_intent
@@ -430,6 +431,85 @@ def stage_explain_change(
         )
     log.info(
         "review.explained",
+        run_id=ctx.run_id,
+        claims=explanation.claim_count,
+        dropped=len(dropped),
+    )
+
+
+def stage_explain_project(
+    deps: PipelineDeps,
+    ctx: ReviewContext,
+    *,
+    repository_id: str,
+    revision_db_id: int,
+    project_overview_sha: str,
+) -> None:
+    """Narrate the project, then delete every claim the overview does not support.
+
+    Unlike the change explanation this runs for any run, pull request or not:
+    "what is this project" is a question that does not need a diff to be worth
+    answering, and the deterministic overview it is checked against is computed
+    on every run.
+    """
+    from codeatlas.pipeline.source import mirror_path
+    from codeatlas.project.narrative import build_project_index, explain_project
+
+    overview = ProjectOverview.model_validate(json.loads(deps.cas.get(project_overview_sha)))
+
+    mirror = mirror_path(deps, repository_id)
+    with Session(deps.engine) as session:
+        rows = session.scalars(select(FileRow).where(FileRow.revision_id == revision_db_id)).all()
+        blobs = {row.path: row.git_blob_sha for row in rows}
+
+    index = build_project_index(overview, paths=set(blobs))
+
+    def read_lines(path: str) -> int:
+        blob_sha = blobs.get(path)
+        if blob_sha is None:
+            raise FileNotFoundError(path)
+        return len(deps.git.cat_file(mirror, blob_sha).decode("utf-8", "replace").splitlines())
+
+    explanation, dropped = explain_project(
+        engine=deps.agent_engine,  # type: ignore[arg-type]
+        registry=deps.registry(),
+        run_id=ctx.run_id,
+        revision_sha=ctx.revision_sha,
+        checkout=ctx.checkout,
+        db_engine=deps.engine,
+        cas=deps.cas,
+        overview=overview,
+        index=index,
+        budget=deps.budget,
+        read_lines=read_lines,
+    )
+    if explanation is None:
+        ctx.failed_skills.append("project-explainer")
+        ctx.notes.append("project explanation unavailable: the explainer did not complete")
+        return
+
+    explanation_bytes = json.dumps(explanation.contract_dump()).encode("utf-8")
+    explanation_sha = deps.cas.put_json(explanation.contract_dump())
+    ctx.artifacts["projectExplanation"] = explanation_sha
+    with Session(deps.engine) as session:
+        repo.index_artifact(
+            session,
+            sha256=explanation_sha,
+            kind="project-explanation",
+            media_type="application/json",
+            size_bytes=len(explanation_bytes),
+            producer="project-explainer",
+            produced_by_run_id=ctx.run_id,
+            schema_id="project-explanation.v1",
+        )
+        session.commit()
+    if dropped:
+        ctx.notes.append(
+            f"{len(dropped)} project explanation claim(s) removed: their citations did "
+            "not resolve against the deterministic overview"
+        )
+    log.info(
+        "review.project_explained",
         run_id=ctx.run_id,
         claims=explanation.claim_count,
         dropped=len(dropped),
