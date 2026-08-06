@@ -231,12 +231,24 @@ class TestTheRunKnowsWhoElseCouldBeAffected:
         assert caller["viaEdgeKind"] == "calls"
         assert caller["claimStrength"] == "could-be-affected"
 
-    def test_files_importing_the_changed_code_are_reported_via_imports(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+    def test_importing_the_module_is_not_by_itself_impact(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """Naming a namespace is not depending on everything inside it.
+
+        This assertion originally expected `api.rs` and `lib.rs` here, reached
+        through their `use kvstore::cache` imports. Measuring memchr showed those
+        namespace edges are what collapse a real codebase into one cycle, and
+        excluding them makes impact symbol-precise instead: the answer is now
+        "handle_request could be affected", not "two whole files could be".
+        A file that genuinely uses a changed item still reaches it through the
+        edge to that item.
+        """
         deps, run_id, _, _ = api_pr_run
         impact = _artifact(deps, run_id, "change-impact")
 
-        importers = [i for i in impact["impacted"] if i["viaEdgeKind"] == "imports"]
-        assert {i["label"] for i in importers} == {"kvstore/src/api.rs", "kvstore/src/lib.rs"}
+        labels = {i["label"] for i in impact["impacted"]}
+        assert "handle_request" in labels
+        assert "kvstore/src/lib.rs" not in labels
+        assert all(i["hop"] <= 1 for i in impact["impacted"])
 
     def test_the_publicly_exported_caller_is_ranked_first(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
         """Cache::put is in the crate's public API, so it is what a reader sees first."""

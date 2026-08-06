@@ -189,6 +189,56 @@ class TestTheCrateRootIsNotADependency:
             ],
         )
 
+    def test_an_intermediate_module_reference_creates_no_cycle(self) -> None:
+        """Found on memchr, where 25 of 35 modules landed in one cycle.
+
+        Resolving `crate::arch::all::twoway::Finder` mentions every module on
+        the way, each defined in some `mod.rs`. Counted as dependencies, every
+        file that reaches into a subtree depends on each `mod.rs` above it,
+        while each `mod.rs` declares the files beneath it.
+        """
+        parent = file_node("kvstore/src/arch/mod.rs")
+        child = file_node("kvstore/src/arch/avx2.rs")
+        arch_module = sym_node("arch/", "kvstore/src/arch/mod.rs", kind="module")
+        avx_module = sym_node("arch/avx2/", "kvstore/src/arch/avx2.rs", kind="module")
+        finder = sym_node("arch/avx2/Finder#", "kvstore/src/arch/avx2.rs", kind="type")
+
+        nested = graph(
+            [parent, child, arch_module, avx_module, finder],
+            [
+                edge(parent, "contains", arch_module),
+                edge(child, "contains", avx_module),
+                edge(child, "contains", finder),
+                # `pub mod avx2;` in arch/mod.rs
+                edge(parent, "imports", avx_module),
+                # `use crate::arch::...` from inside avx2.rs mentions its parent
+                edge(child, "imports", arch_module),
+            ],
+        )
+        overview = build_overview(nested, repository_id="local/kvstore")
+        assert overview.cycles == []
+
+    def test_a_real_dependency_through_a_module_path_still_counts(self) -> None:
+        """Excluding namespaces must not also exclude the item they lead to."""
+        holder = file_node("kvstore/src/arch/avx2.rs")
+        user = file_node("kvstore/src/memmem.rs")
+        avx_module = sym_node("arch/avx2/", "kvstore/src/arch/avx2.rs", kind="module")
+        finder = sym_node("arch/avx2/Finder#", "kvstore/src/arch/avx2.rs", kind="type")
+
+        real = graph(
+            [holder, user, avx_module, finder],
+            [
+                edge(holder, "contains", avx_module),
+                edge(holder, "contains", finder),
+                edge(user, "imports", avx_module),  # namespace on the way
+                edge(user, "imports", finder),  # the thing actually used
+            ],
+        )
+        overview = build_overview(real, repository_id="local/kvstore")
+        by_path = {m.path: m for m in overview.modules}
+        assert by_path["kvstore/src/memmem.rs"].fan_out == 1
+        assert by_path["kvstore/src/arch/avx2.rs"].fan_in == 1
+
     def test_referencing_the_crate_root_creates_no_cycle(self) -> None:
         overview = build_overview(self._with_crate_root(), repository_id="local/kvstore")
         assert overview.cycles == []
@@ -198,11 +248,21 @@ class TestTheCrateRootIsNotADependency:
         by_path = {m.path: m for m in overview.modules}
         assert by_path["kvstore/src/api.rs"].fan_out == 1, "only the real call into cache"
 
-    def test_the_real_module_declaration_still_counts(self) -> None:
+    def test_a_bare_module_declaration_is_not_a_dependency(self) -> None:
+        """`pub mod api;` names a namespace; it does not use anything in it.
+
+        This assertion originally went the other way, under the narrower rule
+        that excluded only `crate`/`super`/`self`. Measuring memchr settled it:
+        that rule left 25 of 35 modules in a single cycle, and excluding every
+        namespace reference leaves a largest cycle of two. A `mod.rs` that only
+        declares its children depends on none of them — and a `lib.rs` that also
+        re-exports their items still does, through those item references.
+        """
         overview = build_overview(self._with_crate_root(), repository_id="local/kvstore")
         by_path = {m.path: m for m in overview.modules}
-        assert by_path["kvstore/src/lib.rs"].fan_out == 1
-        assert by_path["kvstore/src/api.rs"].fan_in == 1
+        assert by_path["kvstore/src/lib.rs"].fan_out == 0
+        assert by_path["kvstore/src/api.rs"].fan_in == 0
+        assert "kvstore/src/lib.rs" in by_path, "the module is still present, just unlinked"
 
 
 class TestHubsAndOrphans:

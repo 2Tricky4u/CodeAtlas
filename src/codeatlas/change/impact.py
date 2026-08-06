@@ -28,7 +28,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from codeatlas.change.graph import stable_key
-from codeatlas.graph.symbols import is_namespace_root
+from codeatlas.graph.symbols import namespace_nodes
 from codeatlas.models.api import ApiSurface
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.graph import ProjectGraph
@@ -176,13 +176,14 @@ def analyze_impact(
 def _reverse_index(graph: ProjectGraph) -> dict[str, list[tuple[str, str]]]:
     """target -> [(source, edge kind)] over dependency edges only."""
     index: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    namespaces = namespace_nodes(graph)
     for edge in graph.edges:
         if edge.kind not in DEPENDENCY_EDGE_KINDS:
             continue
-        # Everything that writes `use crate::…` references the crate root. Left
-        # in, a change anywhere near it would report the entire crate as
-        # impacted, which is the unbounded answer this module exists to avoid.
-        if is_namespace_root(edge.target) or is_namespace_root(edge.source):
+        # Resolving any path mentions every module along it. Left in, a change
+        # near a module anchor would report most of the crate as impacted, which
+        # is the unbounded answer this module exists to avoid.
+        if edge.target in namespaces or edge.source in namespaces:
             continue
         index[stable_key(edge.target)].append((stable_key(edge.source), edge.kind))
     return index

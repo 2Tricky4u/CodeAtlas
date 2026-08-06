@@ -26,7 +26,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 
-from codeatlas.graph.symbols import is_namespace_root
+from codeatlas.graph.symbols import namespace_nodes
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.overview import (
     Cycle,
@@ -178,15 +178,16 @@ def _module_dependencies(
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """module -> modules it depends on, and the reverse. Self-edges excluded."""
     location = {node.id: node.location.path for node in graph.nodes if node.location}
+    namespaces = namespace_nodes(graph)
     depends_on: dict[str, set[str]] = defaultdict(set)
     depended_by: dict[str, set[str]] = defaultdict(set)
 
     for edge in graph.edges:
         if edge.kind not in DEPENDENCY_EDGE_KINDS:
             continue
-        # A reference to `crate::` is path resolution, not a dependency on
-        # whichever file defines the crate root — see `is_namespace_root`.
-        if is_namespace_root(edge.target) or is_namespace_root(edge.source):
+        # Resolving a path mentions every module along it. That is not one
+        # module depending on another — see `namespace_nodes`.
+        if edge.target in namespaces or edge.source in namespaces:
             continue
         source = location.get(edge.source)
         target = location.get(edge.target)

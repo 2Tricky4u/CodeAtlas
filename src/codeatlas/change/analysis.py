@@ -24,12 +24,27 @@ from codeatlas.extractors.rust.public_api import PublicApiExtractor
 from codeatlas.extractors.rust.ra_scip import RaScipExtractor
 from codeatlas.extractors.rust.semver_checks import check_package, lint_levels
 from codeatlas.graph.merge import merge_fragments
-from codeatlas.models.api import ApiChange, ApiSurface
+from codeatlas.models.api import ApiChange, ApiSurface, SemverLint, SkippedPackage
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.impact import ChangeImpact
 from codeatlas.review.scope import parse_added_lines
 from codeatlas.vcs.git import GitClient
+
+
+def _unmeasured_surface(sha: str) -> ApiSurface:
+    """A surface that says it was not taken, rather than an empty one."""
+    return ApiSurface(
+        revision=sha,
+        tool="not measured",
+        packages=[],
+        skipped=[
+            SkippedPackage(
+                name="(whole workspace)",
+                reason="public API measurement was skipped for this run",
+            )
+        ],
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +79,15 @@ def assemble_change_analysis(
     workdir: Path,
     repository_id: str = "local/kvstore",
     git: GitClient | None = None,
+    skip_api: bool = False,
 ) -> ChangeAnalysis:
-    """Check out both revisions and compute every deterministic change artifact."""
+    """Check out both revisions and compute every deterministic change artifact.
+
+    `skip_api` omits the public-API half, which builds rustdoc JSON for both
+    revisions and is by far the slowest part. Skipping it never produces an empty
+    delta: both surfaces record why they were not measured, so "no API change"
+    stays distinguishable from "nothing was measured".
+    """
     g = git or GitClient()
 
     trees: dict[str, Path] = {}
@@ -80,23 +102,26 @@ def assemble_change_analysis(
         graphs[role] = merge_fragments(
             repository_id=repository_id, head_sha=sha, fragments=[cargo, scip]
         )
-        surfaces[role], _ = PublicApiExtractor().extract(tree, sha)
+        surfaces[role] = (
+            _unmeasured_surface(sha) if skip_api else PublicApiExtractor().extract(tree, sha)[0]
+        )
 
     diff_text = g.unified_diff(repo, base_sha, head_sha, context=3)
     added = parse_added_lines(g.unified_diff(repo, base_sha, head_sha))
     diff = diff_graphs(graphs["base"], graphs["head"], added_lines=added)
 
-    levels = lint_levels()
-    comparable = {p.name for p in surfaces["base"].packages} & {
-        p.name for p in surfaces["head"].packages
-    }
-    lints = {}
+    lints: dict[str, list[SemverLint]] = {}
     analyzed: set[str] = set()
-    for name in sorted(comparable):
-        result = check_package(trees["head"], trees["base"], name, head_sha, levels=levels)
-        lints[name] = result.lints
-        if result.analyzed:
-            analyzed.add(name)
+    if not skip_api:
+        levels = lint_levels()
+        comparable = {p.name for p in surfaces["base"].packages} & {
+            p.name for p in surfaces["head"].packages
+        }
+        for name in sorted(comparable):
+            result = check_package(trees["head"], trees["base"], name, head_sha, levels=levels)
+            lints[name] = result.lints
+            if result.analyzed:
+                analyzed.add(name)
 
     return ChangeAnalysis(
         base_sha=base_sha,
