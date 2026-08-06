@@ -799,7 +799,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
 
         assert ctx.validation is not None
         return {
-            "review_artifacts": ctx.artifacts,
+            "review_artifacts": dict(ctx.artifacts),
             "finding_count": len(ctx.findings),
             "publishable_count": len(ctx.validation.publishable),
             "failed_skills": ctx.failed_skills,
@@ -849,6 +849,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         if (impact_sha := state.get("change_impact_sha256"))
                         else {}
                     ),
+                    # Keyed by artifact role, so a manifest entry names exactly
+                    # what `/api/runs/{id}/artifact/{role}` will serve.
                     **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from codeatlas.artifacts.store import ArtifactStore
+from codeatlas.core.canonical import canonical_json
 from codeatlas.core.logging import get_logger
 from codeatlas.db.repositories import index_artifact
 from codeatlas.publication.payload import ReviewPayload, scan_payload
@@ -40,20 +41,21 @@ def dry_run(
     payload: ReviewPayload,
     cas: ArtifactStore,
 ) -> DryRunResult:
-    payload_sha = cas.put_json(payload.contract_dump())
-    markdown = render_markdown(report)
-    markdown_sha = cas.put(markdown.encode("utf-8"))
+    payload_bytes = canonical_json(payload.contract_dump())
+    payload_sha = cas.put(payload_bytes)
+    markdown_bytes = render_markdown(report).encode("utf-8")
+    markdown_sha = cas.put(markdown_bytes)
 
-    for sha, kind, media in (
-        (payload_sha, "review-payload-dry-run", "application/json"),
-        (markdown_sha, "review-markdown", "text/markdown"),
+    for sha, kind, media, blob in (
+        (payload_sha, "review-payload-dry-run", "application/json", payload_bytes),
+        (markdown_sha, "review-markdown", "text/markdown", markdown_bytes),
     ):
         index_artifact(
             session,
             sha256=sha,
             kind=kind,
             media_type=media,
-            size_bytes=len(markdown.encode("utf-8")) if kind == "review-markdown" else 0,
+            size_bytes=len(blob),
             producer="pipeline",
             produced_by_run_id=run_id,
         )

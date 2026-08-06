@@ -10,8 +10,11 @@ a stage that failed leaves the reason behind.
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from sqlalchemy import select
@@ -28,9 +31,10 @@ from codeatlas.artifacts.structurizr.validate import (
     validate_workspace,
     write_dsl,
 )
+from codeatlas.core.canonical import canonical_json
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
-from codeatlas.db.tables import FileRow, FindingRow
+from codeatlas.db.tables import ArtifactRow, FileRow, FindingRow
 from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
@@ -53,6 +57,16 @@ from codeatlas.verify.battery import run_battery
 log = get_logger("codeatlas.pipeline.review")
 
 
+# A role is a URL path segment on /api/runs/{id}/artifact/{role}; the API refuses
+# anything else, so a stage that coins a role the API cannot serve has produced
+# an artifact nobody can fetch. Rejected here, where the mistake is made.
+_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,59}$")
+
+# Media types the read-only API is willing to hand back. Anything else can be
+# stored, but there is no point giving it a role.
+_SERVABLE_MEDIA = frozenset({"application/json", "text/plain", "text/markdown"})
+
+
 @dataclass
 class ReviewContext:
     """Accumulated review state, persisted as it is produced."""
@@ -67,12 +81,95 @@ class ReviewContext:
     validation: ValidationOutcome | None = None
     report: ReviewReport | None = None
     explanation: ChangeExplanation | None = None
-    artifacts: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    _artifacts: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+
+    @property
+    def artifacts(self) -> Mapping[str, str]:
+        """What this run produced, by role. Read-only — see `publish`."""
+        return MappingProxyType(self._artifacts)
+
+    def publish(
+        self,
+        deps: PipelineDeps,
+        role: str,
+        payload: object,
+        *,
+        schema_id: str | None = None,
+        media_type: str = "application/json",
+        producer: str = "pipeline",
+    ) -> str:
+        """Store an artifact, record that this run owns it, and return its sha.
+
+        One act, deliberately. Storing content and indexing membership used to be
+        two calls at seven sites, and five of them only did the first — so five
+        artifacts were named in the run manifest and returned 404 from the API.
+        `artifacts` is read-only precisely so this is the only way in.
+        """
+        if not _ROLE_RE.match(role):
+            raise ValueError(
+                f"{role!r} is not a servable artifact role: "
+                "lowercase letters, digits and hyphens, starting with a letter"
+            )
+        if media_type not in _SERVABLE_MEDIA:
+            raise ValueError(f"{media_type!r} cannot be served by the read-only API")
+
+        if media_type == "application/json":
+            blob = canonical_json(payload)
+        elif isinstance(payload, str):
+            blob = payload.encode("utf-8")
+        else:  # pragma: no cover - defensive; a text role is given text
+            raise TypeError(f"{media_type} artifact must be a string, got {type(payload).__name__}")
+
+        sha = deps.cas.put(blob)
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=sha,
+                kind=role,
+                media_type=media_type,
+                size_bytes=len(blob),
+                producer=producer,
+                produced_by_run_id=self.run_id,
+                schema_id=schema_id,
+            )
+            session.commit()
+        self._artifacts[role] = sha
+        return sha
+
+    def adopt(self, deps: PipelineDeps, role: str, sha256: str) -> str:
+        """Claim an artifact another component already stored and indexed.
+
+        `publish` is the normal path. This exists for the few artifacts written
+        deeper in the stack — the publication gate writes its dry-run payload as
+        part of deciding — where re-serialising here would risk two copies
+        drifting. The membership row is still written, so the guarantee that
+        every reported role resolves is unchanged.
+        """
+        if not _ROLE_RE.match(role):
+            raise ValueError(f"{role!r} is not a servable artifact role")
+        with Session(deps.engine) as session:
+            row = session.get(ArtifactRow, sha256)
+            if row is None:
+                raise ValueError(f"cannot adopt {sha256}: it was never indexed")
+            repo.index_artifact(
+                session,
+                sha256=sha256,
+                kind=row.kind,
+                media_type=row.media_type,
+                size_bytes=row.size_bytes,
+                producer=row.producer,
+                produced_by_run_id=self.run_id,
+                schema_id=row.schema_id,
+                role=role,
+            )
+            session.commit()
+        self._artifacts[role] = sha256
+        return sha256
 
 
 def stage_intent(deps: PipelineDeps, ctx: ReviewContext) -> None:
-    package, problems, sha = reconstruct_intent(
+    package, problems, _sha = reconstruct_intent(
         engine=deps.agent_engine,  # type: ignore[arg-type]
         registry=deps.registry(),
         run_id=ctx.run_id,
@@ -83,7 +180,9 @@ def stage_intent(deps: PipelineDeps, ctx: ReviewContext) -> None:
         budget=deps.budget,
     )
     ctx.intent = package
-    ctx.artifacts["intent"] = sha
+    # `reconstruct_intent` stores the package itself; publishing is what records
+    # the membership row that makes it fetchable. Same content, same address.
+    ctx.publish(deps, "intent", package.contract_dump(), schema_id="intent.v1")
     if problems:
         ctx.notes.append(f"{len(problems)} intent citation(s) downgraded to inference")
 
@@ -114,8 +213,10 @@ def stage_reviewers(deps: PipelineDeps, ctx: ReviewContext) -> None:
     )
     ctx.findings = outcome.findings
     ctx.failed_skills = outcome.failed_skills
-    ctx.artifacts["candidateFindings"] = deps.cas.put_json(
-        {"findings": [f.contract_dump() for f in outcome.findings]}
+    ctx.publish(
+        deps,
+        "candidate-findings",
+        {"findings": [f.contract_dump() for f in outcome.findings]},
     )
     if outcome.failed_skills:
         ctx.notes.append(f"reviewers that did not complete: {', '.join(outcome.failed_skills)}")
@@ -196,15 +297,23 @@ def stage_synthesize(deps: PipelineDeps, ctx: ReviewContext) -> None:
     )
     from codeatlas.review.synthesis import render_markdown
 
-    ctx.artifacts["reviewMarkdown"] = deps.cas.put(render_markdown(ctx.report).encode("utf-8"))
+    ctx.publish(deps, "review-markdown", render_markdown(ctx.report), media_type="text/markdown")
 
 
 def stage_diagrams(deps: PipelineDeps, ctx: ReviewContext) -> None:
-    """C4 workspace + rendered views. Missing tools degrade the run, not fail it."""
+    """C4 workspace, validated by the Structurizr CLI. Missing tools degrade the run.
+
+    The DSL is the artifact; the exported PlantUML and rendered SVG are a
+    *check* that it parses, not something the dashboard reads. They live on
+    disk under the run's artifacts directory and are reported as run events —
+    giving them an artifact role would name content the store does not hold,
+    which is the same category error as an artifact only the manifest knows
+    about.
+    """
     out = deps.artifacts_dir / ctx.run_id
     mapping = map_graph_to_c4(ctx.graph, system_name=ctx.graph.repository.id.split("/")[-1])
     dsl = generate_dsl(mapping, revision_sha=ctx.revision_sha)
-    ctx.artifacts["structurizrDsl"] = deps.cas.put(dsl.encode("utf-8"))
+    ctx.publish(deps, "structurizr-dsl", dsl, media_type="text/plain")
 
     if cli_path() is None:
         ctx.notes.append("structurizr CLI unavailable: C4 workspace generated but not validated")
@@ -216,20 +325,15 @@ def stage_diagrams(deps: PipelineDeps, ctx: ReviewContext) -> None:
     except Exception as exc:
         ctx.notes.append(f"C4 export failed: {exc}")
         return
-    ctx.artifacts["c4Views"] = deps.cas.put_json([f.name for f in exported.files])
 
     if mmdc_path() is None:
         ctx.notes.append("mmdc unavailable: C4 views exported but not rendered")
         return
-    rendered = []
     for view in exported.files:
         try:
-            result = render(view, out / "svg" / (view.stem + ".svg"))
-            rendered.append(result.svg.name)
+            render(view, out / "svg" / (view.stem + ".svg"))
         except Exception as exc:
             ctx.notes.append(f"render failed for {view.name}: {exc}")
-    if rendered:
-        ctx.artifacts["c4Svg"] = deps.cas.put_json(sorted(rendered))
 
 
 def stage_protocol_diagrams(
@@ -245,7 +349,7 @@ def stage_protocol_diagrams(
         ("sequence", sequence_diagram(model)),
         ("state", state_diagram(model)),
     ):
-        ctx.artifacts[f"protocol{name.title()}"] = deps.cas.put(text.encode("utf-8"))
+        ctx.publish(deps, f"protocol-{name}", text, media_type="text/plain")
         if mmdc_path() is None:
             continue
         source = out / f"{name}.mmd"
@@ -282,7 +386,7 @@ def stage_adr_audit(deps: PipelineDeps, ctx: ReviewContext) -> None:
                 "detail": result.detail,
             }
         )
-    ctx.artifacts["adrAudit"] = deps.cas.put_json(audits)
+    ctx.publish(deps, "adr-audit", audits)
     drifting = [a for a in audits if a["auditResult"] == "probable-drift"]
     if drifting:
         ctx.notes.append(f"{len(drifting)} ADR(s) show probable drift")
@@ -407,23 +511,13 @@ def stage_explain_change(
         return
 
     ctx.explanation = explanation
-    explanation_bytes = json.dumps(explanation.contract_dump()).encode("utf-8")
-    explanation_sha = deps.cas.put_json(explanation.contract_dump())
-    ctx.artifacts["changeExplanation"] = explanation_sha
-    # Indexed with membership, not just stored: the dashboard fetches it by
-    # role, and an artifact only the manifest knows about is not fetchable.
-    with Session(deps.engine) as session:
-        repo.index_artifact(
-            session,
-            sha256=explanation_sha,
-            kind="change-explanation",
-            media_type="application/json",
-            size_bytes=len(explanation_bytes),
-            producer="change-explainer",
-            produced_by_run_id=ctx.run_id,
-            schema_id="change-explanation.v1",
-        )
-        session.commit()
+    ctx.publish(
+        deps,
+        "change-explanation",
+        explanation.contract_dump(),
+        schema_id="change-explanation.v1",
+        producer="change-explainer",
+    )
     if dropped:
         ctx.notes.append(
             f"{len(dropped)} explanation claim(s) removed: their citations did not "
@@ -488,21 +582,13 @@ def stage_explain_project(
         ctx.notes.append("project explanation unavailable: the explainer did not complete")
         return
 
-    explanation_bytes = json.dumps(explanation.contract_dump()).encode("utf-8")
-    explanation_sha = deps.cas.put_json(explanation.contract_dump())
-    ctx.artifacts["projectExplanation"] = explanation_sha
-    with Session(deps.engine) as session:
-        repo.index_artifact(
-            session,
-            sha256=explanation_sha,
-            kind="project-explanation",
-            media_type="application/json",
-            size_bytes=len(explanation_bytes),
-            producer="project-explainer",
-            produced_by_run_id=ctx.run_id,
-            schema_id="project-explanation.v1",
-        )
-        session.commit()
+    ctx.publish(
+        deps,
+        "project-explanation",
+        explanation.contract_dump(),
+        schema_id="project-explanation.v1",
+        producer="project-explainer",
+    )
     if dropped:
         ctx.notes.append(
             f"{len(dropped)} project explanation claim(s) removed: their citations did "
@@ -540,7 +626,7 @@ def stage_payload(
             explanation_markdown=(condensed_markdown(ctx.explanation) if ctx.explanation else None),
         )
         session.commit()
-    ctx.artifacts["reviewPayload"] = result.dry_run.payload_sha256
+    ctx.adopt(deps, "review-payload-dry-run", result.dry_run.payload_sha256)
     return {
         "payloadSha256": result.dry_run.payload_sha256,
         "blocking": result.blocking_ids,

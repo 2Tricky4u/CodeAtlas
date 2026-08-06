@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,9 @@ from codeatlas.vcs.git import GitClient, GitError
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _ARTIFACT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,59}$")
+# Served as text rather than JSON. Deliberately an allowlist: this endpoint must
+# never become a way to stream arbitrary stored bytes.
+_TEXT_MEDIA = frozenset({"text/plain", "text/markdown"})
 
 
 def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
@@ -118,9 +122,18 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
         if sha is None:
             raise HTTPException(404, f"this run has no {role!r} artifact")
         row = s.get(ArtifactRow, sha)
-        if row is None or row.media_type != "application/json":
-            raise HTTPException(415, "artifact is not JSON-servable")
-        return json.loads(cas.get(sha))
+        if row is None:
+            raise HTTPException(404, f"this run has no {role!r} artifact")
+        if row.media_type == "application/json":
+            return json.loads(cas.get(sha))
+        # Text artifacts — the Structurizr DSL, the rendered review — are read
+        # as text, not as a JSON string. Anything outside this allowlist is
+        # refused rather than streamed: the API never hands back arbitrary bytes.
+        if row.media_type in _TEXT_MEDIA:
+            return PlainTextResponse(
+                cas.get(sha).decode("utf-8", "replace"), media_type=row.media_type
+            )
+        raise HTTPException(415, f"{row.media_type} is not servable")
 
     @app.get("/api/runs/{run_id}/findings")
     def run_findings(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
