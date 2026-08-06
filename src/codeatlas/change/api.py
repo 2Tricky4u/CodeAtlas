@@ -36,15 +36,18 @@ def diff_surfaces(
     lints: dict[str, list[SemverLint]] | None = None,
     semver_ran_for: set[str] | None = None,
     tools: dict[str, str] | None = None,
+    unknown_reasons: dict[str, str] | None = None,
 ) -> ApiChange:
     """Compare two surfaces.
 
     `lints` maps package name to the cargo-semver-checks lints that fired.
     `semver_ran_for` names the packages cargo-semver-checks actually analyzed —
     without it, an absence of lints cannot be read as "no breaking change", only
-    as "unknown".
+    as "unknown". `unknown_reasons` explains each of those unknowns, because an
+    unexplained one is a silent failure wearing a value.
     """
     lints = lints or {}
+    reasons = unknown_reasons or {}
     analyzed = semver_ran_for if semver_ran_for is not None else set()
 
     base_packages = {p.name: p for p in base.packages}
@@ -56,14 +59,23 @@ def diff_surfaces(
         before = set(base_packages[name].items)
         after = set(head_packages[name].items)
         package_lints = lints.get(name, [])
+        bump = _required_bump(
+            package_lints,
+            analyzed=name in analyzed,
+            removed=bool(before - after),
+            added=bool(after - before),
+        )
         deltas.append(
             PackageApiDelta(
                 name=name,
                 added=sorted(after - before),
                 removed=sorted(before - after),
                 unchanged_count=len(before & after),
-                required_bump=_required_bump(
-                    package_lints, analyzed=name in analyzed, removed=bool(before - after)
+                required_bump=bump,
+                bump_unknown_reason=(
+                    reasons.get(name, "cargo-semver-checks did not analyze this package")
+                    if bump == "unknown"
+                    else None
                 ),
                 lints=package_lints,
             )
@@ -78,19 +90,29 @@ def diff_surfaces(
     )
 
 
-def _required_bump(lints: list[SemverLint], analyzed: bool, removed: bool) -> RequiredBump:
+def _required_bump(
+    lints: list[SemverLint], analyzed: bool, removed: bool, added: bool
+) -> RequiredBump:
+    """What this delta costs a caller, erring towards the larger bump.
+
+    cargo-semver-checks answers a narrower question than it appears to: it
+    reports whether the version bump a change *already declares* is sufficient,
+    so a crate that bumped its own minor version before adding items is told "no
+    semver update required". Reported unqualified, that came out as ripgrep's
+    `ignore` crate needing no bump for 37 new public items.
+
+    So the tool's silence is combined with what the surfaces themselves show. A
+    removed item is a break and an added item is at least a minor change,
+    whether or not a lint named either — the alternative is the more confident
+    wrong answer.
+    """
     if not analyzed:
         # Silence from a tool that never ran is not a clean bill of health.
         return "unknown"
-    if any(lint.level == "major" for lint in lints):
+    if any(lint.level == "major" for lint in lints) or removed:
         return "major"
-    if any(lint.level == "minor" for lint in lints):
+    if any(lint.level == "minor" for lint in lints) or added:
         return "minor"
-    if removed:
-        # cargo-semver-checks has no lint for every possible removal. A public
-        # item that is gone is a compatibility break whether or not a lint names
-        # it, and reporting "none" here would be the more confident wrong answer.
-        return "major"
     return "none"
 
 

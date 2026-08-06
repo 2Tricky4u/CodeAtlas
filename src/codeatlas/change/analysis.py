@@ -112,6 +112,7 @@ def assemble_change_analysis(
 
     lints: dict[str, list[SemverLint]] = {}
     analyzed: set[str] = set()
+    unknown_reasons: dict[str, str] = {}
     if not skip_api:
         levels = lint_levels()
         comparable = {p.name for p in surfaces["base"].packages} & {
@@ -122,6 +123,8 @@ def assemble_change_analysis(
             lints[name] = result.lints
             if result.analyzed:
                 analyzed.add(name)
+            elif result.reason:
+                unknown_reasons[name] = result.reason
 
     return ChangeAnalysis(
         base_sha=base_sha,
@@ -135,7 +138,11 @@ def assemble_change_analysis(
         diff_text=diff_text,
         diff=diff,
         api_change=diff_surfaces(
-            surfaces["base"], surfaces["head"], lints=lints, semver_ran_for=analyzed
+            surfaces["base"],
+            surfaces["head"],
+            lints=lints,
+            semver_ran_for=analyzed,
+            unknown_reasons=unknown_reasons,
         ),
         impact=analyze_impact(
             diff, head=graphs["head"], base=graphs["base"], api_surface=surfaces["head"]

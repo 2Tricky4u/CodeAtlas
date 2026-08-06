@@ -72,11 +72,55 @@ class TestSeverity:
         assert change.packages[0].required_bump == "minor"
         assert not change.has_breaking_change
 
+    def test_an_addition_is_minor_even_when_no_lint_fires(self) -> None:
+        """Found on ripgrep: `ignore` reported 37 new items and 'no bump needed'.
+
+        cargo-semver-checks answers whether the bump a change *already declares*
+        suffices, so a crate that bumped itself first is told "no semver update
+        required". Taken at face value that reads as "37 new public items cost a
+        caller nothing", which is not what it means.
+        """
+        change = diff_surfaces(
+            _surface(BASE_SHA, [KEPT]),
+            _surface(HEAD_SHA, [KEPT, ADDED]),
+            semver_ran_for={"kvstore"},
+        )
+        assert change.packages[0].added == [ADDED]
+        assert change.packages[0].required_bump == "minor"
+
+    def test_an_untouched_api_still_needs_no_bump(self) -> None:
+        change = diff_surfaces(
+            _surface(BASE_SHA, [KEPT]), _surface(HEAD_SHA, [KEPT]), semver_ran_for={"kvstore"}
+        )
+        assert change.packages[0].required_bump == "none"
+
     def test_severity_is_unknown_when_semver_checks_did_not_run(self) -> None:
         """Silence from a tool that never ran is not a clean bill of health."""
         change = diff_surfaces(_surface(BASE_SHA, [KEPT]), _surface(HEAD_SHA, [KEPT, ADDED]))
         assert change.packages[0].required_bump == "unknown"
         assert change.packages[0].added == [ADDED], "the delta itself is still known"
+
+    def test_an_unknown_verdict_always_carries_a_reason(self) -> None:
+        """Seven of ripgrep's nine packages came back unknown and unexplained."""
+        change = diff_surfaces(
+            _surface(BASE_SHA, [KEPT]),
+            _surface(HEAD_SHA, [KEPT, ADDED]),
+            unknown_reasons={"kvstore": "the installed toolchain is too old"},
+        )
+        assert change.packages[0].bump_unknown_reason == "the installed toolchain is too old"
+
+    def test_an_unknown_with_no_supplied_reason_still_says_something(self) -> None:
+        change = diff_surfaces(_surface(BASE_SHA, [KEPT]), _surface(HEAD_SHA, [KEPT, ADDED]))
+        assert change.packages[0].bump_unknown_reason
+
+    def test_a_classified_package_carries_no_reason(self) -> None:
+        change = diff_surfaces(
+            _surface(BASE_SHA, [KEPT]),
+            _surface(HEAD_SHA, [KEPT, ADDED]),
+            lints={"kvstore": [SemverLint(id="x", level="minor", summary="added")]},
+            semver_ran_for={"kvstore"},
+        )
+        assert change.packages[0].bump_unknown_reason is None
 
     def test_a_major_lint_wins_over_a_minor_one(self) -> None:
         change = diff_surfaces(

@@ -7,6 +7,7 @@ failure is preserved.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -74,8 +75,15 @@ def run_receipted(
     configuration: dict[str, str | float | int | bool | None],
     extractor_version: str,
     timeout_s: float = 600.0,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[bytes], ExtractorReceipt]:
-    """Run `command`, producing a receipt regardless of outcome."""
+    """Run `command`, producing a receipt regardless of outcome.
+
+    `extra_env` overlays the inherited environment. Anything it sets belongs in
+    `configuration` too: an invocation that behaves differently because of its
+    environment must say so in its receipt, or the receipt does not describe what
+    actually ran.
+    """
     started_at = _rfc3339_now()
     started = time.monotonic()
     try:
@@ -85,6 +93,7 @@ def run_receipted(
             capture_output=True,
             timeout=timeout_s,
             check=False,
+            env={**os.environ, **extra_env} if extra_env else None,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         receipt = ExtractorReceipt(

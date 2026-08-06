@@ -528,6 +528,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         }
         lints: dict[str, list[Any]] = {}
         analyzed: set[str] = set()
+        unknown_reasons: dict[str, str] = {}
         try:
             levels = lint_levels()
         except ExtractorError:
@@ -542,6 +543,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     lints[name] = result.lints
                     if result.analyzed:
                         analyzed.add(name)
+                    elif result.reason:
+                        unknown_reasons[name] = result.reason
                 session.commit()
 
         from codeatlas.change.api import diff_surfaces
@@ -551,6 +554,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             head_surface,
             lints=lints,
             semver_ran_for=analyzed,
+            unknown_reasons=unknown_reasons,
             tools={"cargoPublicApi": base_surface.tool, "cargoSemverChecks": _semver_version()},
         )
         payload = canonical_json(change.contract_dump())

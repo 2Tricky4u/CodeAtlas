@@ -58,6 +58,9 @@ class PackageApiDelta(ContractModel):
     removed: list[str]
     unchanged_count: int = Field(ge=0)
     required_bump: RequiredBump
+    # Set exactly when `required_bump` is "unknown". An unexplained "we don't
+    # know" is a silent failure wearing a value.
+    bump_unknown_reason: str | None = None
     lints: list[SemverLint] = Field(default_factory=list)
 
     @property

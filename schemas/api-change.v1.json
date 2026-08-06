@@ -46,6 +46,10 @@
           "description": "'unknown' when cargo-semver-checks did not analyze this package: silence from a tool that never ran is not a clean bill of health.",
           "enum": ["major", "minor", "none", "unknown"]
         },
+        "bumpUnknownReason": {
+          "description": "Why the severity is unknown — a toolchain too old to build the crate, a build failure, an unrecognized summary. Present exactly when requiredBump is 'unknown'.",
+          "type": ["string", "null"]
+        },
         "lints": {
           "type": "array",
           "items": { "$ref": "#/$defs/lint" }

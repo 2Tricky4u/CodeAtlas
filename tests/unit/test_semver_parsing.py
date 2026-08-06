@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from codeatlas.extractors.rust.semver_checks import (
+    explain_failure,
     parse_lints,
     parse_required_bump,
 )
@@ -49,6 +50,24 @@ CLEAN_STDERR = """    Checking kvstore v0.1.0 -> v0.1.0 (no change; assume minor
 MINOR_STDERR = """     Summary semver requires new minor version: 0 major and 1 minor checks failed
 """
 
+# Captured verbatim from ripgrep, whose grep-* crates declare a newer minimum
+# Rust than the installed toolchain. `globset` and `ignore` built and were
+# classified; these seven were not, and said nothing about why.
+MSRV_STDERR = """    Building grep-matcher v0.1.9 (current)
+error: running cargo-doc on crate 'grep-matcher' failed with output:
+-----
+error: rustc 1.94.1 is not supported by the following package:
+  grep-matcher@0.1.9 requires rustc 1.96
+
+
+-----
+
+error: failed to build rustdoc for crate grep-matcher v0.1.9
+note: this is usually due to a compilation error in the crate,
+      and is unlikely to be a bug in cargo-semver-checks
+error: aborting due to failure to build rustdoc for crate grep-matcher v0.1.9
+"""
+
 LEVELS = {"inherent_method_missing": "major", "enum_must_use_added": "minor"}
 ROOTS = [Path(r"C:\checkouts\base"), Path(r"C:\checkouts\head")]
 
@@ -74,6 +93,38 @@ class TestUnrecognizedOutputNeverReadsAsClean:
     def test_a_crash_before_the_summary_is_unknown(self) -> None:
         crashed = "    Building kvstore v0.1.0 (current)\nerror: could not compile `kvstore`\n"
         assert parse_required_bump(crashed) == "unknown"
+
+
+class TestAnUnknownVerdictExplainsItself:
+    """`unknown` with no reason is a silent failure wearing a value.
+
+    On ripgrep this was seven of nine packages. The pipeline was right to refuse
+    a verdict; what it could not do was tell anyone that the cure was a newer
+    rustc rather than a bug report.
+    """
+
+    def test_a_toolchain_too_old_says_so_in_both_versions(self) -> None:
+        reason = explain_failure(MSRV_STDERR, 101)
+        assert "too old" in reason
+        assert "1.94.1" in reason
+        assert "1.96" in reason
+
+    def test_the_uninformative_wrapper_lines_are_not_the_answer(self) -> None:
+        """ "failed to build rustdoc" restates the failure without explaining it."""
+        reason = explain_failure(MSRV_STDERR, 101)
+        assert "aborting due to" not in reason
+        assert "failed to build rustdoc" not in reason
+
+    def test_another_build_error_yields_its_own_first_line(self) -> None:
+        stderr = (
+            "    Building x v0.1.0 (current)\n"
+            "error: could not compile `x` due to 2 previous errors\n"
+            "error: aborting due to failure to build rustdoc for crate x v0.1.0\n"
+        )
+        assert explain_failure(stderr, 101) == "could not compile `x` due to 2 previous errors"
+
+    def test_an_unrecognizable_failure_still_names_the_exit_code(self) -> None:
+        assert "137" in explain_failure("killed\n", 137)
 
 
 class TestLints:

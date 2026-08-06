@@ -240,6 +240,8 @@ def report_change(analysis: object, overview: ProjectOverview, checks: Checks) -
             f"    {package.name:<24} +{len(package.added)} -{len(package.removed)} "
             f"bump={package.required_bump} ({package.unchanged_count} unchanged)"
         )
+        if package.bump_unknown_reason:
+            print(f"      why unknown: {package.bump_unknown_reason}")
     for skipped in api.skipped[:5]:
         print(f"    skipped {skipped.name}: {skipped.reason[:80]}")
 
@@ -262,10 +264,22 @@ def report_change(analysis: object, overview: ProjectOverview, checks: Checks) -
         "the impact set stayed bounded",
         f"{impact.total_impacted} impacted of {reachable} graph nodes ({len(impact.seeds)} seeds)",
     )
+    unclassified = [p for p in api.packages if p.required_bump == "unknown"]
+    reasons = sorted({p.bump_unknown_reason or "no reason recorded" for p in unclassified})
     checks.check(
-        all(package.required_bump != "unknown" for package in api.packages) or not api.packages,
+        not unclassified,
         "cargo-semver-checks classified every measured package",
-        ", ".join(f"{p.name}={p.required_bump}" for p in api.packages) or "no packages measured",
+        (
+            f"{len(unclassified)} of {len(api.packages)} unclassified: " + "; ".join(reasons)
+            if unclassified
+            else ", ".join(f"{p.name}={p.required_bump}" for p in api.packages)
+            or "no packages measured"
+        ),
+    )
+    checks.check(
+        all(p.bump_unknown_reason for p in unclassified),
+        "every unknown verdict says why it is unknown",
+        f"{sum(1 for p in unclassified if not p.bump_unknown_reason)} unexplained",
     )
     checks.check(
         bool(api.packages) or bool(api.skipped),
