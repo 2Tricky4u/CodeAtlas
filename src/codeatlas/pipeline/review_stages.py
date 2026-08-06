@@ -40,7 +40,6 @@ from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
 from codeatlas.pipeline.artifacts_out import adopt_artifact, publish_artifact
 from codeatlas.pipeline.deps import PipelineDeps
-from codeatlas.publication.payload import build_payload
 from codeatlas.review.intent_node import reconstruct_intent
 from codeatlas.review.reviewers import (
     ReviewOutcome,
@@ -449,19 +448,3 @@ def stage_payload(
         "scopeCounts": result.scope_counts,
         "secretsDetected": result.dry_run.secrets_detected,
     }
-
-
-def build_payload_for_report(
-    ctx: ReviewContext, owner: str, repo_name: str, pr_number: int, changed: set[str] | None
-) -> dict[str, Any]:
-    assert ctx.report is not None
-    payload = build_payload(
-        ctx.report,
-        owner=owner,
-        repo=repo_name,
-        pr_number=pr_number,
-        commit_sha=ctx.revision_sha,
-        changed_paths=changed,
-    )
-    dumped: dict[str, Any] = payload.contract_dump()
-    return dumped

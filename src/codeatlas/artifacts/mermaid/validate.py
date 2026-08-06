@@ -65,11 +65,3 @@ def render(source: Path, output: Path) -> RenderResult:
         raise MermaidError("mermaid produced no output", proc.returncode, proc.stdout)
     log.info("mermaid.rendered", source=source.name, bytes=output.stat().st_size)
     return RenderResult(source=source, svg=output, size_bytes=output.stat().st_size)
-
-
-def render_all(sources: list[Path], output_dir: Path) -> list[RenderResult]:
-    """Render every diagram; the first failure fails the stage."""
-    results = []
-    for source in sorted(sources):
-        results.append(render(source, output_dir / (source.stem + ".svg")))
-    return results

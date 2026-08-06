@@ -51,10 +51,6 @@ def migrator_engine(test: bool = False) -> Engine:
     return create_engine(_url("codeatlas_migrator", db), pool_pre_ping=True)
 
 
-def migrator_url(test: bool = False) -> str:
-    return _url("codeatlas_migrator", "codeatlas_test" if test else "codeatlas")
-
-
 def test_db_available() -> bool:
     """True iff the codeatlas_test database accepts connections."""
     try:

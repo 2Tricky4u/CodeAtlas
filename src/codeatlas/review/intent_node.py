@@ -26,10 +26,6 @@ log = get_logger("codeatlas.review.intent")
 SKILL_ID = "intent-reconstructor"
 
 
-class IntentUnavailable(IntentPackage):
-    """Marker subclass is unnecessary; kept as documentation of the shape."""
-
-
 def _unavailable_package(reason: str) -> IntentPackage:
     return IntentPackage(
         requirements=[

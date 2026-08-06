@@ -20,7 +20,6 @@ on; the model says there is no protocol here instead of drawing an empty one.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,7 +43,6 @@ log = get_logger("codeatlas.project.protocol")
 
 SKILL_ID = "protocol-modeler"
 
-NO_PROTOCOL = "no protocol interactions were found in this project"
 NOTHING_SURVIVED = (
     "no participant in this protocol survived validation, so nothing is drawn; "
     "an empty diagram would claim a protocol exists"
@@ -233,7 +231,3 @@ def model_protocol(
     if dropped:
         log.info("protocol.elements_dropped", run_id=run_id, dropped=len(dropped))
     return validated, dropped
-
-
-def load_graph(cas: ArtifactStore, sha: str) -> ProjectGraph:
-    return ProjectGraph.model_validate(json.loads(cas.get(sha)))

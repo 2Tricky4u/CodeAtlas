@@ -54,11 +54,3 @@ class ArtifactStore:
         if not _REF_RE.match(ref):
             return False
         return self._path_for(ref.removeprefix("sha256:")).exists()
-
-
-def make_writable_and_remove(path: Path) -> None:
-    """Helper for cleanup of read-only CAS trees (tests, GC)."""
-    for p in sorted(path.rglob("*"), reverse=True):
-        if p.is_file():
-            p.chmod(p.stat().st_mode | stat.S_IWRITE)
-    path.chmod(path.stat().st_mode | stat.S_IWRITE)

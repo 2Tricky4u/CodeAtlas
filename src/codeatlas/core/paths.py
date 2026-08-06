@@ -7,7 +7,7 @@ are relative to; anything escaping the root is an error, never silently kept.
 
 from __future__ import annotations
 
-from pathlib import PurePath, PureWindowsPath
+from pathlib import PureWindowsPath
 
 
 def to_repo_relative(path: str, root: str | None = None) -> str:
@@ -44,11 +44,3 @@ def to_repo_relative(path: str, root: str | None = None) -> str:
     if not parts:
         raise ValueError(f"path {path!r} normalizes to empty")
     return "/".join(parts)
-
-
-def is_repo_relative(path: str) -> bool:
-    """True iff `path` is already in canonical repo-relative form."""
-    if "\\" in path or path.startswith("/"):
-        return False
-    pure = PurePath(path)
-    return not pure.is_absolute() and ".." not in pure.parts and "." not in pure.parts

@@ -12,7 +12,6 @@ stage does not dispatch an agent at all.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from sqlalchemy import Engine
@@ -219,10 +218,3 @@ def _cite_suffix(claim: object) -> str:
             parts.append("impact set")
     unique = sorted(set(parts))
     return f"({', '.join(unique)})" if unique else ""
-
-
-def load_artifact(cas: ArtifactStore, sha: str | None, model: type) -> object | None:
-    """Load and validate an optional artifact, or None when it was not produced."""
-    if sha is None:
-        return None
-    return model.model_validate(json.loads(cas.get(sha)))  # type: ignore[attr-defined,no-any-return]

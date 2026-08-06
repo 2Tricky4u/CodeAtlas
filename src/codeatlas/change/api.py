@@ -26,9 +26,6 @@ from codeatlas.models.api import (
     SkippedPackage,
 )
 
-# Severity of a package's change, decided by cargo-semver-checks when it ran.
-_BUMP_ORDER = {"none": 0, "minor": 1, "major": 2}
-
 
 def diff_surfaces(
     base: ApiSurface,

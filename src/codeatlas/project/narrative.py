@@ -17,7 +17,6 @@ compiler passes; a newcomer has nothing to check that against.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -220,10 +219,3 @@ def explain_project(
             kept=validated.claim_count,
         )
     return validated, dropped
-
-
-def load_overview(cas: ArtifactStore, sha: str | None) -> ProjectOverview | None:
-    """Load the overview this narrative must be checked against."""
-    if sha is None:
-        return None
-    return ProjectOverview.model_validate(json.loads(cas.get(sha)))

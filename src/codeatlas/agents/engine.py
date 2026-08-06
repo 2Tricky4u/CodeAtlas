@@ -3,6 +3,9 @@
 The pipeline dispatches typed AgentTasks and receives typed AgentResults; it
 never imports a concrete engine. Output is JSON-Schema-validated at this
 boundary, so an engine can only return data the contract allows.
+
+The engine protocol itself lives in `dispatch.py` as `RunnableEngine`, next to
+the code that calls it.
 """
 
 from __future__ import annotations
@@ -11,11 +14,9 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from jsonschema import Draft202012Validator
-
-from codeatlas.models.agent import AgentResult, AgentTask
 
 _SCHEMA_DIR = Path(__file__).resolve().parents[3] / "schemas"
 
@@ -24,14 +25,6 @@ _SCHEMA_DIR = Path(__file__).resolve().parents[3] / "schemas"
 class EngineHealth:
     available: bool
     detail: str
-
-
-class AgentEngine(Protocol):
-    name: str
-
-    def run(self, task: AgentTask) -> AgentResult: ...
-
-    def health_check(self) -> EngineHealth: ...
 
 
 @lru_cache(maxsize=32)
