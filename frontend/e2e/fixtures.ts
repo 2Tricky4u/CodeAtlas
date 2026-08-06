@@ -238,6 +238,58 @@ export const EXPLANATION = {
   notes: [],
 };
 
+export const ARCHITECTURE = {
+  repositoryId: "local/kvstore",
+  revision: HEAD,
+  systemName: "kvstore",
+  containers: [
+    {
+      key: "kvstore",
+      name: "kvstore",
+      description: "kvstore 0.1.0",
+      technology: "rust",
+      level: 0,
+      fanIn: 1,
+      fanOut: 0,
+      evidenceNodeId: "pkg:cargo/kvstore@0.1.0",
+      path: "kvstore/Cargo.toml",
+    },
+    {
+      key: "kvstore_cli",
+      name: "kvstore-cli",
+      description: "kvstore-cli 0.1.0",
+      technology: "rust",
+      level: 1,
+      fanIn: 0,
+      fanOut: 1,
+      evidenceNodeId: "pkg:cargo/kvstore-cli@0.1.0",
+      path: "kvstore-cli/Cargo.toml",
+    },
+  ],
+  relationships: [
+    {
+      sourceKey: "kvstore_cli",
+      targetKey: "kvstore",
+      description: "depends-on",
+      evidenceEdgeId: "edge:9f2c1b7a4d8e",
+    },
+  ],
+  readability: {
+    passed: true,
+    checks: [{ name: "node-budget", passed: true, value: 2, limit: 25 }],
+  },
+  notes: ["3 package(s) resolved by the build but not present in this repository are not drawn: they are dependencies, not containers"],
+};
+
+export const STRUCTURIZR_DSL = `workspace "kvstore" "Architecture derived from the CodeAtlas project graph" {
+    model {
+        sys_kvstore = softwareSystem "kvstore" {
+            kvstore = container "kvstore" "kvstore 0.1.0" "rust"
+        }
+    }
+}
+`;
+
 // Independent of the change: "what is this project" is answerable for a
 // repository run that has no diff at all.
 export const PROJECT_EXPLANATION = {

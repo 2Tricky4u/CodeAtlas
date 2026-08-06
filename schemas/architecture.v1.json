@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/architecture.v1.json",
+  "title": "Architecture",
+  "description": "A C4 Context + Container model derived from the project graph. Containers are the repository's own packages; relationships are dependency edges between them. Every element names the graph node or edge it came from, so a box on the diagram leads back to the extractor output that justified it — nothing is drawn that the graph does not contain. Component and Code level views are deliberately absent: they go stale on every commit, and a stale diagram is worse than none.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "repositoryId", "revision", "systemName", "containers", "relationships"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "systemName": { "type": "string", "minLength": 1 },
+    "containers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/container" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relationship" }
+    },
+    "readability": {
+      "description": "The same mechanical rubric the map views are held to. A diagram that fails it is still emitted here — it is one box per package and there is no smaller honest view to fall back to — but the failure is stated so the reader knows what they are looking at.",
+      "$ref": "#/$defs/readability"
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "name", "technology", "evidenceNodeId"],
+      "properties": {
+        "key": {
+          "description": "Structurizr DSL identifier; stable for a given name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "technology": { "type": "string" },
+        "level": {
+          "description": "Dependency level, computed by the same levelization the map uses, so the client lays containers out from data rather than from a layout algorithm nobody pinned.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "fanIn": { "type": "integer", "minimum": 0 },
+        "fanOut": { "type": "integer", "minimum": 0 },
+        "evidenceNodeId": {
+          "description": "The project-graph node this container was derived from.",
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "description": "Manifest path, when the package has one — what a reader opens.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKey", "targetKey", "description", "evidenceEdgeId"],
+      "properties": {
+        "sourceKey": { "type": "string", "minLength": 1 },
+        "targetKey": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "evidenceEdgeId": {
+          "description": "The project-graph edge this relationship was derived from.",
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "description": "How many symbol-level edges back this dependency.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "readability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "passed", "value", "limit"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "passed": { "type": "boolean" },
+              "value": { "type": "number" },
+              "limit": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

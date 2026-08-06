@@ -37,6 +37,7 @@ EXPECTED_SCHEMAS = {
     "change-explanation.v1.json",
     "project-explanation.v1.json",
     "project-overview.v1.json",
+    "architecture.v1.json",
     "graph-view.v1.json",
 }
 
@@ -470,6 +471,50 @@ PROJECT_EXPLANATION_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+ARCHITECTURE_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "repositoryId": "local/kvstore",
+    "revision": "a" * 40,
+    "systemName": "kvstore",
+    "containers": [
+        {
+            "key": "kvstore",
+            "name": "kvstore",
+            "description": "kvstore 0.1.0",
+            "technology": "rust",
+            "level": 0,
+            "fanIn": 1,
+            "fanOut": 0,
+            "evidenceNodeId": "pkg:cargo/kvstore@0.1.0",
+            "path": "kvstore/Cargo.toml",
+        },
+        {
+            "key": "kvstore_cli",
+            "name": "kvstore-cli",
+            "description": "kvstore-cli 0.1.0",
+            "technology": "rust",
+            "level": 1,
+            "fanIn": 0,
+            "fanOut": 1,
+            "evidenceNodeId": "pkg:cargo/kvstore-cli@0.1.0",
+            "path": "kvstore-cli/Cargo.toml",
+        },
+    ],
+    "relationships": [
+        {
+            "sourceKey": "kvstore_cli",
+            "targetKey": "kvstore",
+            "description": "depends-on",
+            "evidenceEdgeId": "edge:9f2c1b7a4d8e",
+        }
+    ],
+    "readability": {
+        "passed": True,
+        "checks": [{"name": "node-budget", "passed": True, "value": 2, "limit": 25}],
+    },
+    "notes": [],
+}
+
 PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
     "schemaVersion": "1.0.0",
     "repositoryId": "local/kvstore",
@@ -594,6 +639,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "change-explanation.v1.json": CHANGE_EXPLANATION_EXAMPLE,
     "project-explanation.v1.json": PROJECT_EXPLANATION_EXAMPLE,
     "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
+    "architecture.v1.json": ARCHITECTURE_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
 }
 

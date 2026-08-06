@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import { api, type RunSummary } from "./api";
 import { Badge, ErrorBox, Loading, shortSha, STATUS_TONE } from "./ui";
+import { ArchitectureView } from "./views/ArchitectureView";
 import { ChangeView } from "./views/ChangeView";
 import { DetailView } from "./views/DetailView";
 import { FindingsView } from "./views/FindingsView";
@@ -26,6 +27,7 @@ export function App() {
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<OverviewView />} />
             <Route path="map" element={<MapView />} />
+            <Route path="architecture" element={<ArchitectureView />} />
             <Route path="change" element={<ChangeView />} />
             <Route path="findings" element={<FindingsView />} />
             <Route path="detail" element={<DetailView />} />
@@ -122,9 +124,12 @@ function Landing() {
   );
 }
 
+// Reading order: what this project is, how it is laid out, how it is shaped,
+// what a change did to it, what is wrong with it, how the run itself went.
 const TABS = [
   { path: "overview", label: "overview" },
   { path: "map", label: "map" },
+  { path: "architecture", label: "architecture" },
   { path: "change", label: "change" },
   { path: "findings", label: "findings" },
   { path: "detail", label: "run detail" },

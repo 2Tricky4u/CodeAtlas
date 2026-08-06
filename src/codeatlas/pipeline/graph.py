@@ -29,6 +29,7 @@ from codeatlas.graph.merge import merge_fragments
 from codeatlas.graph.validate import validate_graph
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.manifest import RunCost, RunManifest, SourceLock
+from codeatlas.models.overview import ProjectOverview
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.pipeline.state import PipelineState
 from codeatlas.vcs.source_lock import build_source_lock
@@ -705,6 +706,57 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             session.commit()
         return {"project_overview_sha256": sha, "graph_views_sha256": view_sha}
 
+    def architecture(state: PipelineState) -> dict[str, Any]:
+        """The C4 Context + Container model, and the Structurizr DSL for it.
+
+        Deterministic, so it belongs here rather than in the review half: an
+        architecture diagram of a repository does not depend on anyone having
+        reviewed a change to it. The DSL's *validation* still lives in `review`,
+        because that needs the Structurizr CLI installed.
+        """
+        from codeatlas.artifacts.structurizr.gen import generate_dsl, map_graph_to_c4
+        from codeatlas.pipeline.artifacts_out import publish_artifact
+        from codeatlas.project.architecture import build_architecture
+
+        graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
+        overview = ProjectOverview.model_validate(
+            json.loads(deps.cas.get(state["project_overview_sha256"]))
+        )
+        model = build_architecture(graph, overview)
+        sha = publish_artifact(
+            deps,
+            state["run_id"],
+            "architecture",
+            model.contract_dump(),
+            schema_id="architecture.v1",
+        )
+
+        # The DSL is generated from the *whole* mapping, not the narrowed one:
+        # a Structurizr workspace someone opens elsewhere should describe every
+        # container the build resolved, while the drawn diagram stays legible.
+        dsl = generate_dsl(
+            map_graph_to_c4(graph, system_name=model.system_name),
+            revision_sha=state["head_sha"],
+        )
+        dsl_sha = publish_artifact(
+            deps, state["run_id"], "structurizr-dsl", dsl, media_type="text/plain"
+        )
+
+        with Session(deps.engine) as session:
+            repo.add_run_event(
+                session,
+                run_id=state["run_id"],
+                stage="architecture",
+                event="architecture_derived",
+                data={
+                    "containers": len(model.containers),
+                    "relationships": len(model.relationships),
+                    "readable": bool(model.readability and model.readability.passed),
+                },
+            )
+            session.commit()
+        return {"architecture_sha256": sha, "structurizr_dsl_sha256": dsl_sha}
+
     def narrate(state: PipelineState) -> dict[str, Any]:
         """Say what this project is, checked against the overview above.
 
@@ -832,7 +884,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         stage_reviewers(deps, ctx)
         stage_validate(deps, ctx, revision_db_id=state["revision_db_id"])
         stage_synthesize(deps, ctx)
-        stage_diagrams(deps, ctx)
+        stage_diagrams(deps, ctx, deps.cas.get(state["structurizr_dsl_sha256"]).decode("utf-8"))
         stage_adr_audit(deps, ctx)
         payload = stage_payload(deps, ctx, scope=scope)
 
@@ -929,6 +981,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "api_change": api_change,
         "change_impact": change_impact,
         "project_overview": project_overview,
+        "architecture": architecture,
         "narrate": narrate,
         "export_cytoscape": export_cytoscape,
         "review": review,
@@ -946,7 +999,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("graph_diff", "api_change")
     builder.add_edge("api_change", "change_impact")
     builder.add_edge("change_impact", "project_overview")
-    builder.add_edge("project_overview", "narrate")
+    builder.add_edge("project_overview", "architecture")
+    builder.add_edge("architecture", "narrate")
     builder.add_edge("narrate", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")

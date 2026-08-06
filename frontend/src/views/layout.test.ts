@@ -136,6 +136,19 @@ describe("positionsFromLevels", () => {
     expect(positions.get("below")!.y).toBeGreaterThan(Math.max(...ringYs) + 40);
   });
 
+  it("takes a tighter vertical step when the caller asks for one", () => {
+    // The architecture view stacks six levels of short wide boxes; at the map's
+    // spacing that is 650px tall in a panel that is not, and `fit` shrinks the
+    // labels to six pixels.
+    const nodes = [node("a", 0), node("b", 1)];
+    const tight = positionsFromLevels(nodes, [], { spacingY: 90 });
+    const loose = positionsFromLevels(nodes, []);
+    const span = (p: Map<string, { x: number; y: number }>) =>
+      Math.abs(p.get("a")!.y - p.get("b")!.y);
+    expect(span(tight)).toBe(90);
+    expect(span(tight)).toBeLessThan(span(loose));
+  });
+
   it("leaves a mutual pair in the row", () => {
     // Two nodes are already legible side by side; a ring would be noise.
     const nodes = [node("a", 1), node("b", 1)];

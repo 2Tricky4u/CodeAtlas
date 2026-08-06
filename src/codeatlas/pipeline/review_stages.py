@@ -23,7 +23,6 @@ from codeatlas.adr.audit import LayeringRule, audit_layering
 from codeatlas.adr.parser import parse_adr_directory
 from codeatlas.artifacts.mermaid.gen import sequence_diagram, state_diagram
 from codeatlas.artifacts.mermaid.validate import mmdc_path, render
-from codeatlas.artifacts.structurizr.gen import generate_dsl, map_graph_to_c4
 from codeatlas.artifacts.structurizr.validate import (
     cli_path,
     export_views,
@@ -244,20 +243,17 @@ def stage_synthesize(deps: PipelineDeps, ctx: ReviewContext) -> None:
     ctx.publish(deps, "review-markdown", render_markdown(ctx.report), media_type="text/markdown")
 
 
-def stage_diagrams(deps: PipelineDeps, ctx: ReviewContext) -> None:
-    """C4 workspace, validated by the Structurizr CLI. Missing tools degrade the run.
+def stage_diagrams(deps: PipelineDeps, ctx: ReviewContext, dsl: str) -> None:
+    """Validate the C4 workspace with the Structurizr CLI. Missing tools degrade the run.
 
-    The DSL is the artifact; the exported PlantUML and rendered SVG are a
-    *check* that it parses, not something the dashboard reads. They live on
-    disk under the run's artifacts directory and are reported as run events —
-    giving them an artifact role would name content the store does not hold,
-    which is the same category error as an artifact only the manifest knows
-    about.
+    The DSL itself is produced deterministically upstream — an architecture does
+    not depend on anyone reviewing a change. What happens here is the *check*
+    that it parses, plus the rendered SVG. Neither is an artifact: they live on
+    disk under the run's artifacts directory, and giving them a role would name
+    content the store does not hold, which is the same category error as an
+    artifact only the manifest knows about.
     """
     out = deps.artifacts_dir / ctx.run_id
-    mapping = map_graph_to_c4(ctx.graph, system_name=ctx.graph.repository.id.split("/")[-1])
-    dsl = generate_dsl(mapping, revision_sha=ctx.revision_sha)
-    ctx.publish(deps, "structurizr-dsl", dsl, media_type="text/plain")
 
     if cli_path() is None:
         ctx.notes.append("structurizr CLI unavailable: C4 workspace generated but not validated")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from codeatlas.models.agent import AgentResult, AgentTask
 from codeatlas.models.api import ApiChange, ApiSurface
+from codeatlas.models.architecture import Architecture
 from codeatlas.models.base import ContractModel
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.explanation import ChangeExplanation
@@ -30,6 +31,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "agent-task.v1.json": AgentTask,
     "agent-result.v1.json": AgentResult,
     "run-manifest.v1.json": RunManifest,
+    "architecture.v1.json": Architecture,
     "api-surface.v1.json": ApiSurface,
     "api-change.v1.json": ApiChange,
     "graph-diff.v1.json": GraphDiff,
@@ -46,6 +48,7 @@ __all__ = [
     "AgentTask",
     "ApiChange",
     "ApiSurface",
+    "Architecture",
     "ChangeExplanation",
     "ChangeImpact",
     "ContractModel",

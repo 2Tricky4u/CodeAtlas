@@ -6,6 +6,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   API_CHANGE,
+  ARCHITECTURE,
   DETAIL,
   DIFF,
   EXPLANATION,
@@ -18,6 +19,7 @@ import {
   RUN,
   RUN_ID,
   SOURCE,
+  STRUCTURIZR_DSL,
   VIEWS,
 } from "./fixtures";
 
@@ -45,12 +47,18 @@ async function mockApi(
   await artifact("change-impact", IMPACT);
   await artifact("change-explanation", EXPLANATION);
 
-  // Routed outside the `artifact` helper on purpose: the project narrative does
-  // not depend on there being a change to explain.
+  // Routed outside the `artifact` helper on purpose: neither the narrative nor
+  // the architecture depends on there being a change to explain.
   await page.route(`**/api/runs/${RUN_ID}/artifact/project-explanation`, (route) =>
     withNarrative
       ? route.fulfill({ json: PROJECT_EXPLANATION })
       : route.fulfill({ status: 404, json: { detail: "none" } }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/architecture`, (route) =>
+    route.fulfill({ json: ARCHITECTURE }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/structurizr-dsl`, (route) =>
+    route.fulfill({ body: STRUCTURIZR_DSL, headers: { "content-type": "text/plain" } }),
   );
 }
 
@@ -176,6 +184,61 @@ test.describe("project overview", () => {
     await mockApi(page, { withNarrative: false });
     await page.goto(`/#/runs/${RUN_ID}/overview`);
     await expect(page.getByTestId("no-narrative")).toContainText("everything above is measured");
+  });
+});
+
+test.describe("architecture view", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("it draws this repository's packages, not its dependency tree", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    const table = page.getByTestId("architecture-table");
+    await expect(table).toContainText("kvstore-cli");
+    await expect(page.getByTestId("architecture-notes")).toContainText("are not drawn");
+  });
+
+  test("every container names the graph node it was derived from", async ({ page }) => {
+    // The claim that separates this from a hand-drawn diagram.
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await expect(page.getByTestId("architecture-table")).toContainText("kvstore@0.1.0");
+  });
+
+  test("a container opens the manifest it came from", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await page.getByRole("button", { name: "kvstore-cli" }).click();
+    await expect(page.getByTestId("source-panel")).toBeVisible();
+  });
+
+  test("the interchange format is offered, not just the picture", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await expect(page.getByTestId("dsl")).toContainText("softwareSystem");
+  });
+
+  test("a diagram past the readability budget says so", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/architecture`, (route) =>
+      route.fulfill({
+        json: {
+          ...ARCHITECTURE,
+          readability: {
+            passed: false,
+            checks: [{ name: "node-budget", passed: false, value: 41, limit: 25 }],
+          },
+          notes: ["node-budget 41 exceeds the limit of 25; this diagram is larger than one a person can take in at a glance"],
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await expect(page.getByTestId("architecture-notes")).toContainText("larger than one a person");
+  });
+
+  test("a run with no architecture says so rather than showing an empty canvas", async ({
+    page,
+  }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/architecture`, (route) =>
+      route.fulfill({ status: 404, json: { detail: "none" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await expect(page.getByTestId("empty-state")).toContainText("no architecture model");
   });
 });
 

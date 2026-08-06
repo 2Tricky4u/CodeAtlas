@@ -269,6 +269,39 @@ export interface ChangeExplanation {
   notes?: string[];
 }
 
+// --- architecture -----------------------------------------------------------
+
+export interface ArchitectureContainer {
+  key: string;
+  name: string;
+  description?: string;
+  technology?: string;
+  level?: number | null;
+  fanIn?: number | null;
+  fanOut?: number | null;
+  /** The graph node this box was derived from — nothing is drawn without one. */
+  evidenceNodeId: string;
+  path?: string | null;
+}
+
+export interface ArchitectureRelationship {
+  sourceKey: string;
+  targetKey: string;
+  description: string;
+  evidenceEdgeId: string;
+  weight?: number | null;
+}
+
+export interface Architecture {
+  repositoryId: string;
+  revision: string;
+  systemName: string;
+  containers: ArchitectureContainer[];
+  relationships: ArchitectureRelationship[];
+  readability?: { passed: boolean; checks: ReadabilityCheck[] } | null;
+  notes?: string[];
+}
+
 // --- project narrative ------------------------------------------------------
 
 /** One revision, so no `revision` field — see project-explanation.v1. */
@@ -316,6 +349,13 @@ async function getJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** Text artifacts — the Structurizr DSL, the rendered review — are documents. */
+async function getOptionalText(url: string): Promise<string | null> {
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  return await response.text();
+}
+
 /** Absence of an optional artifact is a state, not an error. */
 async function getOptional<T>(url: string): Promise<T | null> {
   const response = await fetch(url);
@@ -340,6 +380,9 @@ export const api = {
     getOptional<ChangeExplanation>(`/api/runs/${id}/artifact/change-explanation`),
   projectExplanation: (id: string) =>
     getOptional<ProjectExplanation>(`/api/runs/${id}/artifact/project-explanation`),
+  architecture: (id: string) =>
+    getOptional<Architecture>(`/api/runs/${id}/artifact/architecture`),
+  structurizrDsl: (id: string) => getOptionalText(`/api/runs/${id}/artifact/structurizr-dsl`),
   source: (revision: string, path: string, start?: number, end?: number) => {
     const params = new URLSearchParams({ path });
     if (start !== undefined) params.set("start", String(start));

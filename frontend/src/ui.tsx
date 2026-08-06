@@ -78,7 +78,11 @@ export function ErrorBox({ error }: { error: string }) {
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty-state">{children}</div>;
+  return (
+    <div className="empty-state" data-testid="empty-state">
+      {children}
+    </div>
+  );
 }
 
 export function Loading() {

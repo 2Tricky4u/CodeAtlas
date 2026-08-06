@@ -136,7 +136,9 @@ function stripCommonPrefix(label: string, all: readonly string[]): string {
 export function positionsFromLevels(
   nodes: readonly PositionedNode[],
   edges: readonly PositionedEdge[] = [],
+  options: { spacingY?: number } = {},
 ): Map<string, Point> {
+  const spacingY = options.spacingY ?? SPACING_Y;
   const byLevel = new Map<number, PositionedNode[]>();
   for (const node of nodes) {
     const level = node.level ?? 0;
@@ -162,7 +164,7 @@ export function positionsFromLevels(
   for (const { groups, halfHeight } of rows) {
     cursorY += halfHeight;
     const y = cursorY;
-    cursorY += halfHeight + SPACING_Y;
+    cursorY += halfHeight + spacingY;
 
     // Width each group needs along the row.
     const widths = groups.map((group) =>
