@@ -31,6 +31,7 @@ from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.manifest import RunCost, RunManifest, SourceLock
 from codeatlas.models.overview import ProjectOverview
 from codeatlas.pipeline.deps import PipelineDeps
+from codeatlas.pipeline.graph_cache import GRAPH_PIPELINE_VERSION
 from codeatlas.pipeline.state import PipelineState
 from codeatlas.vcs.source_lock import build_source_lock
 
@@ -968,7 +969,17 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 source_lock=lock,
                 toolchain=toolchain,
                 skill_registry_sha256=canonical_sha256({"skills": []}),
-                config_sha256=canonical_sha256({"workdir": deps.workdir.name}),
+                # Configuration that changes what a run produces — not where it
+                # was produced. This hashed the workdir name, so the same
+                # analysis in a different directory reported different
+                # configuration, which is drift a reader would have to explain.
+                config_sha256=canonical_sha256(
+                    {
+                        "graphPipelineVersion": GRAPH_PIPELINE_VERSION,
+                        "narrationEnabled": deps.narration_available,
+                        "reviewEnabled": deps.reviews_enabled,
+                    }
+                ),
                 model_ids=[],
                 cassette_ids=[],
                 inputs={"sourceLock": state["source_lock_sha256"]},
