@@ -502,6 +502,24 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         with Session(deps.engine) as session:
             for receipt in [*base_receipts, *head_receipts]:
                 repo.record_receipt(session, run_id=run_id, receipt=receipt)
+            # Each revision's surface is evidence in its own right, and the
+            # impact stage needs the head one to know what is publicly exported.
+            for role, surface in (
+                ("api-surface-base", base_surface),
+                ("api-surface-head", head_surface),
+            ):
+                surface_bytes = canonical_json(surface.contract_dump())
+                repo.index_artifact(
+                    session,
+                    sha256=deps.cas.put(surface_bytes),
+                    kind="api-surface",
+                    media_type="application/json",
+                    size_bytes=len(surface_bytes),
+                    producer="pipeline",
+                    produced_by_run_id=run_id,
+                    schema_id="api-surface.v1",
+                    role=role,
+                )
             session.commit()
 
         # Severity is only asked about packages both revisions actually exposed.
@@ -561,6 +579,66 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             )
             session.commit()
         return {"api_change_sha256": sha}
+
+    def change_impact(state: PipelineState) -> dict[str, Any]:
+        """Who else could this change affect — bounded, ranked, and hedged.
+
+        Runs last of the change stages because it consumes all of them. The
+        public-API rank needs the head surface, so when `api_change` could not
+        produce one the ranking says so rather than quietly demoting everything.
+        """
+        diff_sha = state.get("graph_diff_sha256")
+        if not diff_sha:
+            return {}
+
+        from codeatlas.change.impact import analyze_impact
+        from codeatlas.db.repositories import artifact_for_run
+        from codeatlas.models.api import ApiSurface
+        from codeatlas.models.diff import GraphDiff
+
+        run_id = state["run_id"]
+        diff = GraphDiff.model_validate(json.loads(deps.cas.get(diff_sha)))
+        head_graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
+        base_graph = ProjectGraph.model_validate(
+            json.loads(deps.cas.get(state["base_graph_sha256"]))
+        )
+
+        with Session(deps.engine) as session:
+            surface_sha = artifact_for_run(session, run_id, "api-surface-head")
+        surface = (
+            ApiSurface.model_validate(json.loads(deps.cas.get(surface_sha)))
+            if surface_sha
+            else None
+        )
+
+        impact = analyze_impact(diff, head=head_graph, base=base_graph, api_surface=surface)
+        payload = canonical_json(impact.contract_dump())
+        sha = deps.cas.put(payload)
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=sha,
+                kind="change-impact",
+                media_type="application/json",
+                size_bytes=len(payload),
+                producer="pipeline",
+                produced_by_run_id=run_id,
+                schema_id="change-impact.v1",
+            )
+            repo.add_run_event(
+                session,
+                run_id=run_id,
+                stage="change_impact",
+                event="change_impact_computed",
+                data={
+                    "seeds": len(impact.seeds),
+                    "impacted": impact.total_impacted,
+                    "suppressed": impact.suppressed,
+                    "hops": impact.hops,
+                },
+            )
+            session.commit()
+        return {"change_impact_sha256": sha}
 
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
@@ -669,6 +747,11 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         if (graph_diff_sha := state.get("graph_diff_sha256"))
                         else {}
                     ),
+                    **(
+                        {"changeImpact": impact_sha}
+                        if (impact_sha := state.get("change_impact_sha256"))
+                        else {}
+                    ),
                     **state.get("review_artifacts", {}),
                 },
                 cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
@@ -701,6 +784,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "base_revision": base_revision,
         "graph_diff": graph_diff,
         "api_change": api_change,
+        "change_impact": change_impact,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -715,7 +799,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("build_graph", "base_revision")
     builder.add_edge("base_revision", "graph_diff")
     builder.add_edge("graph_diff", "api_change")
-    builder.add_edge("api_change", "export_cytoscape")
+    builder.add_edge("api_change", "change_impact")
+    builder.add_edge("change_impact", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

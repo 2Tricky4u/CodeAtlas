@@ -209,6 +209,76 @@ class TestTheRunKnowsWhatTheChangeDidToTheStructure:
         assert manifest["outputs"]["graphDiff"].startswith("sha256:")
 
 
+class TestTheRunKnowsWhoElseCouldBeAffected:
+    """P2c against real extractor output."""
+
+    def test_the_change_s_own_symbols_are_seeds_not_impact(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """`put` was edited by this change, so it *is* the change, not a victim of it."""
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+
+        seeds = {s["label"]: s["reason"] for s in impact["seeds"]}
+        assert seeds["evict_oldest"] == "removed"
+        assert seeds["put"] == "touched"
+        assert "put" not in {i["label"] for i in impact["impacted"]}
+
+    def test_the_caller_of_an_edited_symbol_is_reported(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+
+        caller = next(i for i in impact["impacted"] if i["label"] == "handle_request")
+        assert caller["hop"] == 1
+        assert caller["viaEdgeKind"] == "calls"
+        assert caller["claimStrength"] == "could-be-affected"
+
+    def test_files_importing_the_changed_code_are_reported_via_imports(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+
+        importers = [i for i in impact["impacted"] if i["viaEdgeKind"] == "imports"]
+        assert {i["label"] for i in importers} == {"kvstore/src/api.rs", "kvstore/src/lib.rs"}
+
+    def test_the_publicly_exported_caller_is_ranked_first(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """Cache::put is in the crate's public API, so it is what a reader sees first."""
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+        assert impact["impacted"], "the change had callers"
+        assert impact["impacted"][0]["rank"] == "public-api"
+
+    def test_the_traversal_stayed_bounded(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+        assert impact["hops"] == 1
+        assert impact["maxHops"] == 2
+        assert all(i["hop"] <= 1 for i in impact["impacted"])
+        assert impact["suppressed"] == 0
+        assert impact["totalImpacted"] == len(impact["impacted"])
+
+    def test_the_precision_caveat_is_part_of_the_artifact(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        """It cannot be rendered without the limitation that qualifies it."""
+        deps, run_id, _, _ = api_pr_run
+        impact = _artifact(deps, run_id, "change-impact")
+        assert impact["basis"]
+        assert "possibilities" in impact["caveat"]
+
+    def test_both_revisions_public_surfaces_are_kept_as_evidence(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        deps, run_id, _, _ = api_pr_run
+        base = _artifact(deps, run_id, "api-surface-base")
+        head = _artifact(deps, run_id, "api-surface-head")
+        assert base["revision"] != head["revision"]
+        assert base["packages"][0]["name"] == "kvstore"
+
+    def test_the_manifest_lists_the_impact(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.db.tables import RunRow
+
+        deps, run_id, _, _ = api_pr_run
+        with Session(deps.engine) as s:
+            run = s.get(RunRow, run_id)
+            assert run is not None and run.manifest_sha256 is not None
+            manifest = json.loads(deps.cas.get(run.manifest_sha256))
+        assert manifest["outputs"]["changeImpact"].startswith("sha256:")
+
+
 class TestABodyOnlyChangeReportsNoApiChange:
     """The negative case, which is the one a broken tool would also produce."""
 

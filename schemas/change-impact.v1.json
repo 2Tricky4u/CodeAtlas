@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/change-impact.v1.json",
+  "title": "Change Impact",
+  "description": "What else a change could affect, by bounded reverse reachability from the symbols it modified or removed. Deliberately not a transitive closure: published static change-impact precision is roughly 38-50%, so an unbounded result reaches nearly everything and is right about nearly none of it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "baseRevision",
+    "headRevision",
+    "hops",
+    "maxHops",
+    "seeds",
+    "impacted",
+    "totalImpacted",
+    "suppressed",
+    "basis",
+    "caveat",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "baseRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "headRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "hops": {
+      "description": "Traversal depth actually used, after clamping to maxHops.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxHops": { "type": "integer", "minimum": 1 },
+    "seeds": {
+      "description": "The symbols the change modified or removed. An empty list means nothing was identified as changed, not that nothing changed.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/seed" }
+    },
+    "impacted": {
+      "description": "Ranked, and truncated to the report limit. `totalImpacted` and `suppressed` describe what is not shown.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/impacted" }
+    },
+    "totalImpacted": { "type": "integer", "minimum": 0 },
+    "suppressed": {
+      "description": "How many impacted symbols were found but not listed. Counted rather than dropped: a truncated list that does not say so reads as a complete one.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "basis": { "type": "string", "minLength": 1 },
+    "caveat": {
+      "description": "The precision limitation, carried with the data so it cannot be rendered without it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "seed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableKey", "label", "reason"],
+      "properties": {
+        "stableKey": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "reason": { "enum": ["touched", "removed"] }
+      }
+    },
+    "impacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableKey", "label", "kind", "hop", "rank", "claimStrength", "viaSeed"],
+      "properties": {
+        "stableKey": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "hop": { "type": "integer", "minimum": 1 },
+        "rank": { "enum": ["public-api", "crate-crossing", "internal", "test-only"] },
+        "claimStrength": {
+          "description": "'referred-to-removed-symbol' is a fact about the base revision. 'could-be-affected' is exactly as weak as it sounds.",
+          "enum": ["referred-to-removed-symbol", "could-be-affected"]
+        },
+        "viaSeed": { "type": "string", "minLength": 1 },
+        "viaEdgeKind": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -21,7 +21,7 @@ pinned revision (or a GitHub pull request), a completed run produces:
 
 ```
 source_lock -> extract -> build_graph -> base_revision -> graph_diff -> api_change
-            -> export_cytoscape -> review -> finalize
+            -> change_impact -> export_cytoscape -> review -> finalize
 ```
 
 `source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
@@ -42,6 +42,13 @@ without a model: `cargo public-api` renders the public surface of each revision 
 difference is arithmetic, then `cargo-semver-checks` classifies the severity. A package that
 could not be measured on both sides is listed in `skipped` with the reason, never reported as
 unchanged — "no API change" and "nothing was measured" must not look alike.
+
+`change_impact` walks the dependency edges backwards from the symbols the change modified or
+removed. One hop by default and two at the most: static change-impact precision is around
+38–50%, so an unbounded closure reaches nearly everything while being right about nearly
+none of it. Results are ranked (public API, crate-crossing, internal, test-only), the surplus
+past the report limit is counted rather than dropped, and the precision caveat is a field of
+the artifact so nothing can render the list without it.
 
 ## Design principle
 

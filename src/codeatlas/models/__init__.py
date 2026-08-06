@@ -8,6 +8,7 @@ from codeatlas.models.base import ContractModel
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
+from codeatlas.models.impact import ChangeImpact
 from codeatlas.models.intent import IntentPackage
 from codeatlas.models.manifest import RunManifest, SourceLock
 from codeatlas.models.protocol import ProtocolModel
@@ -28,6 +29,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "api-surface.v1.json": ApiSurface,
     "api-change.v1.json": ApiChange,
     "graph-diff.v1.json": GraphDiff,
+    "change-impact.v1.json": ChangeImpact,
 }
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "AgentTask",
     "ApiChange",
     "ApiSurface",
+    "ChangeImpact",
     "ContractModel",
     "ExtractorReceipt",
     "Finding",

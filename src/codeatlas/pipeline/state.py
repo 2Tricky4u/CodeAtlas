@@ -38,6 +38,7 @@ class PipelineState(TypedDict, total=False):
     added_lines: dict[str, list[int]]
     api_change_sha256: str | None
     graph_diff_sha256: str | None
+    change_impact_sha256: str | None
     # Review half (present only when an agent engine is configured)
     review_artifacts: Annotated[dict[str, str], operator.or_]
     finding_count: int

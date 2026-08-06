@@ -33,6 +33,7 @@ EXPECTED_SCHEMAS = {
     "api-surface.v1.json",
     "api-change.v1.json",
     "graph-diff.v1.json",
+    "change-impact.v1.json",
 }
 
 
@@ -335,6 +336,42 @@ GRAPH_DIFF_EXAMPLE: dict[str, Any] = {
     },
 }
 
+CHANGE_IMPACT_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "baseRevision": "a" * 40,
+    "headRevision": "b" * 40,
+    "hops": 1,
+    "maxHops": 2,
+    "seeds": [
+        {
+            "stableKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict_oldest().",
+            "label": "evict_oldest",
+            "path": "kvstore/src/cache.rs",
+            "reason": "removed",
+        }
+    ],
+    "impacted": [
+        {
+            "stableKey": "sym:scip/rust-analyzer cargo kvstore cache/Cache#put().",
+            "label": "put",
+            "kind": "function",
+            "path": "kvstore/src/cache.rs",
+            "startLine": 23,
+            "endLine": 30,
+            "hop": 1,
+            "rank": "public-api",
+            "claimStrength": "referred-to-removed-symbol",
+            "viaSeed": "sym:scip/rust-analyzer cargo kvstore cache/Cache#evict_oldest().",
+            "viaEdgeKind": "calls",
+        }
+    ],
+    "totalImpacted": 1,
+    "suppressed": 0,
+    "basis": "bounded reverse reachability over calls and imports",
+    "caveat": "Static change-impact analysis reports possibilities, not certainties.",
+    "notes": [],
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -348,6 +385,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "api-surface.v1.json": API_SURFACE_EXAMPLE,
     "api-change.v1.json": API_CHANGE_EXAMPLE,
     "graph-diff.v1.json": GRAPH_DIFF_EXAMPLE,
+    "change-impact.v1.json": CHANGE_IMPACT_EXAMPLE,
 }
 
 
