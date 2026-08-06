@@ -124,14 +124,20 @@ def serve(
     workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
     host: Annotated[str, typer.Option()] = "127.0.0.1",
     port: Annotated[int, typer.Option()] = 8000,
+    ask: Annotated[
+        bool,
+        typer.Option(help="Enable POST /ask: cited answers about specific code (costs quota)"),
+    ] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
-    """Serve the read-only API the dashboard reads.
+    """Serve the API the dashboard reads.
 
-    Bound to loopback by default. The application is GET-only by construction
-    (ADR-0011): approval and publication happen through the CLI, so serving this
-    exposes inspection and nothing else — but it does expose pinned source for
-    every analyzed revision, which is why the default is not 0.0.0.0.
+    Bound to loopback by default. Under ADR-0014 the application performs no
+    external writes and no approval decisions: approval and publication happen
+    through the CLI. `--ask` opts in to the one local-analysis endpoint —
+    without it the app is GET-only exactly as before. Serving does expose
+    pinned source for every analyzed revision, which is why the default host is
+    not 0.0.0.0.
     """
     configure_logging()
     import uvicorn
@@ -139,8 +145,12 @@ def serve(
     from codeatlas.api.main import create_app
 
     deps = _deps(workdir, test_db)
-    application = create_app(engine=deps.engine, cas=deps.cas, mirrors=deps.mirrors)
-    typer.echo(f"read-only API on http://{host}:{port}/api  (docs at /api/docs)")
+    ask_deps = _deps(workdir, test_db, review=True) if ask else None
+    application = create_app(
+        engine=deps.engine, cas=deps.cas, mirrors=deps.mirrors, ask_deps=ask_deps
+    )
+    mode = "with /ask" if ask else "read-only"
+    typer.echo(f"{mode} API on http://{host}:{port}/api  (docs at /api/docs)")
     uvicorn.run(application, host=host, port=port, log_level="info")
 
 

@@ -407,6 +407,26 @@ export interface ProtocolModel {
   notes?: string[];
 }
 
+// --- asked answers ----------------------------------------------------------
+
+export interface CodeAnswer {
+  question: string;
+  scope: string;
+  /** Null when refused — and refusal is an answer, not an error. */
+  answer: string | null;
+  claims: {
+    text: string;
+    citations: (
+      | { kind: "source"; path: string; startLine?: number; endLine?: number }
+      | { kind: "module"; key: string }
+    )[];
+  }[];
+  refused?: string | null;
+  droppedClaims?: { sectionId: string; text: string; reason: string }[];
+  notes?: string[];
+  cached?: boolean;
+}
+
 // --- architecture decisions -------------------------------------------------
 
 export type AuditResult =
@@ -529,6 +549,21 @@ export const api = {
   reviewPayload: (id: string) =>
     getOptional<ReviewPayload>(`/api/runs/${id}/artifact/review-payload-dry-run`),
   approvals: (id: string) => getJson<Approval[]>(`/api/runs/${id}/approval`),
+  /** POST — ADR-0014's one local-analysis endpoint. Throws with the server's
+   *  reason when asking is disabled, so the panel can say why. */
+  ask: async (id: string, scope: string, question: string): Promise<CodeAnswer> => {
+    const response = await fetch(`/api/runs/${id}/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope, question }),
+    });
+    if (!response.ok) {
+      const detail = ((await response.json().catch(() => null)) as { detail?: string } | null)
+        ?.detail;
+      throw new Error(detail ?? `${response.status} ${response.statusText}`);
+    }
+    return (await response.json()) as CodeAnswer;
+  },
   protocolDiagram: (id: string, kind: "sequence" | "state") =>
     getOptionalText(`/api/runs/${id}/artifact/protocol-${kind}`),
   source: (revision: string, path: string, start?: number, end?: number) => {

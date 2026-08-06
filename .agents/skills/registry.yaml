@@ -109,6 +109,19 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: code-answerer
+    version: "1.0.0"
+    path: code-answerer/
+    content_sha256: "sha256:8f522aeceefc8846641641687bbf543f0932a2fc004aba9564506d358bb50bee"
+    purpose: "Answer one question about one module or symbol, cited or refused"
+    output_schema: code-answer.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"
   - id: protocol-modeler
     version: "1.0.0"
     path: protocol-modeler/

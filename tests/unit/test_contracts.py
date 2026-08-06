@@ -39,6 +39,7 @@ EXPECTED_SCHEMAS = {
     "project-overview.v1.json",
     "architecture.v1.json",
     "adr-audit.v1.json",
+    "code-answer.v1.json",
     "graph-view.v1.json",
 }
 
@@ -499,6 +500,30 @@ PROJECT_EXPLANATION_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+CODE_ANSWER_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "question": "what does eviction actually remove?",
+    "scope": "kvstore/src/cache.rs",
+    "answer": "One entry more than asked for: the loop is inclusive.",
+    "claims": [
+        {
+            "text": "evict_oldest loops 0..=n, removing n+1 entries.",
+            "citations": [
+                {"kind": "source", "path": "kvstore/src/cache.rs", "startLine": 41, "endLine": 48}
+            ],
+        }
+    ],
+    "refused": None,
+    "droppedClaims": [
+        {
+            "sectionId": "answer",
+            "text": "The scheduler compensates for this.",
+            "reason": "kvstore/src/scheduler.rs does not exist at this revision",
+        }
+    ],
+    "notes": [],
+}
+
 ADR_AUDIT_EXAMPLE: dict[str, Any] = {
     "schemaVersion": "1.0.0",
     "revision": "a" * 40,
@@ -693,6 +718,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
     "architecture.v1.json": ARCHITECTURE_EXAMPLE,
     "adr-audit.v1.json": ADR_AUDIT_EXAMPLE,
+    "code-answer.v1.json": CODE_ANSWER_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
 }
 

@@ -281,6 +281,73 @@ test.describe("module page", () => {
   });
 });
 
+test.describe("ask about this module", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("an answer renders as checkable claims, not just prose", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) =>
+      route.fulfill({
+        json: {
+          question: "what does eviction remove?",
+          scope: "kvstore/src/cache.rs",
+          answer: "One more than asked for.",
+          claims: [
+            {
+              text: "The loop is 0..=n, removing n+1 entries.",
+              citations: [
+                { kind: "source", path: "kvstore/src/cache.rs", startLine: 41, endLine: 48 },
+              ],
+            },
+          ],
+          refused: null,
+          droppedClaims: [
+            { sectionId: "answer", text: "Invented.", reason: "did not resolve" },
+          ],
+          cached: false,
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("ask-input").fill("what does eviction remove?");
+    await page.getByTestId("ask-submit").click();
+    await expect(page.getByTestId("ask-claims")).toContainText("0..=n");
+    await expect(page.getByTestId("ask-citation")).toContainText("cache.rs:41");
+    await expect(page.getByTestId("ask-dropped")).toContainText("1 statement(s)");
+  });
+
+  test("a refusal renders as an answer, not an error", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) =>
+      route.fulfill({
+        json: {
+          question: "is it fast?",
+          scope: "kvstore/src/cache.rs",
+          answer: null,
+          claims: [],
+          refused: "performance is a measurement, not readable from this file",
+          cached: false,
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("ask-input").fill("is it fast?");
+    await page.getByTestId("ask-submit").click();
+    await expect(page.getByTestId("ask-refused")).toContainText("measurement");
+  });
+
+  test("a server without asking enabled says how to enable it", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) =>
+      route.fulfill({
+        status: 403,
+        json: { detail: "asking is not enabled on this server; start it with --ask" },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("ask-input").fill("why?");
+    await page.getByTestId("ask-submit").click();
+    await expect(page.getByTestId("ask-error")).toContainText("--ask");
+  });
+});
+
 test.describe("linked source", () => {
   test.beforeEach(({ page }) => mockApi(page));
 

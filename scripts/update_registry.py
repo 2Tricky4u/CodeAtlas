@@ -76,6 +76,13 @@ SKILLS: list[dict[str, Any]] = [
         "commands": [],
     },
     {
+        "id": "code-answerer",
+        "version": "1.0.0",
+        "purpose": "Answer one question about one module or symbol, cited or refused",
+        "output_schema": "code-answer.v1",
+        "commands": [],
+    },
+    {
         "id": "protocol-modeler",
         "version": "1.0.0",
         "purpose": "Model the protocol a project speaks, or state that it speaks none",

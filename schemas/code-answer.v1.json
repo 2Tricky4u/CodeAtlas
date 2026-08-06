@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/code-answer.v1.json",
+  "title": "Code Answer",
+  "description": "An answer to one question about one part of the code, scoped to a module or symbol at a pinned revision. Same discipline as the narratives: every claim carries citations that resolve against the graph and the source, an unsupported claim is deleted rather than softened, and the deletion is recorded. `refused` is a first-class outcome for questions the scope cannot answer — an honest 'this cannot be answered from this module' beats an invented answer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "question", "scope"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "question": { "type": "string", "minLength": 1 },
+    "scope": {
+      "description": "The module path or symbol the question was asked about.",
+      "type": "string",
+      "minLength": 1
+    },
+    "answer": {
+      "description": "Absent when the question was refused.",
+      "type": ["string", "null"]
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "citations"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "citations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "path"],
+                  "properties": {
+                    "kind": { "const": "source" },
+                    "path": { "type": "string", "minLength": 1 },
+                    "startLine": { "type": "integer", "minimum": 1 },
+                    "endLine": { "type": "integer", "minimum": 1 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "key"],
+                  "properties": {
+                    "kind": { "const": "module" },
+                    "key": { "type": "string", "minLength": 1 }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "refused": {
+      "description": "Why no answer was given, when it was not: the question needs code outside this scope, or an opinion rather than a fact.",
+      "type": ["string", "null"]
+    },
+    "droppedClaims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sectionId", "text", "reason"],
+        "properties": {
+          "sectionId": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

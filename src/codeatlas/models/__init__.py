@@ -7,6 +7,7 @@ from codeatlas.models.agent import AgentResult, AgentTask
 from codeatlas.models.api import ApiChange, ApiSurface
 from codeatlas.models.architecture import Architecture
 from codeatlas.models.base import ContractModel
+from codeatlas.models.code_answer import CodeAnswer
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
@@ -34,6 +35,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "run-manifest.v1.json": RunManifest,
     "adr-audit.v1.json": AdrAudit,
     "architecture.v1.json": Architecture,
+    "code-answer.v1.json": CodeAnswer,
     "api-surface.v1.json": ApiSurface,
     "api-change.v1.json": ApiChange,
     "graph-diff.v1.json": GraphDiff,
@@ -54,6 +56,7 @@ __all__ = [
     "Architecture",
     "ChangeExplanation",
     "ChangeImpact",
+    "CodeAnswer",
     "ContractModel",
     "ExtractorReceipt",
     "Finding",

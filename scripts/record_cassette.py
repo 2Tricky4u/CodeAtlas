@@ -66,6 +66,17 @@ def main(skill_id: str) -> int:
         elif skill_id in ("project-explainer", "protocol-modeler"):
             # Both are handed the deterministic overview and nothing else.
             inputs = _project_explainer_inputs(checkout, sha, cas)
+        elif skill_id == "code-answerer":
+            # One question about the fixture's known defect, so the replay test
+            # can assert the discipline on a claim that is actually checkable.
+            inputs = {
+                "question": cas.put_json(
+                    {
+                        "question": "what does eviction actually remove?",
+                        "scope": "kvstore/src/cache.rs",
+                    }
+                )
+            }
         else:
             inputs = {}
 

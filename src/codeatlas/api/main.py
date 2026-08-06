@@ -37,7 +37,18 @@ _ROLE_RE = re.compile(r"^[a-z][a-z0-9-]{0,59}$")
 _TEXT_MEDIA = frozenset({"text/plain", "text/markdown"})
 
 
-def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
+def create_app(
+    engine: Engine,
+    cas: ArtifactStore,
+    mirrors: Path,
+    ask_deps: object | None = None,
+) -> FastAPI:
+    """The dashboard's API.
+
+    ADR-0014: no external writes, no approval decisions. `ask_deps` — a
+    `PipelineDeps` with an agent engine — enables the one local-analysis
+    endpoint; absent (the default), the app is exactly as GET-only as before.
+    """
     app = FastAPI(title="CodeAtlas", version="0.1.0", docs_url="/api/docs")
     # Kept on the app so a caller can reach the store the routes were built
     # over without reconstructing it from a path and guessing the layout.
@@ -248,6 +259,59 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
             "endLine": end_line,
             "lines": lines[start - 1 : end_line],
         }
+
+    @app.post("/api/runs/{run_id}/ask")
+    def ask(
+        run_id: str,
+        body: dict[str, str],
+        s: Session = Depends(session),  # noqa: B008
+    ) -> object:
+        """Ask one question about one module; get a cited answer or a refusal.
+
+        The single local-analysis endpoint ADR-0014 permits. It spends agent
+        quota and stores an artifact; it has no path to publication or
+        approval. Answers are cached by (revision, scope, question), so asking
+        twice costs once.
+        """
+        import os
+
+        # The same switch that stops every other agent invocation.
+        if os.environ.get("CODEATLAS_KILL_SWITCH"):
+            raise HTTPException(503, "agent invocations are disabled by the kill switch")
+        if ask_deps is None:
+            raise HTTPException(403, "asking is not enabled on this server; start it with --ask")
+
+        scope = (body.get("scope") or "").strip()
+        question = (body.get("question") or "").strip()
+        if not scope or not question:
+            raise HTTPException(422, "both 'scope' and 'question' are required")
+        if len(question) > 2000:
+            raise HTTPException(422, "question too long")
+
+        run = s.get(RunRow, run_id)
+        if run is None:
+            raise HTTPException(404, "unknown run")
+        head = s.get(RevisionRow, run.head_revision_id)
+        assert head is not None
+
+        # The scope must be a path this revision actually has — the same
+        # allowlist /api/source enforces.
+        if not s.scalar(
+            select(FileRow).where(FileRow.revision_id == head.id, FileRow.path == scope)
+        ):
+            raise HTTPException(404, f"{scope} is not a path at this revision")
+
+        from codeatlas.api.ask import answer_or_cached
+
+        return answer_or_cached(
+            ask_deps,  # type: ignore[arg-type]
+            run_id=run_id,
+            revision_sha=head.sha,
+            revision_db_id=head.id,
+            repository_id=run.repository_id,
+            scope=scope,
+            question=question,
+        )
 
     @app.get("/api/artifacts/{ref}")
     def artifact(ref: str, s: Session = Depends(session)) -> object:  # noqa: B008

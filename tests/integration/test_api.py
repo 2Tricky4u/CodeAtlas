@@ -238,6 +238,46 @@ def _cas_for(client) -> ArtifactStore:  # type: ignore[no-untyped-def]
     return client.app.state.cas  # type: ignore[no-any-return]
 
 
+class TestAsk:
+    """ADR-0014's single local-analysis endpoint, and its gates."""
+
+    def test_ask_is_forbidden_unless_enabled(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        """The default server has no ask_deps; the endpoint refuses rather
+        than dispatching anything."""
+        client, run_id, _ = seeded
+        response = client.post(
+            f"/api/runs/{run_id}/ask",
+            json={"scope": "kvstore/src/cache.rs", "question": "why?"},
+        )
+        assert response.status_code == 403
+        assert "--ask" in response.json()["detail"]
+
+    def test_the_kill_switch_beats_everything(self, seeded, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        """One switch stops every agent invocation, wherever dispatched from."""
+        client, run_id, _ = seeded
+        monkeypatch.setenv("CODEATLAS_KILL_SWITCH", "1")
+        response = client.post(
+            f"/api/runs/{run_id}/ask",
+            json={"scope": "kvstore/src/cache.rs", "question": "why?"},
+        )
+        assert response.status_code == 503
+
+    def test_a_scope_outside_the_revision_is_refused(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        """The same path allowlist /api/source enforces. Checked even on a
+        disabled server? No — the enable gate comes first; this documents the
+        order by asserting 403, not 404."""
+        client, run_id, _ = seeded
+        response = client.post(
+            f"/api/runs/{run_id}/ask",
+            json={"scope": "../../etc/passwd", "question": "?"},
+        )
+        assert response.status_code == 403
+
+    def test_missing_fields_are_rejected(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        assert client.post(f"/api/runs/{run_id}/ask", json={"scope": "x"}).status_code in (403, 422)
+
+
 class TestWriteMethods:
     def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded

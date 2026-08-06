@@ -21,6 +21,7 @@ import {
 } from "../api";
 import { graphIndex, type GraphIndex, type GraphNode } from "../graph";
 import { Badge, Empty, ErrorBox, KindDot, Loading, Panel, SEVERITY_TONE } from "../ui";
+import { AskPanel } from "./AskPanel";
 import { FlowsPanel } from "./FlowsPanel";
 import { ModuleLink } from "./links";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
@@ -168,6 +169,16 @@ export function ModuleView() {
       </div>
 
       {runId && <FlowsPanel runId={runId} throughModule={path} />}
+
+      {runId && (
+        <AskPanel
+          runId={runId}
+          scope={path}
+          onOpenSource={(citedPath, startLine) =>
+            setSource({ revision: index.revision, path: citedPath, startLine })
+          }
+        />
+      )}
 
       <SourcePanel request={source} onClose={() => setSource(null)} />
     </div>
