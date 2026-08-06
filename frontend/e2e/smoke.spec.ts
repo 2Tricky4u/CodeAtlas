@@ -7,8 +7,13 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   ADR_AUDIT,
   API_CHANGE,
+  APPROVALS,
   ARCHITECTURE,
+  CANDIDATE_FINDINGS,
   DETAIL,
+  INTENT,
+  REVIEW_MARKDOWN,
+  REVIEW_PAYLOAD,
   DIFF,
   EXPLANATION,
   FINDINGS,
@@ -29,10 +34,11 @@ import {
 
 async function mockApi(
   page: Page,
-  options: { withChange?: boolean; withNarrative?: boolean } = {},
+  options: { withChange?: boolean; withNarrative?: boolean; withReview?: boolean } = {},
 ) {
   const withChange = options.withChange ?? true;
   const withNarrative = options.withNarrative ?? true;
+  const withReview = options.withReview ?? true;
   await page.route("**/api/runs", (route) => route.fulfill({ json: [RUN] }));
   await page.route(`**/api/runs/${RUN_ID}`, (route) => route.fulfill({ json: DETAIL }));
   await page.route(`**/api/runs/${RUN_ID}/overview`, (route) => route.fulfill({ json: OVERVIEW }));
@@ -75,6 +81,24 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-state`, (route) =>
     route.fulfill({ status: 404, json: { detail: "stateless" } }),
+  );
+
+  // The review's own artifacts. Gated on `withReview` because a deterministic
+  // run has none of them and must say so rather than render empty panels.
+  const reviewArtifact = (role: string, json: unknown) =>
+    page.route(`**/api/runs/${RUN_ID}/artifact/${role}`, (route) =>
+      withReview ? route.fulfill({ json }) : route.fulfill({ status: 404, json: { detail: "none" } }),
+    );
+  await reviewArtifact("intent", INTENT);
+  await reviewArtifact("candidate-findings", CANDIDATE_FINDINGS);
+  await reviewArtifact("review-payload-dry-run", REVIEW_PAYLOAD);
+  await page.route(`**/api/runs/${RUN_ID}/artifact/review-markdown`, (route) =>
+    withReview
+      ? route.fulfill({ body: REVIEW_MARKDOWN, headers: { "content-type": "text/markdown" } })
+      : route.fulfill({ status: 404, json: { detail: "none" } }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/approval`, (route) =>
+    route.fulfill({ json: withReview ? APPROVALS : [] }),
   );
 }
 
@@ -530,6 +554,76 @@ test.describe("project map", () => {
     await page.goto(`/#/runs/${RUN_ID}/map`);
     await page.getByTestId("focus-tab").click();
     await expect(page.getByText(/the whole graph is never rendered/)).toBeVisible();
+  });
+});
+
+test.describe("review view", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("it shows what did not survive, not just what did", async ({ page }) => {
+    // The whole adversarial-validation claim is invisible otherwise: a table of
+    // survivors looks the same whether the check rejected one candidate or none.
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const table = page.getByTestId("not-validated");
+    await expect(table).toContainText("F-0009");
+    await expect(table).toContainText("shared across threads");
+    await expect(table).not.toContainText("F-0001");
+  });
+
+  test("the funnel counts every step, not just the ends", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const funnel = page.getByTestId("funnel");
+    await expect(funnel).toContainText("2 proposed");
+    await expect(funnel).toContainText("1 validated");
+    await expect(funnel).toContainText("1 publishable");
+  });
+
+  test("each verdict is explained, because they are not the same answer", async ({ page }) => {
+    // "unresolved" is not "rejected" and neither is "the reviewer was wrong".
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("verdict-key")).toContainText("could neither confirm nor refute");
+  });
+
+  test("it names who proposed a finding that did not survive", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("not-validated")).toContainText("security");
+  });
+
+  test("it shows what the reviewers were checking against", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("requirements")).toContainText("REQ-001");
+    await expect(page.getByTestId("requirements")).toContainText("evicts only as many");
+  });
+
+  test("a question the specs left open is disclosed", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("unresolved")).toContainText("LRU or insertion-ordered");
+  });
+
+  test("an undecided approval reads as awaiting a person, not as failure", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("review-view")).toContainText("awaiting a human decision");
+    await expect(page.getByTestId("approvals")).toContainText("undecided");
+  });
+
+  test("the payload says nothing was sent", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("approval-note")).toContainText("nothing was sent");
+    await expect(page.getByTestId("payload-body")).toContainText("found 1 issue");
+  });
+
+  test("the review event is never a verdict", async ({ page }) => {
+    // REQUEST_CHANGES or APPROVE would be the tool deciding; it may not.
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("review-view")).toContainText("event COMMENT");
+  });
+
+  test("a run that was not reviewed says so instead of showing empty panels", async ({
+    page,
+  }) => {
+    await mockApi(page, { withReview: false });
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("empty-state")).toContainText("was not reviewed");
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import {
   HashRouter,
   Navigate,
@@ -18,6 +18,7 @@ import { FindingsView } from "./views/FindingsView";
 import { MapView } from "./views/MapView";
 import { OverviewView } from "./views/OverviewView";
 import { ProtocolView } from "./views/ProtocolView";
+import { ReviewView } from "./views/ReviewView";
 
 export function App() {
   return (
@@ -34,6 +35,7 @@ export function App() {
             <Route path="protocol" element={<ProtocolView />} />
             <Route path="change" element={<ChangeView />} />
             <Route path="findings" element={<FindingsView />} />
+            <Route path="review" element={<ReviewView />} />
             <Route path="detail" element={<DetailView />} />
           </Route>
         </Route>
@@ -138,6 +140,7 @@ const TABS = [
   { path: "protocol", label: "protocol" },
   { path: "change", label: "change" },
   { path: "findings", label: "findings" },
+  { path: "review", label: "review" },
   { path: "detail", label: "run detail" },
 ];
 

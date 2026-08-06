@@ -309,6 +309,55 @@ export interface Architecture {
   notes?: string[];
 }
 
+// --- the review itself ------------------------------------------------------
+
+export interface Requirement {
+  id: string;
+  sourceKind: string;
+  sourceRef?: string | null;
+  text: string;
+  acceptanceCriteria: string[];
+}
+
+export interface IntentPackage {
+  requirements: Requirement[];
+  nonGoals: string[];
+  compatibilityObligations: string[];
+  unresolvedQuestions: string[];
+}
+
+export interface CandidateFindings {
+  findings: {
+    findingId: string;
+    category: string;
+    severity: string;
+    claim: string;
+    discoveredBySkill: string;
+    location: { path: string; startLine?: number };
+  }[];
+}
+
+export interface ReviewPayload {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  commitSha: string;
+  body: string;
+  comments: { path: string; line: number; body: string }[];
+  event: string;
+}
+
+/** `decision: null` is the state that matters — nothing goes out unapproved. */
+export interface Approval {
+  id: number;
+  actionKind: string;
+  payloadSha256: string;
+  requestedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decision: string | null;
+}
+
 // --- protocol ---------------------------------------------------------------
 
 export interface ProtocolEvidence {
@@ -473,6 +522,13 @@ export const api = {
   adrAudit: (id: string) => getOptional<AdrAudit>(`/api/runs/${id}/artifact/adr-audit`),
   protocolModel: (id: string) =>
     getOptional<ProtocolModel>(`/api/runs/${id}/artifact/protocol-model`),
+  intent: (id: string) => getOptional<IntentPackage>(`/api/runs/${id}/artifact/intent`),
+  candidateFindings: (id: string) =>
+    getOptional<CandidateFindings>(`/api/runs/${id}/artifact/candidate-findings`),
+  reviewMarkdown: (id: string) => getOptionalText(`/api/runs/${id}/artifact/review-markdown`),
+  reviewPayload: (id: string) =>
+    getOptional<ReviewPayload>(`/api/runs/${id}/artifact/review-payload-dry-run`),
+  approvals: (id: string) => getJson<Approval[]>(`/api/runs/${id}/approval`),
   protocolDiagram: (id: string, kind: "sequence" | "state") =>
     getOptionalText(`/api/runs/${id}/artifact/protocol-${kind}`),
   source: (revision: string, path: string, start?: number, end?: number) => {

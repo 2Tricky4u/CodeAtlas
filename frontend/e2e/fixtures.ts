@@ -292,6 +292,82 @@ export const ARCHITECTURE = {
   notes: ["3 package(s) resolved by the build but not present in this repository are not drawn: they are dependencies, not containers"],
 };
 
+export const INTENT = {
+  requirements: [
+    {
+      id: "REQ-001",
+      sourceKind: "spec",
+      sourceRef: "docs/SPEC.md",
+      text: "The cache holds at most max_entries entries; a write past the bound evicts only as many as necessary.",
+      acceptanceCriteria: [],
+    },
+    {
+      id: "REQ-002",
+      sourceKind: "spec",
+      sourceRef: "docs/SPEC.md",
+      text: "Requests arrive untrusted; a malformed request must produce an error, never terminate the process.",
+      acceptanceCriteria: [],
+    },
+  ],
+  nonGoals: [],
+  compatibilityObligations: [],
+  unresolvedQuestions: ["whether eviction should be LRU or insertion-ordered"],
+};
+
+/** Two candidates. F-0001 validated and publishable; F-0009 unresolved — the
+ *  verdict that is neither a pass nor a rejection, and the one most easily
+ *  mistaken for either. */
+export const CANDIDATE_FINDINGS = {
+  findings: [
+    {
+      findingId: "F-0001",
+      category: "correctness",
+      severity: "high",
+      claim: "put() passes overflow + 1 and discards the returned count.",
+      discoveredBySkill: "reviewer-correctness",
+      location: { path: "kvstore/src/cache.rs", startLine: 23 },
+    },
+    {
+      findingId: "F-0009",
+      category: "security",
+      severity: "medium",
+      claim: "The cache is shared across threads without synchronisation.",
+      discoveredBySkill: "reviewer-security",
+      location: { path: "kvstore/src/cache.rs", startLine: 12 },
+    },
+  ],
+};
+
+export const REVIEW_MARKDOWN = `# CodeAtlas review
+
+1 finding survived validation of 2 candidates.
+
+## kvstore/src/cache.rs:23 — high
+put() passes overflow + 1 and discards the returned count.
+`;
+
+export const REVIEW_PAYLOAD = {
+  owner: "local",
+  repo: "kvstore",
+  prNumber: 7,
+  commitSha: HEAD,
+  body: "CodeAtlas found 1 issue introduced by this change.",
+  comments: [{ path: "kvstore/src/cache.rs", line: 23, body: "off-by-one in eviction" }],
+  event: "COMMENT",
+};
+
+export const APPROVALS = [
+  {
+    id: 1,
+    actionKind: "pr-review-comment",
+    payloadSha256: "sha256:" + "9".repeat(64),
+    requestedAt: "2026-08-06T12:05:00+00:00",
+    decidedAt: null,
+    decidedBy: null,
+    decision: null,
+  },
+];
+
 export const PROTOCOL_MODEL = {
   protocol: {
     id: "kvstore-wire",
@@ -479,6 +555,23 @@ export const FINDINGS = [
     publicationEligible: true,
     introducedByChange: true,
     discoveredBySkill: "reviewer-correctness",
+    validation: null,
+  },
+  // Persisted like every candidate, with the verdict it received. `unresolved`
+  // is not a pass: the validator could neither confirm nor refute it.
+  {
+    findingId: "F-0009",
+    category: "security",
+    severity: "medium",
+    confidence: 0.4,
+    claim: "The cache is shared across threads without synchronisation.",
+    path: "kvstore/src/cache.rs",
+    startLine: 12,
+    endLine: 18,
+    status: "unresolved",
+    publicationEligible: false,
+    introducedByChange: false,
+    discoveredBySkill: "reviewer-security",
     validation: null,
   },
 ];

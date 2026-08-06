@@ -193,6 +193,51 @@ class TestArtifactByRole:
         assert client.get("/api/runs/nope/artifact/project-overview").status_code == 404
 
 
+class TestApprovalIsVisible:
+    """The gate is the product's central safety mechanism and the dashboard
+    could not see it: whether publication was requested, whether a human
+    decided, and which payload that decision was about."""
+
+    def test_a_run_with_no_approval_request_reports_none(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        response = client.get(f"/api/runs/{run_id}/approval")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_an_unknown_run_is_not_found(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/runs/nope/approval").status_code == 404
+
+    def test_a_pending_request_is_reported_as_undecided(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        """Undecided is the state that matters: nothing is published until a
+        person says so, and the dashboard has to be able to show that."""
+        from sqlalchemy.orm import Session
+
+        from codeatlas.db.session import app_engine
+        from codeatlas.publication.gate import request_approval
+        from codeatlas.publication.payload import ReviewPayload
+
+        client, run_id, head_sha = seeded
+        payload = ReviewPayload(
+            owner="o", repo="r", pr_number=1, commit_sha=head_sha, body="body", comments=[]
+        )
+        engine = app_engine(test=True)
+        with Session(engine) as session:
+            record = request_approval(session, run_id=run_id, payload=payload, cas=_cas_for(client))
+            session.commit()
+            payload_sha = record.payload_sha256
+        engine.dispose()
+
+        [row] = client.get(f"/api/runs/{run_id}/approval").json()
+        assert row["decision"] is None
+        assert row["payloadSha256"] == payload_sha
+
+
+def _cas_for(client) -> ArtifactStore:  # type: ignore[no-untyped-def]
+    """The store the served app was built over."""
+    return client.app.state.cas  # type: ignore[no-any-return]
+
+
 class TestWriteMethods:
     def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded

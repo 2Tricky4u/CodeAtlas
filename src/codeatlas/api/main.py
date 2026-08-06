@@ -39,6 +39,9 @@ _TEXT_MEDIA = frozenset({"text/plain", "text/markdown"})
 
 def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
     app = FastAPI(title="CodeAtlas", version="0.1.0", docs_url="/api/docs")
+    # Kept on the app so a caller can reach the store the routes were built
+    # over without reconstructing it from a path and guessing the layout.
+    app.state.cas = cas
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -159,6 +162,37 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
                 "introducedByChange": r.introduced_by_change,
                 "discoveredBySkill": r.discovered_by_skill,
                 "validation": r.validation,
+            }
+            for r in rows
+        ]
+
+    @app.get("/api/runs/{run_id}/approval")
+    def run_approval(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        """Publication approvals for this run, decided or not.
+
+        The gate is what stands between an analysis and a comment on someone's
+        pull request, and it was invisible here: a reader could see findings and
+        a payload but not whether anyone had agreed to send it. `decision` being
+        null is the important state, not an incomplete one.
+        """
+        from codeatlas.db.tables import ApprovalRow
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(
+            select(ApprovalRow)
+            .where(ApprovalRow.run_id == run_id)
+            .order_by(ApprovalRow.requested_at)
+        ).all()
+        return [
+            {
+                "id": r.id,
+                "actionKind": r.action_kind,
+                "payloadSha256": r.payload_sha256,
+                "requestedAt": r.requested_at.isoformat(),
+                "decidedAt": r.decided_at.isoformat() if r.decided_at else None,
+                "decidedBy": r.decided_by,
+                "decision": r.decision,
             }
             for r in rows
         ]
