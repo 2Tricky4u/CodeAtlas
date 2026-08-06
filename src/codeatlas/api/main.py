@@ -83,6 +83,18 @@ def create_app(engine: Engine, cas: ArtifactStore, mirrors: Path) -> FastAPI:
             raise HTTPException(404, "no graph artifact for this run")
         return json.loads(cas.get(sha))  # type: ignore[no-any-return]
 
+    @app.get("/api/runs/{run_id}/overview")
+    def run_overview(run_id: str, s: Session = Depends(session)) -> dict[str, object]:  # noqa: B008
+        """What this project is: entry points, levels, cycles, where to start."""
+        from codeatlas.db.repositories import artifact_for_run
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        sha = artifact_for_run(s, run_id, "project-overview")
+        if sha is None:
+            raise HTTPException(404, "no project overview for this run")
+        return json.loads(cas.get(sha))  # type: ignore[no-any-return]
+
     @app.get("/api/source/{revision_sha}")
     def source(
         revision_sha: str,

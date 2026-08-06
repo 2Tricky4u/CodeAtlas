@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/project-overview.v1.json",
+  "title": "Project Overview",
+  "description": "A deterministic account of a project's shape at one revision: packages, modules and their dependency levels, cycles, hubs, orphans, entry points, and where to start reading. Computed entirely from the project graph — no model is involved, and every element points back at nodes and edges.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repositoryId",
+    "revision",
+    "packages",
+    "modules",
+    "levels",
+    "cycles",
+    "hubs",
+    "orphans",
+    "entryPoints",
+    "startHere",
+    "counts",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "packages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
+    "modules": { "type": "array", "items": { "$ref": "#/$defs/module" } },
+    "levels": {
+      "description": "Levelization: a module at level N depends only on modules below it. Modules in a cycle share a level, because no ordering between them exists.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/level" }
+    },
+    "cycles": {
+      "description": "Groups of modules that depend on each other. These are the only edges worth drawing in a levelized view — everything else is carried by the layout.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/cycle" }
+    },
+    "hubs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dependedOn", "dependsOn"],
+      "properties": {
+        "dependedOn": { "type": "array", "items": { "$ref": "#/$defs/module" } },
+        "dependsOn": { "type": "array", "items": { "$ref": "#/$defs/module" } }
+      }
+    },
+    "orphans": {
+      "description": "Modules with no dependency edges in either direction.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/module" }
+    },
+    "entryPoints": { "type": "array", "items": { "$ref": "#/$defs/suggestion" } },
+    "startHere": {
+      "description": "A short ranked reading order. Deliberately short: a list nobody finishes is not a starting point.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/suggestion" }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packages", "files", "symbols", "edges"],
+      "properties": {
+        "packages": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
+        "symbols": { "type": "integer", "minimum": 0 },
+        "edges": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "fileCount", "symbolCount"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "manifestPath": { "type": "string" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "symbolCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "path", "fanIn", "fanOut", "level", "symbolCount"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "package": { "type": ["string", "null"] },
+        "fanIn": { "type": "integer", "minimum": 0 },
+        "fanOut": { "type": "integer", "minimum": 0 },
+        "level": { "type": "integer", "minimum": 0 },
+        "symbolCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "modules"],
+      "properties": {
+        "level": { "type": "integer", "minimum": 0 },
+        "modules": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "cycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["members", "edges"],
+      "properties": {
+        "members": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "key": { "type": "string" },
+        "path": { "type": "string", "minLength": 1 },
+        "reason": {
+          "description": "Why this is here, in terms of the graph. A suggestion without a reason cannot be disagreed with.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

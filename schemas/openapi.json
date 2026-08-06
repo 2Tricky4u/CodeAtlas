@@ -206,6 +206,48 @@
         "summary": "Run Graph"
       }
     },
+    "/api/runs/{run_id}/overview": {
+      "get": {
+        "description": "What this project is: entry points, levels, cycles, where to start.",
+        "operationId": "run_overview_api_runs__run_id__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Overview Api Runs  Run Id  Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Overview"
+      }
+    },
     "/api/source/{revision_sha}": {
       "get": {
         "operationId": "source_api_source__revision_sha__get",

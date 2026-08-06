@@ -640,6 +640,46 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             session.commit()
         return {"change_impact_sha256": sha}
 
+    def project_overview(state: PipelineState) -> dict[str, Any]:
+        """What this project is and where to start reading it.
+
+        Runs on every run, not only pull requests: understanding a codebase and
+        reviewing a change to it are separate questions, and a repository nobody
+        has opened a pull request against still has a shape worth describing.
+        """
+        from codeatlas.project.overview import build_overview
+
+        graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
+        overview = build_overview(graph, repository_id=state["repository_id"])
+        payload = canonical_json(overview.contract_dump())
+        sha = deps.cas.put(payload)
+        with Session(deps.engine) as session:
+            repo.index_artifact(
+                session,
+                sha256=sha,
+                kind="project-overview",
+                media_type="application/json",
+                size_bytes=len(payload),
+                producer="pipeline",
+                produced_by_run_id=state["run_id"],
+                schema_id="project-overview.v1",
+            )
+            repo.add_run_event(
+                session,
+                run_id=state["run_id"],
+                stage="project_overview",
+                event="project_overview_computed",
+                data={
+                    "modules": len(overview.modules),
+                    "levels": len(overview.levels),
+                    "cycles": len(overview.cycles),
+                    "entryPoints": len(overview.entry_points),
+                    "orphans": len(overview.orphans),
+                },
+            )
+            session.commit()
+        return {"project_overview_sha256": sha}
+
     def export_cytoscape(state: PipelineState) -> dict[str, Any]:
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
         payload = to_cytoscape(graph)
@@ -751,6 +791,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 outputs={
                     "projectGraph": state["graph_sha256"],
                     "cytoscape": state["cytoscape_sha256"],
+                    "projectOverview": state["project_overview_sha256"],
                     **(
                         {"baseProjectGraph": state["base_graph_sha256"]}
                         if state.get("base_graph_sha256")
@@ -804,6 +845,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "graph_diff": graph_diff,
         "api_change": api_change,
         "change_impact": change_impact,
+        "project_overview": project_overview,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -819,7 +861,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("base_revision", "graph_diff")
     builder.add_edge("graph_diff", "api_change")
     builder.add_edge("api_change", "change_impact")
-    builder.add_edge("change_impact", "export_cytoscape")
+    builder.add_edge("change_impact", "project_overview")
+    builder.add_edge("project_overview", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

@@ -35,6 +35,7 @@ EXPECTED_SCHEMAS = {
     "graph-diff.v1.json",
     "change-impact.v1.json",
     "change-explanation.v1.json",
+    "project-overview.v1.json",
 }
 
 
@@ -424,6 +425,70 @@ CHANGE_EXPLANATION_EXAMPLE: dict[str, Any] = {
     "notes": [],
 }
 
+PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "repositoryId": "local/kvstore",
+    "revision": "a" * 40,
+    "packages": [
+        {
+            "name": "kvstore",
+            "version": "0.1.0",
+            "manifestPath": "kvstore/Cargo.toml",
+            "fileCount": 4,
+            "symbolCount": 21,
+        }
+    ],
+    "modules": [
+        {
+            "key": "file:kvstore/src/storage.rs",
+            "path": "kvstore/src/storage.rs",
+            "package": "kvstore",
+            "fanIn": 2,
+            "fanOut": 0,
+            "level": 0,
+            "symbolCount": 6,
+        }
+    ],
+    "levels": [{"level": 0, "modules": ["kvstore/src/storage.rs"]}],
+    "cycles": [
+        {
+            "members": ["kvstore/src/a.rs", "kvstore/src/b.rs"],
+            "edges": [{"from": "kvstore/src/a.rs", "to": "kvstore/src/b.rs"}],
+        }
+    ],
+    "hubs": {
+        "dependedOn": [
+            {
+                "key": "file:kvstore/src/storage.rs",
+                "path": "kvstore/src/storage.rs",
+                "package": "kvstore",
+                "fanIn": 2,
+                "fanOut": 0,
+                "level": 0,
+                "symbolCount": 6,
+            }
+        ],
+        "dependsOn": [],
+    },
+    "orphans": [],
+    "entryPoints": [
+        {
+            "key": "file:kvstore/src/lib.rs",
+            "path": "kvstore/src/lib.rs",
+            "reason": "library root (lib.rs)",
+        }
+    ],
+    "startHere": [
+        {
+            "key": "file:kvstore/src/lib.rs",
+            "path": "kvstore/src/lib.rs",
+            "reason": "library root (lib.rs)",
+        }
+    ],
+    "counts": {"packages": 1, "files": 4, "symbols": 21, "edges": 30},
+    "notes": [],
+}
+
 EXAMPLES: dict[str, dict[str, Any]] = {
     "project-graph.v1.json": GRAPH_EXAMPLE,
     "extractor-receipt.v1.json": RECEIPT_EXAMPLE,
@@ -439,6 +504,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "graph-diff.v1.json": GRAPH_DIFF_EXAMPLE,
     "change-impact.v1.json": CHANGE_IMPACT_EXAMPLE,
     "change-explanation.v1.json": CHANGE_EXPLANATION_EXAMPLE,
+    "project-overview.v1.json": PROJECT_OVERVIEW_EXAMPLE,
 }
 
 

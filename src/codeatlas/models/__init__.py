@@ -12,6 +12,7 @@ from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.impact import ChangeImpact
 from codeatlas.models.intent import IntentPackage
 from codeatlas.models.manifest import RunManifest, SourceLock
+from codeatlas.models.overview import ProjectOverview
 from codeatlas.models.protocol import ProtocolModel
 from codeatlas.models.receipts import ExtractorReceipt
 from codeatlas.models.validation import ValidationResult
@@ -32,6 +33,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "graph-diff.v1.json": GraphDiff,
     "change-impact.v1.json": ChangeImpact,
     "change-explanation.v1.json": ChangeExplanation,
+    "project-overview.v1.json": ProjectOverview,
 }
 
 __all__ = [
@@ -48,6 +50,7 @@ __all__ = [
     "GraphDiff",
     "IntentPackage",
     "ProjectGraph",
+    "ProjectOverview",
     "ProtocolModel",
     "RunManifest",
     "SourceLock",
