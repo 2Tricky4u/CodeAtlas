@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from codeatlas.agents.registry import SkillRegistry
 from codeatlas.artifacts.store import ArtifactStore
-from codeatlas.models.agent import AgentResult, AgentTask, UsageStats
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import Evidence, SourceLocation
 from codeatlas.validation.validator import validate_findings
@@ -29,6 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_SRC = REPO_ROOT / "fixtures" / "rust-flawed-crate"
 SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
 sys.path.insert(0, str(REPO_ROOT / "fixtures"))
+sys.path.insert(0, str(REPO_ROOT / "tests"))
+
+from support.engines import FailingEngine, StubEngine  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -81,28 +83,6 @@ def _finding(fid: str, path: str, start: int, end: int, category: str = "correct
         location=SourceLocation(path=path, start_line=start, end_line=end),
         evidence=[Evidence(kind="llm-inference", producer="reviewer", confidence=0.9)],
     )
-
-
-class StubEngine:
-    """A validator that answers however the test needs, recording what it saw."""
-
-    name = "stub"
-
-    def __init__(self, responder) -> None:  # type: ignore[no-untyped-def]
-        self.responder = responder
-        self.seen: list[AgentTask] = []
-
-    def run(self, task: AgentTask, instructions: str) -> AgentResult:
-        self.seen.append(task)
-        return AgentResult(
-            task_id=task.task_id,
-            status="succeeded",
-            output=self.responder(task),
-            command_receipts=[],
-            usage=UsageStats(
-                prompt_tokens=1, completion_tokens=1, cost_usd=None, wall_ms=1, model_id="stub"
-            ),
-        )
 
 
 def _validation_payload(**overrides) -> dict:  # type: ignore[no-untyped-def]
@@ -197,12 +177,6 @@ class TestTerminalStatuses:
     def test_validator_failure_yields_unresolved_not_silence(
         self, db_engine, checkout: tuple[Path, str], tmp_path: Path
     ) -> None:  # type: ignore[no-untyped-def]
-        class FailingEngine:
-            name = "failing"
-
-            def run(self, task: AgentTask, instructions: str) -> AgentResult:
-                raise RuntimeError("engine exploded")
-
         path, sha = checkout
         outcome = validate_findings(
             findings=[_finding("F-0001", "kvstore/src/api.rs", 28, 30)],

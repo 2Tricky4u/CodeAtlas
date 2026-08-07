@@ -155,6 +155,35 @@ class TestFailurePath:
             assert receipt is not None and receipt.exit_code != 0
 
 
+class TestFailureOutsideTheNodes:
+    def test_an_invoke_level_failure_still_marks_the_run(
+        self, test_engine, fixture_repo: Path, tmp_path: Path, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        """A crash *inside* a node is recorded by the node wrapper; a crash in
+        LangGraph itself or the checkpointer used to be swallowed by a blanket
+        suppress, leaving the run at `running` forever while start_run returned
+        normally — the exact silent failure the rules forbid."""
+        from codeatlas.db.tables import RunRow
+
+        class ExplodingPipeline:
+            def invoke(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                raise RuntimeError("checkpointer exploded")
+
+        monkeypatch.setattr(
+            "codeatlas.pipeline.runner.build_pipeline", lambda deps: ExplodingPipeline()
+        )
+        deps = _deps(test_engine, tmp_path)
+        run_id = start_run(deps, repo_path=fixture_repo, repository_id="local/outside-node")
+        assert run_status(deps, run_id) == "failed"
+
+        with Session(test_engine) as s:
+            run_row = s.get(RunRow, run_id)
+            assert run_row is not None
+            errors = [e for e in run_row.events if e.level == "error"]
+            assert errors, "the failure must leave a reason, not just a status"
+            assert any("checkpointer exploded" in str(e.data) for e in errors)
+
+
 class TestCli:
     def test_cli_run_on_fixture(self, test_engine, fixture_repo: Path, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
         from typer.testing import CliRunner

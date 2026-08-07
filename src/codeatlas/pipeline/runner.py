@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -10,6 +9,8 @@ from sqlalchemy.orm import Session
 from codeatlas.db import repositories as repo
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.pipeline.graph import build_pipeline
+
+_TERMINAL_STATUSES = ("succeeded", "succeeded_with_gaps", "failed", "paused_for_approval")
 
 
 def start_run(
@@ -63,8 +64,26 @@ def start_run(
 
     pipeline = build_pipeline(deps)
     config = {"configurable": {"thread_id": run_id}}
-    with contextlib.suppress(Exception):  # run status already recorded by the node wrapper
+    try:
         pipeline.invoke(initial, config=config)
+    except Exception as exc:
+        # A crash inside a node is already recorded by the node wrapper; this
+        # branch catches everything *outside* one — LangGraph itself, the
+        # checkpointer — which a blanket suppress used to swallow, leaving the
+        # run at `running` forever while start_run returned normally.
+        with Session(deps.engine) as session:
+            row = repo.get_run(session, run_id)
+            if row is not None and row.status not in _TERMINAL_STATUSES:
+                repo.set_run_status(session, run_id=run_id, status="failed")
+                repo.add_run_event(
+                    session,
+                    run_id=run_id,
+                    stage="pipeline",
+                    event="failed",
+                    level="error",
+                    data={"error": str(exc), "type": type(exc).__name__},
+                )
+            session.commit()
     return run_id
 
 
