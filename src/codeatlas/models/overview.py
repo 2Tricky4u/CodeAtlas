@@ -26,6 +26,9 @@ class ModuleSummary(ContractModel):
     fan_out: int = Field(ge=0)
     level: int = Field(ge=0)
     symbol_count: int = Field(ge=0)
+    # None on artifacts produced before the depth metric existed; the UI
+    # omits the interface badge rather than claiming zero public items.
+    public_count: int | None = Field(default=None, ge=0)
 
 
 class LevelSummary(ContractModel):

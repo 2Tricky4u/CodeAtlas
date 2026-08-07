@@ -34,6 +34,7 @@ def _pair(fid: str, path: str, line: int, eligible: bool = True):  # type: ignor
         evidence=[ValidationEvidence(kind="test", command=f"cargo test {fid}", exit_code=101)],
         counter_evidence_checked=["callers"],
         publication_eligible=eligible,
+        reason=f"verdict reason for {fid}",
     )
     return finding, validation
 

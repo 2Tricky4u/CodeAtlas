@@ -93,7 +93,8 @@
         "fanIn": { "type": "integer", "minimum": 0 },
         "fanOut": { "type": "integer", "minimum": 0 },
         "level": { "type": "integer", "minimum": 0 },
-        "symbolCount": { "type": "integer", "minimum": 0 }
+        "symbolCount": { "type": "integer", "minimum": 0 },
+        "publicCount": { "type": "integer", "minimum": 0 }
       }
     },
     "level": {

@@ -97,6 +97,7 @@ def _validation_payload(**overrides) -> dict:  # type: ignore[no-untyped-def]
         "evidence": [{"kind": "call-path", "command": "a -> b"}],
         "counterEvidenceChecked": ["callers", "existing tests"],
         "publicationEligible": True,
+        "reason": "the failing test reproduces the claim at the cited span",
     }
     payload.update(overrides)
     return payload

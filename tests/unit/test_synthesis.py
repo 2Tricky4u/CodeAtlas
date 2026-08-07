@@ -41,6 +41,7 @@ def _validation(
         evidence=[ValidationEvidence(kind="test", command="cargo test x", exit_code=101)],
         counter_evidence_checked=["callers", "existing tests"],
         publication_eligible=eligible,
+        reason=f"verdict reason for {fid}",
     )
 
 

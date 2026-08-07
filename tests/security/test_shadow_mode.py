@@ -72,6 +72,7 @@ def _pair(fid: str, path: str, line: int):  # type: ignore[no-untyped-def]
         evidence=[ValidationEvidence(kind="test", command=f"cargo test {fid}", exit_code=101)],
         counter_evidence_checked=["callers"],
         publication_eligible=True,
+        reason=f"verdict reason for {fid}",
     )
     return finding, validation
 

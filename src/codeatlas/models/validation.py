@@ -43,4 +43,6 @@ class ValidationResult(ContractModel):
     evidence: list[ValidationEvidence]
     counter_evidence_checked: list[str] = Field(min_length=1)
     publication_eligible: bool
-    reason: str | None = None
+    # Required: the verdict a human reads, and the text cross-run memory
+    # replays when it suppresses the same rejection in a later run.
+    reason: str = Field(min_length=1)

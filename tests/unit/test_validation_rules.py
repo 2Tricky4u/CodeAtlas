@@ -132,6 +132,7 @@ def _validation(
         evidence=evidence,
         counter_evidence_checked=["checked the caller"],
         publication_eligible=True,  # the validator's own opinion, which we override
+        reason="stub verdict for eligibility-rule tests",
     )
 
 

@@ -132,6 +132,7 @@ VALIDATION_EXAMPLE: dict[str, Any] = {
     ],
     "counterEvidenceChecked": ["input sanitization at caller", "canonicalize() before use"],
     "publicationEligible": True,
+    "reason": "The failing regression test reaches the sink with no sanitizer on the path.",
 }
 
 INTENT_EXAMPLE: dict[str, Any] = {
@@ -614,6 +615,7 @@ PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
             "fanOut": 0,
             "level": 0,
             "symbolCount": 6,
+            "publicCount": 2,
         }
     ],
     "levels": [{"level": 0, "modules": ["kvstore/src/storage.rs"]}],
@@ -633,6 +635,7 @@ PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
                 "fanOut": 0,
                 "level": 0,
                 "symbolCount": 6,
+                "publicCount": 2,
             }
         ],
         "dependsOn": [],
@@ -768,6 +771,18 @@ def test_a_project_with_no_protocol_is_expressible() -> None:
 
     model = CONTRACT_MODELS["protocol-model.v1.json"].model_validate(PROTOCOL_NONE_EXAMPLE)
     assert not sorted(validator.iter_errors(model.contract_dump()), key=str)
+
+
+def test_a_validation_verdict_requires_a_written_reason() -> None:
+    """A verdict without a rationale is unreviewable.
+
+    The reason is what a human reads in the funnel, and what cross-run memory
+    replays when it suppresses the same rejection later — an empty one would
+    propagate silence across runs.
+    """
+    validator = Draft202012Validator(_load_schema("validation-result.v1.json"))
+    reasonless = {k: v for k, v in VALIDATION_EXAMPLE.items() if k != "reason"}
+    assert sorted(validator.iter_errors(reasonless), key=str), "reason must be required"
 
 
 def test_models_reject_unknown_fields() -> None:
