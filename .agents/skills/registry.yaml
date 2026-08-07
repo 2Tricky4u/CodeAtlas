@@ -32,9 +32,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-correctness
-    version: "1.0.0"
+    version: "1.1.0"
     path: reviewer-correctness/
-    content_sha256: "sha256:8561a3d1ca257fb5fd7791a4c4f57ec83e50d96dfdf1050966f6ba7e24994973"
+    content_sha256: "sha256:ef783d73a4c1e2278954ad11d038e53030cd4d14bed28471c4add5e2d7c8f928"
     purpose: "Correctness review: wrong results, reachable panics, broken invariants, races"
     output_schema: findings.v1
     permissions:
@@ -45,9 +45,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-security
-    version: "1.0.0"
+    version: "1.1.0"
     path: reviewer-security/
-    content_sha256: "sha256:9ddaf43fea40607b81c1af7338ee2470a52ffdcc7e9861845e019ff338064dce"
+    content_sha256: "sha256:ef285b69c5b3ebb401643a288b5c58cfbb0c25ba33ac8ce2d8807ae05e1ec153"
     purpose: "Security review: attacker-reachable capabilities and broken controls"
     output_schema: findings.v1
     permissions:
@@ -58,9 +58,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-architecture
-    version: "1.0.0"
+    version: "1.1.0"
     path: reviewer-architecture/
-    content_sha256: "sha256:0a7ebf65c308a4f1f13646fe22ad87a4cafdf3a6a8d1541268fa55c2aac3c9b8"
+    content_sha256: "sha256:e1c88316b5a48536819e48af8972b9d03d56c2bff307a20d551b04afc22fcbfe"
     purpose: "Architecture review: contradictions with accepted decisions and boundaries"
     output_schema: findings.v1
     permissions:
@@ -71,9 +71,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: finding-validator
-    version: "1.0.0"
+    version: "1.1.0"
     path: finding-validator/
-    content_sha256: "sha256:9a25c39803721369d23fcf3c312fcb6265ff911cef40ce383c0638ebb39ff856"
+    content_sha256: "sha256:019792682f6172c2b0605d64a61aace311ab133af3394d81f68a8e32993077b8"
     purpose: "Adversarially validate one candidate finding in a fresh context"
     output_schema: validation-result.v1
     permissions:

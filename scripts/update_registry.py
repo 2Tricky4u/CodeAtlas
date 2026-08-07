@@ -35,28 +35,32 @@ SKILLS: list[dict[str, Any]] = [
     },
     {
         "id": "reviewer-correctness",
-        "version": "1.0.0",
+        # 1.1.0: linter-territory exclusion, certainty bar, scope-creep check.
+        "version": "1.1.0",
         "purpose": "Correctness review: wrong results, reachable panics, broken invariants, races",
         "output_schema": REVIEWER,
         "commands": [],
     },
     {
         "id": "reviewer-security",
-        "version": "1.0.0",
+        # 1.1.0: linter-territory exclusion and certainty bar.
+        "version": "1.1.0",
         "purpose": "Security review: attacker-reachable capabilities and broken controls",
         "output_schema": REVIEWER,
         "commands": [],
     },
     {
         "id": "reviewer-architecture",
-        "version": "1.0.0",
+        # 1.1.0: linter-territory exclusion and certainty bar.
+        "version": "1.1.0",
         "purpose": "Architecture review: contradictions with accepted decisions and boundaries",
         "output_schema": REVIEWER,
         "commands": [],
     },
     {
         "id": "finding-validator",
-        "version": "1.0.0",
+        # 1.1.0: `reason` is required and feeds cross-run memory.
+        "version": "1.1.0",
         "purpose": "Adversarially validate one candidate finding in a fresh context",
         "output_schema": "validation-result.v1",
         "commands": ["cargo test", "rg"],

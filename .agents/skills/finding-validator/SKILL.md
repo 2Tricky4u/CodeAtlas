@@ -36,6 +36,12 @@ and what the tools reported. Your default posture is skepticism.
 - Do not raise severity above what the evidence supports; you may lower it.
 - `publicationEligible` is your opinion only. The pipeline recomputes it from
   evidence, so a confident guess buys nothing.
+- **`reason` is required and must state the decisive evidence** in one or two
+  sentences — the specific path, test, or control that settled the verdict, not
+  a restatement of the status. A human reads it in the review funnel, and when
+  a rejection recurs at the same code in a later run, the pipeline suppresses
+  it and shows your reason as the explanation. Write the sentence you would
+  want replayed.
 - Run only commands your task permissions allow. No network access.
 
 ## Output
@@ -66,7 +72,8 @@ Exactly one fenced ```json block validating against `validation-result.v1`:
 
 Required: `findingId`, `status`, `severity`, `confidence`, `introducedByChange`,
 `location.path`, `claim`, `evidence` (may be empty for a rejection),
-`counterEvidenceChecked` (never empty), `publicationEligible`.
+`counterEvidenceChecked` (never empty), `publicationEligible`, `reason`
+(never empty).
 
 **`evidence[].kind` must be exactly one of these eight values** — anything else
 is rejected, and inventing a kind loses the whole result:

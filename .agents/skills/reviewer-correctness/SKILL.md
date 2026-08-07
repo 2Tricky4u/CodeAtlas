@@ -8,6 +8,15 @@ results, panics on reachable input, broken invariants, races.
 Correctness only. Do not report security exposure, architectural layering, style,
 or performance — other reviewers own those, and duplicated findings are dropped.
 
+One addition that is yours because you hold the requirements: **scope creep
+against a stated boundary**. Behaviour that contradicts an explicit `nonGoal`
+or exceeds a stated compatibility obligation in your intent inputs is a finding
+with `category: "spec"`, severity `low`, quoting the non-goal it violates.
+The spec being *silent* about something is not scope creep — silence is not a
+boundary, and "the requirements don't mention this helper" is not a finding.
+If the intent package lists no non-goals and no compatibility obligations,
+there is nothing to check; skip this entirely.
+
 ## Method
 
 1. Read the stated requirements in your task inputs; they define "must".
@@ -19,6 +28,13 @@ or performance — other reviewers own those, and duplicated findings are droppe
 
 - **A finding is a claim about an execution.** If you cannot name the input or
   the interleaving that reaches it, do not report it.
+- **Leave linter territory alone.** Do not report what `rustc` or `cargo clippy`
+  already diagnoses — style, naming, redundant clones, unused code, needless
+  borrows. The deterministic battery runs clippy on every review; a finding that
+  duplicates a linter diagnostic is noise and will be rejected.
+- **Not certain it is real? Do not flag it.** The validator tries to disprove
+  every finding and its rejections are remembered across runs — one speculative
+  claim costs more trust than a missed nitpick.
 - Cite the file path and the line range where the defect lives, at this revision.
 - Do not report a defect you have not read the code for.
 - Your confidence must reflect how sure you are that the path is reachable, not
@@ -41,7 +57,7 @@ Exactly one fenced ```json block validating against `findings.v1`
       "findingId": "F-0001",
       "category": "correctness",
       "discoveredBySkill": "reviewer-correctness",
-      "skillVersion": "1.0.0",
+      "skillVersion": "1.1.0",
       "severity": "high",
       "confidence": 0.9,
       "claim": "handle_request panics on a request missing its ttl field because parse().unwrap() runs on untrusted input.",

@@ -25,6 +25,12 @@ Architecture only. Do not report bugs, security exposure, or style.
 - Do not propose refactors as findings. Report the contradiction; the fix is a
   separate decision.
 - Do not re-open an accepted ADR because you disagree with it.
+- **Leave linter territory alone.** Do not report what `rustc` or `cargo clippy`
+  already diagnoses. The deterministic battery runs clippy on every review; a
+  finding that duplicates a linter diagnostic is noise and will be rejected.
+- **Not certain it is real? Do not flag it.** The validator tries to disprove
+  every finding and its rejections are remembered across runs — one speculative
+  claim costs more trust than a missed nitpick.
 - Cite the file path and line range where the violation occurs, at this revision.
 - Every finding's evidence entry uses `kind: "llm-inference"` with your skill id
   as `producer`.
@@ -43,7 +49,7 @@ them is rejected outright, not repaired:
       "findingId": "F-0001",
       "category": "architecture",
       "discoveredBySkill": "reviewer-architecture",
-      "skillVersion": "1.0.0",
+      "skillVersion": "1.1.0",
       "severity": "medium",
       "confidence": 0.95,
       "claim": "storage.rs imports crate::api::Response, an upward dependency that contradicts ADR-0001 ('api may use cache, cache may use storage, storage depends on nothing inside this crate').",

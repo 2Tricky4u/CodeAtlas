@@ -21,6 +21,12 @@ something by causing it. Do not report architecture, style, or performance.
 - **A finding names an attacker capability.** State what the attacker controls,
   the path the data takes, and what they gain. "Unvalidated input" alone is not
   a finding.
+- **Leave linter territory alone.** Do not report what `rustc` or `cargo clippy`
+  already diagnoses. The deterministic battery runs clippy on every review; a
+  finding that duplicates a linter diagnostic is noise and will be rejected.
+- **Not certain it is real? Do not flag it.** The validator tries to disprove
+  every finding and its rejections are remembered across runs — one speculative
+  claim costs more trust than a missed nitpick.
 - Check for an existing control before reporting: sanitization at the caller, a
   canonicalization step, a type that constrains the value. If a control exists
   and holds, there is no finding.
@@ -44,7 +50,7 @@ them is rejected outright, not repaired:
       "findingId": "F-0001",
       "category": "security",
       "discoveredBySkill": "reviewer-security",
-      "skillVersion": "1.0.0",
+      "skillVersion": "1.1.0",
       "severity": "high",
       "confidence": 0.9,
       "claim": "FileStore::read joins an attacker-controlled key onto the store root without sanitization, so a key of '../../secret' reads files outside the store.",
