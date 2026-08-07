@@ -24,6 +24,7 @@ import { Badge, Empty, ErrorBox, KindDot, Loading, Panel, SEVERITY_TONE } from "
 import { AskPanel } from "./AskPanel";
 import { FlowsPanel } from "./FlowsPanel";
 import { ModuleLink } from "./links";
+import { apiItemsFor, orderDefinitions } from "./moduleLogic";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
 export function ModuleView() {
@@ -227,11 +228,6 @@ function ReadingOrder({ overview, path }: { overview: ProjectOverview; path: str
   );
 }
 
-// Types before functions: a file's types are its vocabulary and the reason a
-// reader opens it. walk.rs has 148 functions; alphabetical order buried
-// WalkBuilder below all of them.
-const KIND_ORDER = ["type", "constant", "function"];
-
 /** Past this, a kind group collapses to its most-used members. */
 const GROUP_LIMIT = 12;
 
@@ -250,30 +246,16 @@ function DefinitionList({
   const [showAll, setShowAll] = useState<Set<string>>(new Set());
   useEffect(() => setExpanded(anchorSymbol), [anchorSymbol]);
 
-  const byKind = useMemo(() => {
-    const grouped = new Map<string, GraphNode[]>();
-    for (const definition of definitions) {
-      grouped.set(definition.kind, [...(grouped.get(definition.kind) ?? []), definition]);
-    }
-    // Within a kind, most-used first — fan-in is why a definition matters.
-    for (const list of grouped.values()) {
-      list.sort(
-        (a, b) =>
-          index.usedBy(b.id).length - index.usedBy(a.id).length ||
-          a.label.localeCompare(b.label),
-      );
-    }
-    return [...grouped.entries()].sort(
-      ([a], [b]) =>
-        (KIND_ORDER.indexOf(a) + 1 || 99) - (KIND_ORDER.indexOf(b) + 1 || 99) ||
-        a.localeCompare(b),
-    );
-  }, [definitions, index]);
+  const byKind = useMemo(() => orderDefinitions(definitions, index), [definitions, index]);
 
   return (
     <div data-testid="definitions">
       {byKind.map(([kind, fullList]) => {
-        const open = showAll.has(kind) || anchorSymbol !== null;
+        // A deep link expands the group holding its symbol — not every group;
+        // arriving at walk.rs via ?symbol= must not unfold all 148 functions.
+        const open =
+          showAll.has(kind) ||
+          (anchorSymbol !== null && fullList.some((d) => d.id === anchorSymbol));
         const list = open ? fullList : fullList.slice(0, GROUP_LIMIT);
         const hidden = fullList.length - list.length;
         return (
@@ -413,17 +395,11 @@ function ChangeHere({
   const movedOut = diff?.nodes.moved.filter((m) => m.beforePath === path) ?? [];
   const foundHere = findings.filter((f) => f.path === path);
 
-  // The definitions of this file whose labels appear in the API delta.
+  // The definitions of this file that the API delta names.
   const definitionLabels = new Set(
     index.definitionsOf(index.fileByPath(path)?.id ?? "").map((d) => d.label),
   );
-  const apiItems =
-    apiChange?.packages.flatMap((p) =>
-      [
-        ...p.added.map((item) => ({ item, what: "added" })),
-        ...p.removed.map((item) => ({ item, what: "removed" })),
-      ].filter(({ item }) => [...definitionLabels].some((label) => item.includes(label))),
-    ) ?? [];
+  const apiItems = apiItemsFor(apiChange, definitionLabels);
   const impacted =
     impact?.impacted.filter((entry) => entry.path === path) ?? [];
 

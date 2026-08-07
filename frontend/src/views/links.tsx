@@ -28,7 +28,11 @@ export function ModuleLink({
 }) {
   const { runId } = useParams();
   const navigate = useNavigate();
-  if (!runId) return <span className={className}>{children ?? path}</span>;
+  // Degraded form shows the same text as the live link — a label that
+  // suddenly displays the full path is a different control, not a fallback.
+  if (!runId) {
+    return <span className={className}>{children ?? path.split("/").pop()}</span>;
+  }
   return (
     <button
       className={className}
@@ -81,7 +85,7 @@ export function SymbolLink({
         navigate(`${modulePath(runId, path)}?symbol=${encodeURIComponent(id)}`)
       }
     >
-      {children}
+      {children ?? id}
     </button>
   );
 }

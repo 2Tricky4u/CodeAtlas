@@ -99,7 +99,9 @@ export function CommandPalette() {
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setCursor((c) => Math.min(c + 1, matches.length - 1));
+              // max(…, 0): with zero matches, min(c+1, -1) would park the
+              // cursor below the list and desync the highlight.
+              setCursor((c) => Math.min(c + 1, Math.max(matches.length - 1, 0)));
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setCursor((c) => Math.max(c - 1, 0));

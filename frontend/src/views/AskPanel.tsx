@@ -6,7 +6,7 @@
 // from this file" is one. When the server has asking disabled the panel says
 // how to enable it rather than pretending the feature does not exist.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type CodeAnswer } from "../api";
 import { Badge, Panel } from "../ui";
 
@@ -23,6 +23,14 @@ export function AskPanel({
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<CodeAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The panel survives navigation as a component. An answer about cache.rs
+  // rendered under api.rs's heading would be a wrong claim, well cited.
+  useEffect(() => {
+    setQuestion("");
+    setAnswer(null);
+    setError(null);
+  }, [runId, scope]);
 
   const submit = () => {
     const trimmed = question.trim();
@@ -62,7 +70,7 @@ export function AskPanel({
           className="badge accent"
           style={{ cursor: "pointer" }}
           onClick={submit}
-          disabled={busy}
+          disabled={busy || question.trim() === ""}
           data-testid="ask-submit"
         >
           {busy ? "reading…" : "ask"}
