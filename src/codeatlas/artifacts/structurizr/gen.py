@@ -13,6 +13,7 @@ generator has no authority to delete decisions.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from codeatlas.models.graph import ProjectGraph
@@ -65,11 +66,16 @@ def map_graph_to_c4(graph: ProjectGraph, system_name: str) -> ArchitectureMappin
     containers: list[Container] = []
     key_by_node: dict[str, str] = {}
 
-    for node in sorted(graph.nodes, key=lambda n: n.id):
-        if node.kind != "package":
-            continue
-        name = node.label.split(" ")[0]
-        key = _key(name)
+    package_nodes = [n for n in sorted(graph.nodes, key=lambda n: n.id) if n.kind == "package"]
+    # fd's real dependency tree carries bitflags 1.x and 2.x at once, and two
+    # containers sharing a display name is a Structurizr validation error.
+    # Two versions are two real nodes; a colliding name keeps its version.
+    short_name_counts = Counter(n.label.split(" ")[0] for n in package_nodes)
+
+    for node in package_nodes:
+        short = node.label.split(" ")[0]
+        name = node.label if short_name_counts[short] > 1 else short
+        key = _key(name.replace(" ", "_").replace(".", "_"))
         key_by_node[node.id] = key
         containers.append(
             Container(

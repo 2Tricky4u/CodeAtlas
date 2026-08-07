@@ -26,6 +26,49 @@ LS = Evidence(kind="language-server", producer="rust-analyzer", confidence=1.0)
 SHA = "a" * 40
 
 
+def _package(name: str, version: str) -> GraphNode:
+    return GraphNode(
+        id=f"pkg:cargo/{name}@{version}",
+        kind="package",
+        label=f"{name} {version}",
+        language="rust",
+        evidence=[DET],
+    )
+
+
+class TestDuplicateDependencyVersions:
+    """fd's real tree carries bitflags 1.x and 2.x at once; two containers
+    sharing one display name is a Structurizr validation error. Two versions
+    are two real nodes — colliding names keep their version."""
+
+    def _mapping(self) -> ArchitectureMapping:
+        graph = ProjectGraph(
+            repository=RepositoryRef(id="sharkdp/fd"),
+            revision=RevisionRef(head=SHA),
+            nodes=[
+                _package("bitflags", "1.3.2"),
+                _package("bitflags", "2.11.0"),
+                _package("fd-find", "10.4.2"),
+            ],
+            edges=[],
+        )
+        return map_graph_to_c4(graph, system_name="fd")
+
+    def test_colliding_names_keep_their_version(self) -> None:
+        mapping = self._mapping()
+        names = sorted(c.name for c in mapping.containers)
+        assert names == ["bitflags 1.3.2", "bitflags 2.11.0", "fd-find"]
+
+    def test_keys_are_unique_and_the_dsl_validates_names_once(self) -> None:
+        mapping = self._mapping()
+        keys = [c.key for c in mapping.containers]
+        assert len(keys) == len(set(keys)), keys
+        dsl = generate_dsl(mapping, revision_sha=SHA)
+        assert dsl.count('container "bitflags 1.3.2"') == 1
+        assert dsl.count('container "bitflags 2.11.0"') == 1
+        assert 'container "bitflags"' not in dsl
+
+
 def _graph() -> ProjectGraph:
     return ProjectGraph(
         repository=RepositoryRef(id="local/kvstore"),
