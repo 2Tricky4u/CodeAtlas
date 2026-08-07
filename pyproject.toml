@@ -110,3 +110,8 @@ ui-typecheck.shell = "npm --prefix frontend run typecheck"
 ui-test.shell = "npm --prefix frontend run test"
 ui-e2e.shell = "npm --prefix frontend run e2e"
 ui = ["ui-typecheck", "ui-test"]
+# The whole frontend, e2e included — `ui` alone leaves the 80+ Playwright
+# smoke tests opt-in-by-memory, which is how presentation defects hide.
+ui-full = ["ui-typecheck", "ui-test", "ui-e2e"]
+# Everything a release should pass, both halves. No CI exists; this is it.
+check-all = ["check", "ui-full"]

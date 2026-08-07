@@ -15,6 +15,8 @@ export default defineConfig({
   test: {
     // Unit tests only. Left to its default glob, vitest also collects
     // `e2e/*.spec.ts` and fails on Playwright's `test.describe`.
-    include: ["src/**/*.test.ts"],
+    // Component tests are .test.tsx and opt into jsdom per-file via
+    // `// @vitest-environment jsdom`; pure logic tests stay in node.
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });
