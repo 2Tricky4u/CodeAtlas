@@ -107,6 +107,57 @@ export function OverviewView() {
               ))}
             </tbody>
           </table>
+          {/* The other hub direction — the modules that reach for everything.
+              Measured on every run, previously typed and never rendered. */}
+          {overview.hubs.dependsOn.length > 0 && (
+            <>
+              <div className="microlabel" style={{ marginTop: 8 }}>
+                depends on the most
+              </div>
+              <table className="data" data-testid="depends-on-hubs">
+                <tbody>
+                  {overview.hubs.dependsOn.map((module) => (
+                    <tr key={module.path}>
+                      <td>
+                        <ModuleLink
+                          path={module.path}
+                          className=""
+                          style={{ color: "var(--fg-0)" }}
+                        >
+                          {module.path}
+                        </ModuleLink>
+                      </td>
+                      <td className="mono-num">→ {module.fanOut}</td>
+                      <td className="mono-num">{module.level}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </Panel>
+
+        <Panel title="packages" count={overview.packages.length}>
+          <table className="data" data-testid="packages">
+            <thead>
+              <tr>
+                <th>package</th>
+                <th>version</th>
+                <th>files</th>
+                <th>symbols</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overview.packages.map((pkg) => (
+                <tr key={pkg.name} title={pkg.manifestPath}>
+                  <td>{pkg.name}</td>
+                  <td className="note mono-num">{pkg.version}</td>
+                  <td className="mono-num">{pkg.fileCount}</td>
+                  <td className="mono-num">{pkg.symbolCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Panel>
 
         <Panel title="cycles" count={overview.cycles.length}>

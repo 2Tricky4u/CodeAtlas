@@ -154,6 +154,17 @@ function DecisionCard({
           </div>
         )}
 
+        {(decision.evidence?.length ?? 0) > 0 && (
+          <details style={{ marginTop: 6 }}>
+            <summary className="note" style={{ cursor: "pointer" }} data-testid="adr-evidence">
+              {decision.evidence!.length} piece(s) of evidence behind this verdict
+            </summary>
+            <pre className="codeblock" style={{ maxHeight: 200, overflow: "auto" }}>
+              {JSON.stringify(decision.evidence, null, 2)}
+            </pre>
+          </details>
+        )}
+
         {decision.requiresHumanDecision && (
           <div className="caveat" data-testid="needs-human" style={{ marginTop: 8 }}>
             this needs a person: either the code should change or the decision should be

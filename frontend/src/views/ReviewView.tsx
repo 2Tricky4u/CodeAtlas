@@ -297,7 +297,12 @@ function ApprovalPanel({
                     </Badge>
                   )}
                 </td>
-                <td className="note">{approval.decidedBy ?? "—"}</td>
+                <td className="note">
+                  {approval.decidedBy ?? "—"}
+                  {approval.decisionNote && (
+                    <div data-testid="decision-note">“{approval.decisionNote}”</div>
+                  )}
+                </td>
                 <td className="note" title={approval.payloadSha256}>
                   {shortSha(approval.payloadSha256.replace("sha256:", ""))}
                 </td>
@@ -320,6 +325,18 @@ function ApprovalPanel({
           <pre className="codeblock" data-testid="payload-body" style={{ maxHeight: 260, overflow: "auto" }}>
             {payload.body}
           </pre>
+          {/* The inline comments ARE the payload — a count alone hides what
+              would actually land on someone's diff. */}
+          {payload.comments.map((comment, index) => (
+            <div key={index} style={{ marginTop: 6 }} data-testid="payload-comment">
+              <div className="microlabel">
+                {comment.path}:{comment.line}
+              </div>
+              <pre className="codeblock" style={{ maxHeight: 160, overflow: "auto" }}>
+                {comment.body}
+              </pre>
+            </div>
+          ))}
         </div>
       )}
     </Panel>
@@ -341,9 +358,26 @@ function IntentPanel({ intent }: { intent: IntentPackage }) {
             {requirement.sourceRef && (
               <span className="note"> — {requirement.sourceRef}</span>
             )}
+            {(requirement.acceptanceCriteria?.length ?? 0) > 0 && (
+              <div className="note">
+                accepted when: {requirement.acceptanceCriteria!.join("; ")}
+              </div>
+            )}
           </li>
         ))}
       </ul>
+      {/* Non-goals and obligations shape what a reviewer must NOT flag —
+          reconstructed on every reviewed run, rendered nowhere until now. */}
+      {intent.nonGoals.length > 0 && (
+        <p className="note" style={{ marginBottom: 0 }} data-testid="non-goals">
+          explicitly not goals: {intent.nonGoals.join(" · ")}
+        </p>
+      )}
+      {intent.compatibilityObligations.length > 0 && (
+        <p className="note" style={{ marginBottom: 0 }} data-testid="compat-obligations">
+          must stay compatible: {intent.compatibilityObligations.join(" · ")}
+        </p>
+      )}
       {intent.unresolvedQuestions.length > 0 && (
         <div className="caveat" style={{ marginTop: 8 }} data-testid="unresolved">
           {intent.unresolvedQuestions.length} question(s) the specs left open:{" "}

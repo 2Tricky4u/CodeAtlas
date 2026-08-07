@@ -11,6 +11,7 @@ import cytoscape from "cytoscape";
 import { graphIndex, shortestPath, type GraphIndex, type GraphNode, type PathStep } from "../graph";
 import { Empty, ErrorBox, Panel } from "../ui";
 import { kindColor, rankMatches } from "./layout";
+import { ModuleLink } from "./links";
 
 export function PathView({
   runId,
@@ -73,6 +74,28 @@ export function PathView({
         {path && path.length > 0 && (
           <p className="note" style={{ marginBottom: 0 }} data-testid="path-summary">
             {path.length - 1} hop(s), shortest route only — other routes may exist
+            {(() => {
+              // Both ends, walkable to the pages that explain them — the path
+              // view drew a chain a reader could not leave.
+              const fromFile = index.fileOf(path[0]!.node.id);
+              const toFile = index.fileOf(path[path.length - 1]!.node.id);
+              return (
+                <span data-testid="path-endpoints">
+                  {fromFile?.path && (
+                    <>
+                      {" · from "}
+                      <ModuleLink path={fromFile.path} className="" style={{ color: "var(--fg-1)" }} />
+                    </>
+                  )}
+                  {toFile?.path && (
+                    <>
+                      {" to "}
+                      <ModuleLink path={toFile.path} className="" style={{ color: "var(--fg-1)" }} />
+                    </>
+                  )}
+                </span>
+              );
+            })()}
           </p>
         )}
       </Panel>

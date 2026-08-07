@@ -357,6 +357,55 @@ export interface Approval {
   decidedBy: string | null;
   /** Exactly "approved" | "rejected" | null — the strings the CLI records. */
   decision: string | null;
+  decisionNote: string | null;
+}
+
+/** api-surface.v1 — the full public API of one revision, as measured. */
+export interface ApiSurface {
+  revision: string;
+  tool: string;
+  packages: { name: string; version: string; manifestPath: string; items: string[] }[];
+  skipped: { name: string; reason: string }[];
+}
+
+/** One row of the agent ledger: who answered, with which model, at what cost. */
+export interface AgentInvocation {
+  skillId: string;
+  skillVersion: string;
+  engine: string;
+  modelId: string | null;
+  cassetteKey: string | null;
+  status: string;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: number | null;
+  durationMs: number;
+}
+
+/** run-manifest.v1 — the reproducibility contract, now openable. */
+export interface RunManifest {
+  runId: string;
+  kind: string;
+  sourceLock: {
+    repositoryId: string;
+    headSha: string;
+    baseSha?: string | null;
+    mergeBaseSha?: string | null;
+    changedPaths: string[];
+    generatedPaths: string[];
+  };
+  toolchain: Record<string, string>;
+  skillRegistrySha256: string;
+  configSha256: string;
+  modelIds: string[];
+  cassetteIds: string[];
+  outputs: Record<string, string>;
+  cost: {
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalCostUsd?: number | null;
+  };
+  notes?: string[];
 }
 
 /** A row in the outward-facing ledger: what actually left the machine. */
@@ -568,6 +617,12 @@ export const api = {
   publications: (id: string) => getJson<Publication[]>(`/api/runs/${id}/publications`),
   /** Every question this run has answered — the cache, made enumerable. */
   answers: (id: string) => getJson<CodeAnswer[]>(`/api/runs/${id}/answers`),
+  invocations: (id: string) => getJson<AgentInvocation[]>(`/api/runs/${id}/invocations`),
+  runManifest: (id: string) => getOptional<RunManifest>(`/api/runs/${id}/artifact/run-manifest`),
+  apiSurfaceHead: (id: string) =>
+    getOptional<ApiSurface>(`/api/runs/${id}/artifact/api-surface-head`),
+  /** Any JSON artifact by content hash — what makes a printed sha openable. */
+  artifactByRef: (ref: string) => getJson<unknown>(`/api/artifacts/${ref}`),
   /** POST — ADR-0014's one local-analysis endpoint. Throws with the server's
    *  reason when asking is disabled, so the panel can say why. */
   ask: async (id: string, scope: string, question: string): Promise<CodeAnswer> => {

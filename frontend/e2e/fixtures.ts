@@ -61,7 +61,9 @@ export const OVERVIEW = {
     dependedOn: [
       { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12 },
     ],
-    dependsOn: [],
+    dependsOn: [
+      { key: "file:kvstore/src/api.rs", path: "kvstore/src/api.rs", package: "kvstore", fanIn: 1, fanOut: 1, level: 1, symbolCount: 8 },
+    ],
   },
   orphans: [],
   entryPoints: [
@@ -189,7 +191,8 @@ export const DIFF = {
   likelyRenamed: [
     { beforeKey: "sym:evict_oldest", afterKey: "sym:evict", beforeLabel: "evict_oldest", afterLabel: "evict", path: "kvstore/src/cache.rs", confidence: 0.75, basis: "same file and overlapping source range" },
   ],
-  unnormalizedIdentities: 0,
+  // Non-zero on purpose: the diff's own honesty counter must render.
+  unnormalizedIdentities: 2,
   summary: { nodesAdded: 1, nodesRemoved: 1, nodesMoved: 0, nodesTouched: 1, edgesAdded: 0, edgesRemoved: 1 },
 };
 
@@ -328,7 +331,7 @@ export const INTENT = {
       sourceKind: "spec",
       sourceRef: "docs/SPEC.md",
       text: "The cache holds at most max_entries entries; a write past the bound evicts only as many as necessary.",
-      acceptanceCriteria: [],
+      acceptanceCriteria: ["a put at capacity evicts exactly one entry"],
     },
     {
       id: "REQ-002",
@@ -338,8 +341,8 @@ export const INTENT = {
       acceptanceCriteria: [],
     },
   ],
-  nonGoals: [],
-  compatibilityObligations: [],
+  nonGoals: ["distributed operation"],
+  compatibilityObligations: ["the public put/evict signatures"],
   unresolvedQuestions: ["whether eviction should be LRU or insertion-ordered"],
 };
 
@@ -406,8 +409,77 @@ export const APPROVALS_DECIDED = [
     decidedAt: "2026-08-06T13:00:00+00:00",
     decidedBy: "xaga",
     decision: "approved",
+    decisionNote: "matches what I read in the diff",
   },
 ];
+
+export const MANIFEST = {
+  runId: RUN_ID,
+  kind: "pr",
+  sourceLock: {
+    repositoryId: "local/kvstore",
+    headSha: HEAD,
+    baseSha: BASE,
+    mergeBaseSha: BASE,
+    changedPaths: ["kvstore/src/cache.rs"],
+    generatedPaths: ["kvstore/src/gen.rs"],
+  },
+  toolchain: { "cargo-metadata": "cargo 1.94.1", "rust-analyzer-scip": "0.3.2199" },
+  skillRegistrySha256: "sha256:" + "a".repeat(64),
+  configSha256: "sha256:" + "b".repeat(64),
+  modelIds: ["claude-sonnet-5"],
+  cassetteIds: [],
+  outputs: {
+    projectGraph: "sha256:" + "2".repeat(64),
+    cytoscape: "sha256:" + "6".repeat(64),
+  },
+  cost: { totalPromptTokens: 41000, totalCompletionTokens: 9000, totalCostUsd: null },
+  notes: ["verification tools unavailable: cargo-clippy"],
+};
+
+export const INVOCATIONS = [
+  {
+    skillId: "intent-reconstructor",
+    skillVersion: "1.0.0",
+    engine: "replay",
+    modelId: "claude-sonnet-5",
+    cassetteKey: "intent-reconstructor-1.0.0-fixture000000001",
+    status: "succeeded",
+    promptTokens: 18000,
+    completionTokens: 3000,
+    costUsd: null,
+    durationMs: 900,
+  },
+  {
+    skillId: "reviewer-correctness",
+    skillVersion: "1.0.0",
+    engine: "replay",
+    modelId: "claude-sonnet-5",
+    cassetteKey: "reviewer-correctness-1.0.0-fixture000000002",
+    status: "succeeded",
+    promptTokens: 23000,
+    completionTokens: 6000,
+    costUsd: null,
+    durationMs: 1400,
+  },
+];
+
+export const API_SURFACE = {
+  revision: HEAD,
+  tool: "cargo-public-api 0.52.0",
+  packages: [
+    {
+      name: "kvstore",
+      version: "0.2.0",
+      manifestPath: "kvstore/Cargo.toml",
+      items: [
+        "pub fn kvstore::cache::Cache::evict(&mut self, usize) -> usize",
+        "pub struct kvstore::cache::Cache",
+      ],
+    },
+  ],
+  skipped: [{ name: "kvstore-cli", reason: "no library target to expose an API" }],
+};
 
 export const PUBLICATION_PUBLISHED = [
   {
@@ -607,7 +679,14 @@ export const FINDINGS = [
     publicationEligible: true,
     introducedByChange: true,
     discoveredBySkill: "reviewer-correctness",
-    validation: null,
+    // The adversarial validator's own record — the product's differentiator,
+    // previously fetched and rendered nowhere.
+    validation: {
+      reason: "reproduced: evict(overflow + 1) removes one entry more than capacity requires",
+      counterEvidenceChecked: ["callers of put", "existing eviction tests"],
+      evidence: [{ kind: "call-path", command: "put -> evict" }],
+      duplicateOf: null,
+    },
   },
   // Persisted like every candidate, with the verdict it received. `unresolved`
   // is not a pass: the validator could neither confirm nor refute it.

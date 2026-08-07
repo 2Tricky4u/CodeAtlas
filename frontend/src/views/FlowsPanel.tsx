@@ -124,6 +124,17 @@ function FlowFigure({ flow }: { flow: Flow }) {
         </p>
       )}
       <Mermaid source={flowToMermaid(flow)} />
+      {/* The diagram's participants are SVG text; these are the same modules,
+          walkable — a flow you cannot leave is a dead end. */}
+      <p className="note" style={{ margin: "4px 0 0" }} data-testid="flow-steps">
+        <ModuleLink path={flow.entry} className="" style={{ color: "var(--fg-1)" }} />
+        {flow.steps.map((step, index) => (
+          <span key={index}>
+            {" → "}
+            <ModuleLink path={step.toModule} className="" style={{ color: "var(--fg-1)" }} />
+          </span>
+        ))}
+      </p>
     </div>
   );
 }

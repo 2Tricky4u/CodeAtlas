@@ -361,6 +361,9 @@ def show_approval(
         payload = json.loads(deps.cas.get(approval.payload_sha256))
         typer.echo(f"approval {approval_id} · run {approval.run_id} · {approval.action_kind}")
         typer.echo(f"decision: {approval.decision or 'PENDING'}")
+        if approval.decision_note:
+            # --note used to be accepted, stored, and displayed nowhere.
+            typer.echo(f"note:     {approval.decision_note}")
         typer.echo(f"payload:  {approval.payload_sha256}")
         typer.echo("")
         typer.echo(f"target: {payload['owner']}/{payload['repo']} PR #{payload['prNumber']}")

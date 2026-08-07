@@ -25,6 +25,9 @@ import {
   IMPACT,
   OVERVIEW,
   OVERVIEW2,
+  API_SURFACE,
+  INVOCATIONS,
+  MANIFEST,
   PROJECT_EXPLANATION,
   PROTOCOL_MODEL,
   PROTOCOL_NONE,
@@ -129,6 +132,22 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/answers`, (route) => route.fulfill({ json: [] }));
   await page.route(`**/api/runs/${RUN_ID_2}/answers`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/runs/${RUN_ID}/invocations`, (route) =>
+    route.fulfill({ json: INVOCATIONS }),
+  );
+  await page.route(`**/api/runs/${RUN_ID_2}/invocations`, (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/run-manifest`, (route) =>
+    route.fulfill({ json: MANIFEST }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/api-surface-head`, (route) =>
+    route.fulfill({ json: API_SURFACE }),
+  );
+  // Any content-addressed artifact fetch (manifest output rows are clickable).
+  await page.route("**/api/artifacts/**", (route) =>
+    route.fulfill({ json: { opened: true, note: "artifact body served by hash" } }),
+  );
 }
 
 /** A narrative past the collapse threshold, built from the fixture's one section. */
@@ -1226,6 +1245,119 @@ test.describe("one graph fetch per run", () => {
     await page.getByTestId("focus-search").fill("evict");
     await expect(page.getByTestId("focus-match").first()).toBeVisible();
     expect(graphFetches).toBe(1);
+  });
+});
+
+test.describe("evidence surfaced", () => {
+  // Everything here was produced, stored, typed — and rendered nowhere.
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("the run detail opens the manifest: notes, toolchain, and the ledger", async ({
+    page,
+  }) => {
+    await page.goto(`/#/runs/${RUN_ID}/detail`);
+    const manifest = page.getByTestId("manifest");
+    // The degradation report — previously dead state in the checkpoint.
+    await expect(page.getByTestId("manifest-notes")).toContainText("cargo-clippy");
+    await expect(manifest).toContainText("cargo-metadata cargo 1.94.1");
+    await expect(manifest).toContainText("model claude-sonnet-5");
+    await expect(page.getByTestId("generated-paths")).toContainText("gen.rs");
+    // The agent ledger: who answered, at what cost.
+    const invocations = page.getByTestId("invocations");
+    await expect(invocations).toContainText("reviewer-correctness@1.0.0");
+    await expect(invocations).toContainText("claude-sonnet-5");
+    await expect(invocations).toContainText("29000");
+  });
+
+  test("a manifest output row opens the artifact it names", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/detail`);
+    await page.getByTestId("manifest-outputs").getByText("projectGraph").click();
+    await expect(page.getByTestId("opened-artifact")).toContainText("artifact body served");
+  });
+
+  test("stage events carry their timestamps", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/detail`);
+    await expect(page.getByTestId("detail-view")).toContainText("12:00:00");
+  });
+
+  test("a validated finding shows how it was checked", async ({ page }) => {
+    // The adversarial check is the product's differentiator; a survivors table
+    // looks identical whether the check was hostile or a rubber stamp.
+    await page.goto(`/#/runs/${RUN_ID}/findings`);
+    await page.getByTestId("validation-toggle").click();
+    const detail = page.getByTestId("validation-detail");
+    await expect(detail).toContainText("counter-evidence checked");
+    await expect(detail).toContainText("existing eviction tests");
+  });
+
+  test("the change view walks into module pages and states its own limits", async ({
+    page,
+  }) => {
+    await page.goto(`/#/runs/${RUN_ID}/change`);
+    await expect(page.getByTestId("unnormalized")).toContainText("2 symbol identities");
+    await expect(page.getByTestId("api-tools")).toContainText("cargoPublicApi");
+    await expect(page.getByTestId("impact-basis")).toContainText("bounded reverse reachability");
+    // viaSeed: which changed symbol dragged the impacted one in.
+    await expect(page.getByTestId("change-view")).toContainText("calls from put");
+    await page.getByTestId("touched-modules").getByTestId("module-link").first().click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+  });
+
+  test("the full public surface at head is one click away", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/change`);
+    await page.getByTestId("show-api-surface").click();
+    const surface = page.getByTestId("api-surface");
+    await expect(surface).toContainText("kvstore 0.2.0 · 2 public item(s)");
+  });
+
+  test("the review shows non-goals, obligations, the note, and the real comments", async ({
+    page,
+  }) => {
+    await page.route(`**/api/runs/${RUN_ID}/approval`, (route) =>
+      route.fulfill({ json: APPROVALS_DECIDED }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("non-goals")).toContainText("distributed operation");
+    await expect(page.getByTestId("compat-obligations")).toContainText("put/evict");
+    await expect(page.getByTestId("decision-note")).toContainText("matches what I read");
+    // The inline comment IS the payload — not just its count.
+    await expect(page.getByTestId("payload-comment")).toContainText("off-by-one in eviction");
+    await expect(page.getByTestId("payload-comment")).toContainText("kvstore/src/cache.rs:23");
+  });
+
+  test("the overview names the packages and both hub directions", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("packages")).toContainText("kvstore");
+    await expect(page.getByTestId("packages")).toContainText("0.1.0");
+    await expect(page.getByTestId("depends-on-hubs")).toContainText("kvstore/src/api.rs");
+  });
+
+  test("a flow's steps are walkable, not just drawable", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    const steps = page.getByTestId("flow-steps").first();
+    await steps.getByTestId("module-link").last().click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+  });
+
+  test("focus mode links to the focused node's module page", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("evict");
+    await page.getByTestId("focus-match").first().click();
+    await page.getByTestId("focus-module-link").getByTestId("module-link").click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+  });
+
+  test("a found path names both end modules as links", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await page.getByTestId("path-from").fill("put");
+    await page.getByTestId("path-from-match").first().click();
+    await page.getByTestId("path-to").fill("evict");
+    await page.getByTestId("path-to-match").first().click();
+    await expect(
+      page.getByTestId("path-endpoints").getByTestId("module-link").first(),
+    ).toBeVisible();
   });
 });
 

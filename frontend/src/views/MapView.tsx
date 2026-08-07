@@ -674,6 +674,20 @@ function FocusView({
             <p className="note" style={{ marginBottom: 0 }}>
               showing the 1-hop neighborhood · tap a neighbor to refocus, tap the center to
               open its source
+              {(() => {
+                // The focused node's module page — the graph surface used to
+                // dead-end here while the matrix rows could navigate.
+                const focused = graph?.elements.nodes.find(
+                  (node) => node.data.id === focusId,
+                );
+                const path = focused?.data.path as string | undefined;
+                return path ? (
+                  <span data-testid="focus-module-link">
+                    {" · "}
+                    <ModuleLink path={path}>explain {path.split("/").pop()}</ModuleLink>
+                  </span>
+                ) : null;
+              })()}
               {capped && (
                 <>
                   {" · "}

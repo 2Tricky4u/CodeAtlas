@@ -14,6 +14,7 @@ import {
   type RunSummary,
 } from "../api";
 import { Badge, BUMP_TONE, Empty, KindDot, Loading, Panel, shortSha, type Tone } from "../ui";
+import { ModuleLink } from "./links";
 import { Mermaid } from "./Mermaid";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
 
@@ -116,6 +117,11 @@ export function ChangeView() {
               citations did not resolve against this run's evidence
             </div>
           )}
+          {(explanation.notes?.length ?? 0) > 0 && (
+            <p className="note" style={{ marginBottom: 0 }} data-testid="explanation-notes">
+              {explanation.notes!.join(" · ")}
+            </p>
+          )}
         </Panel>
       )}
       {explanation === null && (
@@ -125,7 +131,7 @@ export function ChangeView() {
         </p>
       )}
 
-      {apiChange && <ApiChangePanel change={apiChange} />}
+      {apiChange && runId && <ApiChangePanel change={apiChange} runId={runId} />}
       <StructuralPanel diff={diff} onOpen={(path, line) => {
         if (run?.headSha) setSource({ revision: run.headSha, path, startLine: line });
       }} />
@@ -163,7 +169,7 @@ function CitationChip({ citation, onOpen }: { citation: Citation; onOpen: () => 
   );
 }
 
-function ApiChangePanel({ change }: { change: ApiChange }) {
+function ApiChangePanel({ change, runId }: { change: ApiChange; runId: string }) {
   const interesting = change.packages.filter(
     (p) => p.added.length || p.removed.length || p.requiredBump !== "none",
   );
@@ -216,7 +222,68 @@ function ApiChangePanel({ change }: { change: ApiChange }) {
           not measured: {change.skipped.map((s) => `${s.name} (${s.reason})`).join("; ")}
         </p>
       )}
+      {Object.keys(change.tools ?? {}).length > 0 && (
+        <p className="note" style={{ marginBottom: 0 }} data-testid="api-tools">
+          measured by{" "}
+          {Object.entries(change.tools)
+            .map(([tool, version]) => `${tool} ${version}`)
+            .join(" · ")}
+        </p>
+      )}
+      <FullSurface runId={runId} />
     </Panel>
+  );
+}
+
+/** The whole public surface at head — not just the delta. Produced on every
+ *  PR run and previously reachable by nobody. */
+function FullSurface({ runId }: { runId: string }) {
+  const [surface, setSurface] = useState<
+    Awaited<ReturnType<typeof api.apiSurfaceHead>> | undefined
+  >(undefined);
+  const [open, setOpen] = useState(false);
+
+  const reveal = () => {
+    setOpen(true);
+    if (surface === undefined) {
+      api.apiSurfaceHead(runId).then(setSurface).catch(() => setSurface(null));
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        className="badge"
+        style={{ cursor: "pointer", marginTop: 6 }}
+        data-testid="show-api-surface"
+        onClick={reveal}
+      >
+        show the full public surface at head
+      </button>
+    );
+  }
+  if (surface === undefined) return <p className="note">loading the surface…</p>;
+  if (surface === null) {
+    return <p className="note">the full surface was not stored for this run</p>;
+  }
+  return (
+    <div data-testid="api-surface" style={{ marginTop: 6 }}>
+      {surface.packages.map((pkg) => (
+        <details key={pkg.name} style={{ marginBottom: 4 }}>
+          <summary className="note" style={{ cursor: "pointer" }}>
+            {pkg.name} {pkg.version} · {pkg.items.length} public item(s)
+          </summary>
+          <pre className="codeblock" style={{ maxHeight: 240, overflow: "auto" }}>
+            {pkg.items.join("\n")}
+          </pre>
+        </details>
+      ))}
+      {surface.skipped.length > 0 && (
+        <p className="note">
+          not measured: {surface.skipped.map((s) => `${s.name} (${s.reason})`).join("; ")}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -314,6 +381,32 @@ function StructuralPanel({
           <span className="note">+{diff.nodes.touched.length - 30} more</span>
         )}
       </div>
+      {(() => {
+        // The reverse of H2: every module the diff touched, walkable to the
+        // page that explains it — the change view used to link nowhere.
+        const touchedPaths = [
+          ...new Set(
+            [...diff.nodes.added, ...diff.nodes.removed, ...diff.nodes.touched]
+              .map((node) => node.path)
+              .filter((path): path is string => Boolean(path)),
+          ),
+        ].sort();
+        return touchedPaths.length > 0 ? (
+          <p className="note" style={{ marginBottom: 0 }} data-testid="touched-modules">
+            in:{" "}
+            {touchedPaths.map((path) => (
+              <ModuleLink key={path} path={path} style={{ marginRight: 4 }} />
+            ))}
+          </p>
+        ) : null;
+      })()}
+
+      {diff.unnormalizedIdentities > 0 && (
+        <div className="caveat" data-testid="unnormalized" style={{ marginTop: 8 }}>
+          {diff.unnormalizedIdentities} symbol identities could not be normalized across the
+          two revisions — the structural counts above may overstate the change
+        </div>
+      )}
 
       {diff.packageVersionChanges.length > 0 && (
         <p className="note" style={{ marginBottom: 0 }}>
@@ -364,7 +457,12 @@ function ImpactPanel({
                 {item.path && <div className="note">{item.path}</div>}
               </td>
               <td className="note">
-                {item.viaEdgeKind} · hop {item.hop}
+                {/* viaSeed: which changed symbol dragged this one in — the
+                    provenance of the impact claim, previously dropped. */}
+                {item.viaEdgeKind} from{" "}
+                {impact.seeds.find((seed) => seed.stableKey === item.viaSeed)?.label ??
+                  item.viaSeed}{" "}
+                · hop {item.hop}
               </td>
               <td className="note">
                 {item.claimStrength === "referred-to-removed-symbol"
@@ -381,6 +479,10 @@ function ImpactPanel({
       <div className="caveat" style={{ marginTop: 8 }}>
         {impact.caveat}
       </div>
+      <p className="note" style={{ marginBottom: 0 }} data-testid="impact-basis">
+        method: {impact.basis}
+        {(impact.notes?.length ?? 0) > 0 && ` · ${impact.notes!.join(" · ")}`}
+      </p>
     </Panel>
   );
 }

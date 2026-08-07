@@ -204,6 +204,41 @@ def create_app(
                 "decidedAt": r.decided_at.isoformat() if r.decided_at else None,
                 "decidedBy": r.decided_by,
                 "decision": r.decision,
+                # The --note the decider recorded; it was stored and shown nowhere.
+                "decisionNote": r.decision_note,
+            }
+            for r in rows
+        ]
+
+    @app.get("/api/runs/{run_id}/invocations")
+    def run_invocations(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        """The agent ledger: who answered, with which model, at what cost.
+
+        Every dispatch leaves a row; on a product whose thesis is "everything
+        traceable to evidence", the ledger itself was unreachable — the
+        dashboard could not say which skill produced a claim or what it cost.
+        """
+        from codeatlas.db.tables import AgentInvocationRow
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(
+            select(AgentInvocationRow)
+            .where(AgentInvocationRow.run_id == run_id)
+            .order_by(AgentInvocationRow.id)
+        ).all()
+        return [
+            {
+                "skillId": r.skill_id,
+                "skillVersion": r.skill_version,
+                "engine": r.engine,
+                "modelId": r.model_id,
+                "cassetteKey": r.cassette_key,
+                "status": r.status,
+                "promptTokens": r.prompt_tokens,
+                "completionTokens": r.completion_tokens,
+                "costUsd": r.cost_usd,
+                "durationMs": r.duration_ms,
             }
             for r in rows
         ]

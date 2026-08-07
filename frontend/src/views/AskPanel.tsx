@@ -170,6 +170,11 @@ export function AskPanel({
               citations did not resolve against this revision
             </div>
           )}
+          {(answer.notes?.length ?? 0) > 0 && (
+            <p className="note" style={{ margin: "6px 0 0" }} data-testid="ask-notes">
+              {answer.notes!.join(" · ")}
+            </p>
+          )}
         </div>
       )}
     </Panel>
