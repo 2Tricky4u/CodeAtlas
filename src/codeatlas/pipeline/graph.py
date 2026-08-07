@@ -894,7 +894,14 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         be worse than saying so.
         """
         if not deps.reviews_enabled:
-            return {"review_notes": ["review skipped: no agent engine configured"]}
+            # Two different facts, seen conflated on a live manifest: a run
+            # with --narrate has an engine and skipped review by flag.
+            reason = (
+                "no agent engine configured"
+                if deps.agent_engine is None
+                else "reviews disabled by configuration"
+            )
+            return {"review_notes": [f"review skipped: {reason}"]}
 
         from codeatlas.pipeline.review_stages import (
             ReviewContext,

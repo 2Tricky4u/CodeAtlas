@@ -47,6 +47,9 @@ export const OVERVIEW = {
   revision: HEAD,
   packages: [
     { name: "kvstore", version: "0.1.0", manifestPath: "kvstore/Cargo.toml", fileCount: 4, symbolCount: 28 },
+    // A resolved external dependency: cargo reports every crate in the build,
+    // and fd's overview drowned one real package under 124 of these.
+    { name: "serde", version: "1.0.210", manifestPath: "", fileCount: 0, symbolCount: 0 },
   ],
   modules: [
     { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12 },

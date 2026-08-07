@@ -1327,8 +1327,13 @@ test.describe("evidence surfaced", () => {
 
   test("the overview names the packages and both hub directions", async ({ page }) => {
     await page.goto(`/#/runs/${RUN_ID}/overview`);
-    await expect(page.getByTestId("packages")).toContainText("kvstore");
-    await expect(page.getByTestId("packages")).toContainText("0.1.0");
+    const packages = page.getByTestId("packages");
+    await expect(packages).toContainText("kvstore");
+    await expect(packages).toContainText("0.1.0");
+    // Resolved external dependencies are counted, never listed — fd's one
+    // real package was buried under 124 dependency rows of "0 / 0".
+    await expect(packages).not.toContainText("serde");
+    await expect(page.getByTestId("external-packages")).toContainText("+1 resolved");
     await expect(page.getByTestId("depends-on-hubs")).toContainText("kvstore/src/api.rs");
   });
 

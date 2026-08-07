@@ -137,7 +137,14 @@ export function OverviewView() {
           )}
         </Panel>
 
-        <Panel title="packages" count={overview.packages.length}>
+        <Panel
+          title="packages"
+          count={overview.packages.filter((pkg) => pkg.fileCount > 0).length}
+        >
+          {/* Only this repository's own packages: cargo resolves every
+              dependency, and listing 124 external crates at "0 files /
+              0 symbols" buried fd's one real package. Found live, not by
+              the one-package fixture. */}
           <table className="data" data-testid="packages">
             <thead>
               <tr>
@@ -148,16 +155,24 @@ export function OverviewView() {
               </tr>
             </thead>
             <tbody>
-              {overview.packages.map((pkg) => (
-                <tr key={pkg.name} title={pkg.manifestPath}>
-                  <td>{pkg.name}</td>
-                  <td className="note mono-num">{pkg.version}</td>
-                  <td className="mono-num">{pkg.fileCount}</td>
-                  <td className="mono-num">{pkg.symbolCount}</td>
-                </tr>
-              ))}
+              {overview.packages
+                .filter((pkg) => pkg.fileCount > 0)
+                .map((pkg) => (
+                  <tr key={pkg.name} title={pkg.manifestPath}>
+                    <td>{pkg.name}</td>
+                    <td className="note mono-num">{pkg.version}</td>
+                    <td className="mono-num">{pkg.fileCount}</td>
+                    <td className="mono-num">{pkg.symbolCount}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
+          {overview.packages.some((pkg) => pkg.fileCount === 0) && (
+            <p className="note" style={{ marginBottom: 0 }} data-testid="external-packages">
+              +{overview.packages.filter((pkg) => pkg.fileCount === 0).length} resolved
+              dependencies are not part of this repository and are not listed
+            </p>
+          )}
         </Panel>
 
         <Panel title="cycles" count={overview.cycles.length}>
