@@ -8,6 +8,7 @@ import {
   ADR_AUDIT,
   API_CHANGE,
   APPROVALS,
+  APPROVALS_DECIDED,
   ARCHITECTURE,
   CANDIDATE_FINDINGS,
   DETAIL,
@@ -28,6 +29,7 @@ import {
   PROTOCOL_MODEL,
   PROTOCOL_NONE,
   PROTOCOL_SEQUENCE,
+  PUBLICATION_PUBLISHED,
   RUN,
   RUN2,
   RUN_ID,
@@ -120,6 +122,10 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/approval`, (route) =>
     route.fulfill({ json: withReview ? APPROVALS : [] }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/publications`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/runs/${RUN_ID_2}/publications`, (route) =>
+    route.fulfill({ json: [] }),
   );
 }
 
@@ -1172,6 +1178,44 @@ test.describe("one graph fetch per run", () => {
     await page.getByTestId("focus-search").fill("evict");
     await expect(page.getByTestId("focus-match").first()).toBeVisible();
     expect(graphFetches).toBe(1);
+  });
+});
+
+test.describe("publication truth", () => {
+  // The one screen about the approval gate must report what the gate actually
+  // did — not hard-code an outcome.
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("an approved run reads as approved, not rejected", async ({ page }) => {
+    // The CLI stores exactly "approved"; a comparison against "approve"
+    // rendered every real approval with the red rejected badge.
+    await page.route(`**/api/runs/${RUN_ID}/approval`, (route) =>
+      route.fulfill({ json: APPROVALS_DECIDED }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const panel = page.getByTestId("approvals");
+    await expect(panel).toContainText("approved");
+    await expect(page.getByTestId("review-view")).not.toContainText("rejected");
+  });
+
+  test("a published run says so, with the posted review's address", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/approval`, (route) =>
+      route.fulfill({ json: APPROVALS_DECIDED }),
+    );
+    await page.route(`**/api/runs/${RUN_ID}/publications`, (route) =>
+      route.fulfill({ json: PUBLICATION_PUBLISHED }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const status = page.getByTestId("publication-status");
+    await expect(status).toContainText("published");
+    await expect(status).toContainText("pullrequestreview-9");
+    // The shadow-mode sentence would now be a false statement.
+    await expect(page.getByTestId("review-view")).not.toContainText("nothing was sent");
+  });
+
+  test("an unpublished run keeps the shadow-mode statement", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("approval-note")).toContainText("nothing was sent");
   });
 });
 

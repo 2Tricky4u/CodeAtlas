@@ -17,6 +17,7 @@ import {
   type CandidateFindings,
   type Finding,
   type IntentPackage,
+  type Publication,
   type ReviewPayload,
 } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel, SEVERITY_TONE, shortSha } from "../ui";
@@ -29,6 +30,7 @@ export function ReviewView() {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [payload, setPayload] = useState<ReviewPayload | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [publications, setPublications] = useState<Publication[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,14 +48,16 @@ export function ReviewView() {
       api.reviewMarkdown(runId),
       api.reviewPayload(runId),
       api.approvals(runId),
+      api.publications(runId),
     ])
-      .then(([i, c, f, m, p, a]) => {
+      .then(([i, c, f, m, p, a, pubs]) => {
         setIntent(i);
         setCandidates(c);
         setValidated(f);
         setMarkdown(m);
         setPayload(p);
         setApprovals(a);
+        setPublications(pubs);
         setLoaded(true);
       })
       .catch((e: Error) => setError(e.message));
@@ -74,7 +78,7 @@ export function ReviewView() {
 
   return (
     <div data-testid="review-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <ApprovalPanel approvals={approvals} payload={payload} />
+      <ApprovalPanel approvals={approvals} payload={payload} publications={publications} />
       {candidates && <FunnelPanel candidates={candidates} findings={validated ?? []} />}
 
       {intent && <IntentPanel intent={intent} />}
@@ -204,9 +208,11 @@ function FunnelPanel({
 function ApprovalPanel({
   approvals,
   payload,
+  publications,
 }: {
   approvals: Approval[];
   payload: ReviewPayload | null;
+  publications: Publication[];
 }) {
   if (!payload && approvals.length === 0) {
     return (
@@ -217,13 +223,17 @@ function ApprovalPanel({
   }
 
   const pending = approvals.filter((a) => a.decision === null);
+  const published = publications.filter((p) => p.status === "published");
+  const failed = publications.filter((p) => p.status === "failed");
   return (
     <Panel
-      title="what would be posted"
+      title={published.length > 0 ? "what was posted" : "what would be posted"}
       actions={
-        pending.length > 0 ? (
+        published.length > 0 ? (
+          <Badge tone="ok">published</Badge>
+        ) : pending.length > 0 ? (
           <Badge tone="warn">awaiting a human decision</Badge>
-        ) : approvals.some((a) => a.decision === "approve") ? (
+        ) : approvals.some((a) => a.decision === "approved") ? (
           <Badge tone="ok">approved</Badge>
         ) : approvals.length > 0 ? (
           <Badge tone="bad">rejected</Badge>
@@ -232,10 +242,35 @@ function ApprovalPanel({
         )
       }
     >
-      <p className="note" style={{ marginTop: 0 }} data-testid="approval-note">
-        shadow mode: this payload was built and nothing was sent · publishing is a separate,
-        explicit act at the CLI, and the gate re-checks this row every time
-      </p>
+      {published.length > 0 ? (
+        // Read from the publication ledger, never asserted: the shadow-mode
+        // sentence below becomes false the moment `codeatlas publish` runs.
+        <p className="note" style={{ marginTop: 0 }} data-testid="publication-status">
+          published to GitHub:{" "}
+          {published.map((publication) => (
+            <a
+              key={publication.id}
+              href={publication.externalRef ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {publication.externalRef}
+            </a>
+          ))}{" "}
+          · {published[0]!.publishedAt?.slice(0, 19).replace("T", " ")}
+        </p>
+      ) : (
+        <p className="note" style={{ marginTop: 0 }} data-testid="approval-note">
+          shadow mode: this payload was built and nothing was sent · publishing is a separate,
+          explicit act at the CLI, and the gate re-checks this row every time
+        </p>
+      )}
+      {failed.length > 0 && (
+        <div className="caveat" data-testid="publication-failed">
+          {failed.length} publication attempt(s) failed and left their record — nothing
+          reached GitHub from those attempts
+        </div>
+      )}
 
       {approvals.length > 0 && (
         <table className="data" data-testid="approvals">
@@ -257,7 +292,7 @@ function ApprovalPanel({
                   {approval.decision === null ? (
                     <Badge tone="warn">undecided</Badge>
                   ) : (
-                    <Badge tone={approval.decision === "approve" ? "ok" : "bad"}>
+                    <Badge tone={approval.decision === "approved" ? "ok" : "bad"}>
                       {approval.decision}
                     </Badge>
                   )}

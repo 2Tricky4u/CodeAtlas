@@ -355,7 +355,18 @@ export interface Approval {
   requestedAt: string;
   decidedAt: string | null;
   decidedBy: string | null;
+  /** Exactly "approved" | "rejected" | null — the strings the CLI records. */
   decision: string | null;
+}
+
+/** A row in the outward-facing ledger: what actually left the machine. */
+export interface Publication {
+  id: number;
+  approvalId: number;
+  targetKind: string;
+  status: string;
+  externalRef: string | null;
+  publishedAt: string | null;
 }
 
 // --- protocol ---------------------------------------------------------------
@@ -554,6 +565,7 @@ export const api = {
   reviewPayload: (id: string) =>
     getOptional<ReviewPayload>(`/api/runs/${id}/artifact/review-payload-dry-run`),
   approvals: (id: string) => getJson<Approval[]>(`/api/runs/${id}/approval`),
+  publications: (id: string) => getJson<Publication[]>(`/api/runs/${id}/publications`),
   /** POST — ADR-0014's one local-analysis endpoint. Throws with the server's
    *  reason when asking is disabled, so the panel can say why. */
   ask: async (id: string, scope: string, question: string): Promise<CodeAnswer> => {

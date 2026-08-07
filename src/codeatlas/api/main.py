@@ -208,6 +208,35 @@ def create_app(
             for r in rows
         ]
 
+    @app.get("/api/runs/{run_id}/publications")
+    def run_publications(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        """What actually left the machine for this run — usually nothing.
+
+        The review tab used to hard-code "nothing was sent", which becomes a
+        false statement the moment `codeatlas publish` succeeds. This row is
+        what decides; the dashboard reads it instead of asserting it.
+        """
+        from codeatlas.db.tables import PublicationRow
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(
+            select(PublicationRow)
+            .where(PublicationRow.run_id == run_id)
+            .order_by(PublicationRow.id)
+        ).all()
+        return [
+            {
+                "id": r.id,
+                "approvalId": r.approval_id,
+                "targetKind": r.target_kind,
+                "status": r.status,
+                "externalRef": r.external_ref,
+                "publishedAt": r.published_at.isoformat() if r.published_at else None,
+            }
+            for r in rows
+        ]
+
     @app.get("/api/runs/{run_id}/views")
     def run_views(run_id: str, s: Session = Depends(session)) -> dict[str, object]:  # noqa: B008
         """Bounded, readable views of the project graph, with refusals stated."""

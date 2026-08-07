@@ -440,6 +440,51 @@
         "summary": "Run Overview"
       }
     },
+    "/api/runs/{run_id}/publications": {
+      "get": {
+        "description": "What actually left the machine for this run \u2014 usually nothing.\n\nThe review tab used to hard-code \"nothing was sent\", which becomes a\nfalse statement the moment `codeatlas publish` succeeds. This row is\nwhat decides; the dashboard reads it instead of asserting it.",
+        "operationId": "run_publications_api_runs__run_id__publications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Run Publications Api Runs  Run Id  Publications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Publications"
+      }
+    },
     "/api/runs/{run_id}/views": {
       "get": {
         "description": "Bounded, readable views of the project graph, with refusals stated.",

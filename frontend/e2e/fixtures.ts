@@ -397,6 +397,29 @@ export const APPROVALS = [
   },
 ];
 
+// A *decided* approval — the CLI stores exactly "approved"/"rejected"
+// (publication/gate.py). No fixture ever carried a decision before, which is
+// how a wrong string comparison rendered approved runs as rejected.
+export const APPROVALS_DECIDED = [
+  {
+    ...APPROVALS[0]!,
+    decidedAt: "2026-08-06T13:00:00+00:00",
+    decidedBy: "xaga",
+    decision: "approved",
+  },
+];
+
+export const PUBLICATION_PUBLISHED = [
+  {
+    id: 1,
+    approvalId: 1,
+    targetKind: "github_pr_review",
+    status: "published",
+    externalRef: "https://github.com/o/r/pull/7#pullrequestreview-9",
+    publishedAt: "2026-08-06T13:05:00+00:00",
+  },
+];
+
 export const PROTOCOL_MODEL = {
   protocol: {
     id: "kvstore-wire",

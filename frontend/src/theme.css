@@ -21,6 +21,9 @@
   --fg-0: #e6e9f0;
   --fg-1: #a8b0c2;
   --fg-2: #6b7489;
+  /* dimmest: matrix ticks and row numbers — referenced before it existed,
+     which made those labels silently inherit their parent's colour */
+  --fg-3: #565f89;
 
   /* the one accent */
   --accent: #7aa2f7;

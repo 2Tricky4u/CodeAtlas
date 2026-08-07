@@ -464,6 +464,67 @@ class TestAbsenceAndBrokenness:
         assert response.status_code == 400
 
 
+class TestPublications:
+    """The dashboard must not hard-code "nothing was sent" — this route is the
+    row that decides, and it did not exist."""
+
+    def test_a_run_with_no_publications_returns_an_empty_list(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        response = client.get(f"/api/runs/{run_id}/publications")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_a_published_run_reports_the_external_ref(self, seeded, stack) -> None:  # type: ignore[no-untyped-def]
+        from datetime import UTC, datetime
+
+        from sqlalchemy.orm import Session
+
+        from codeatlas.db import repositories as repo
+        from codeatlas.db.tables import ApprovalRow, PublicationRow
+
+        client, run_id, _ = seeded
+        payload_bytes = b'{"scratch": true}'
+        payload_sha = stack.deps.cas.put(payload_bytes)
+        with Session(stack.engine) as s:
+            repo.index_artifact(
+                s,
+                sha256=payload_sha,
+                kind="review-payload",
+                media_type="application/json",
+                size_bytes=len(payload_bytes),
+                producer="test",
+                produced_by_run_id=run_id,
+            )
+            approval = ApprovalRow(
+                run_id=run_id,
+                action_kind="publish_pr_review",
+                payload_sha256=payload_sha,
+            )
+            s.add(approval)
+            s.flush()
+            s.add(
+                PublicationRow(
+                    approval_id=approval.id,
+                    run_id=run_id,
+                    target_kind="github_pr_review",
+                    payload_sha256=payload_sha,
+                    status="published",
+                    external_ref="https://github.com/o/r/pull/7#pullrequestreview-1",
+                    published_at=datetime.now(UTC),
+                )
+            )
+            s.commit()
+        rows = client.get(f"/api/runs/{run_id}/publications").json()
+        assert len(rows) == 1
+        assert rows[0]["status"] == "published"
+        assert rows[0]["externalRef"].endswith("pullrequestreview-1")
+        assert rows[0]["publishedAt"] is not None
+
+    def test_unknown_run_404s(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/runs/01AAAAAAAAAAAAAAAAAAAAAAAA/publications").status_code == 404
+
+
 class TestWriteMethods:
     def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded
