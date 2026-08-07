@@ -1,0 +1,94 @@
+"""CLI error paths: a wrong id gets a message and an exit code, not a traceback.
+
+Six of ten commands had no test at all, and the two most basic — `status` and
+`resume` on an unknown run — surfaced a raw ValueError traceback, which is the
+typed-errors rule violated from the other side. Markers: pg.
+"""
+
+from __future__ import annotations
+
+import pytest
+from typer.testing import CliRunner
+
+from codeatlas.cli.main import app
+
+pytestmark = pytest.mark.pg
+
+UNKNOWN_RUN = "01" + "A" * 24
+
+
+@pytest.fixture(scope="module")
+def db_engine():  # type: ignore[no-untyped-def]
+    from codeatlas.db.migrate import downgrade_base, upgrade_head
+    from codeatlas.db.session import app_engine, migrator_engine, test_db_available
+
+    if not test_db_available():
+        pytest.skip("codeatlas_test PostgreSQL database not reachable")
+    mig = migrator_engine(test=True)
+    downgrade_base(mig)
+    upgrade_head(mig)
+    mig.dispose()
+    engine = app_engine(test=True)
+    yield engine
+    engine.dispose()
+
+
+def _invoke(args: list[str], workdir) -> object:  # type: ignore[no-untyped-def]
+    return CliRunner().invoke(app, [*args, "--workdir", str(workdir), "--test-db"])
+
+
+class TestUnknownRunIds:
+    def test_status_on_an_unknown_run_is_a_typed_exit(self, db_engine, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(["status", UNKNOWN_RUN], tmp_path)
+        assert result.exit_code == 2, result.output  # type: ignore[union-attr]
+        assert not isinstance(result.exception, ValueError), (  # type: ignore[union-attr]
+            "an unknown id must not surface as a raw traceback"
+        )
+
+    def test_resume_on_an_unknown_run_is_a_typed_exit(self, db_engine, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(["resume", UNKNOWN_RUN], tmp_path)
+        assert result.exit_code == 2, result.output  # type: ignore[union-attr]
+        assert not isinstance(result.exception, ValueError)  # type: ignore[union-attr]
+
+
+class TestArgumentValidation:
+    def test_run_with_a_missing_repo_dir_exits_two(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(
+            ["run", "--repo", str(tmp_path / "ghost"), "--repository-id", "local/x"], tmp_path
+        )
+        assert result.exit_code == 2  # type: ignore[union-attr]
+
+    def test_review_pr_rejects_a_bare_slug(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(["review-pr", "not-a-slug", "1"], tmp_path)
+        assert result.exit_code == 2  # type: ignore[union-attr]
+
+    def test_compare_with_unknown_runs_exits_two(self, db_engine, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(["compare", UNKNOWN_RUN, "01" + "B" * 24], tmp_path)
+        assert result.exit_code == 2  # type: ignore[union-attr]
+
+    def test_request_approval_for_an_unknown_run_exits_one(self, db_engine, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        result = _invoke(["request-approval", UNKNOWN_RUN], tmp_path)
+        assert result.exit_code == 1  # type: ignore[union-attr]
+
+
+class TestServe:
+    def test_serve_wires_the_read_only_app(self, db_engine, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        captured: dict[str, object] = {}
+
+        def fake_run(application, **kwargs):  # type: ignore[no-untyped-def]
+            captured["app"] = application
+            captured.update(kwargs)
+
+        monkeypatch.setattr("uvicorn.run", fake_run)
+        result = _invoke(["serve", "--port", "0"], tmp_path)
+        assert result.exit_code == 0, result.output  # type: ignore[union-attr]
+        assert "read-only" in result.output  # type: ignore[union-attr]
+        assert captured["host"] == "127.0.0.1", "loopback by default — serving exposes source"
+        paths = {route.path for route in captured["app"].routes}  # type: ignore[union-attr]
+        assert "/api/runs/{run_id}/ask" in paths
+
+    def test_serve_with_ask_says_so(self, db_engine, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr("uvicorn.run", lambda application, **kwargs: None)
+        result = _invoke(["serve", "--port", "0", "--ask"], tmp_path)
+        assert result.exit_code == 0, result.output  # type: ignore[union-attr]
+        assert "with /ask" in result.output  # type: ignore[union-attr]

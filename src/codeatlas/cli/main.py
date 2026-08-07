@@ -169,7 +169,13 @@ def resume(
         resume_run(deps, run_id)
     except Exception as exc:
         typer.echo(f"resume error: {exc}", err=True)
-    status = run_status(deps, run_id)
+    try:
+        status = run_status(deps, run_id)
+    except ValueError as exc:
+        # An unknown id already failed above; this keeps the failure typed
+        # instead of letting the status lookup re-raise as a traceback.
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
     typer.echo(f"run {run_id} {status}")
     raise typer.Exit(0 if status in ("succeeded", "succeeded_with_gaps") else 1)
 
@@ -184,7 +190,11 @@ def status(
     from codeatlas.pipeline.runner import run_status
 
     deps = _deps(workdir, test_db)
-    typer.echo(run_status(deps, run_id))
+    try:
+        typer.echo(run_status(deps, run_id))
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
 
 
 @app.command("review-pr")

@@ -292,7 +292,11 @@ def create_app(
         if run is None:
             raise HTTPException(404, "unknown run")
         head = s.get(RevisionRow, run.head_revision_id)
-        assert head is not None
+        if head is None:
+            # Unreachable while head_revision_id is non-nullable, but a bare
+            # assert here would strip under -O and crash as a 500 if the
+            # schema ever relaxes. Typed, like every other refusal.
+            raise HTTPException(409, "run has no locked head revision")
 
         # The scope must be a path this revision actually has — the same
         # allowlist /api/source enforces.

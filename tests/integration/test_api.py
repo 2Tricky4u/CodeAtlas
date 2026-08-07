@@ -406,6 +406,64 @@ class TestAskAnswers:
         assert counter.calls == before
 
 
+class TestAbsenceAndBrokenness:
+    """Absence is a 404 with a reason; a wrong shape is 4xx — never a blank 500."""
+
+    def test_a_run_without_artifacts_404s_its_derived_routes(self, seeded, stack) -> None:  # type: ignore[no-untyped-def]
+        from sqlalchemy.orm import Session
+
+        from codeatlas.db import repositories as repo
+        from codeatlas.db.tables import RunRow
+
+        client, run_id, _ = seeded
+        with Session(stack.engine) as s:
+            seeded_run = s.get(RunRow, run_id)
+            assert seeded_run is not None
+            bare = repo.create_run(
+                s,
+                repository_id=seeded_run.repository_id,
+                kind="repository",
+                head_revision_id=seeded_run.head_revision_id,
+            )
+            s.commit()
+            bare_id = bare.id
+        for route in ("graph", "overview", "views"):
+            assert client.get(f"/api/runs/{bare_id}/{route}").status_code == 404, route
+
+    def test_a_well_formed_unknown_artifact_ref_is_404(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get(f"/api/artifacts/sha256:{'9' * 64}").status_code == 404
+
+    def test_a_non_json_artifact_is_415_not_a_crash(self, seeded, stack) -> None:  # type: ignore[no-untyped-def]
+        from sqlalchemy.orm import Session
+
+        from codeatlas.db import repositories as repo
+
+        client, run_id, _ = seeded
+        data = b"plain text, not json"
+        sha = stack.deps.cas.put(data)
+        with Session(stack.engine) as s:
+            repo.index_artifact(
+                s,
+                sha256=sha,
+                kind="scratch",
+                media_type="text/plain",
+                size_bytes=len(data),
+                producer="test",
+                produced_by_run_id=run_id,
+            )
+            s.commit()
+        assert client.get(f"/api/artifacts/{sha}").status_code == 415
+
+    def test_source_start_beyond_the_end_of_file_is_400(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, head_sha = seeded
+        response = client.get(
+            f"/api/source/{head_sha}",
+            params={"path": "kvstore/src/cache.rs", "start": 99990, "end": 99999},
+        )
+        assert response.status_code == 400
+
+
 class TestWriteMethods:
     def test_write_methods_rejected_everywhere(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded
