@@ -7,9 +7,10 @@
 - `uv run pytest -m subproc` / `-m pg` / `-m agent_live` — capability-gated tiers.
 - `uv run poe ui` — dashboard fast loop: `tsc -b` + vitest. `poe ui-full` adds Playwright.
 - `uv run poe check-all` — both halves, e2e included. The release gate; no CI exists.
-- `codeatlas serve --workdir var --port N` + `CODEATLAS_API=http://127.0.0.1:N npm run preview`
-  — the dashboard against real data. `CODEATLAS_RUN=<id> npm run e2e` then exercises
-  `e2e/live.spec.ts`, the only suite that is not route-mocked.
+- `codeatlas serve --workdir var --port N [--ask]` + `CODEATLAS_API=http://127.0.0.1:N npm run preview`
+  — the dashboard against real data (`--ask` enables the one POST, ADR-0014).
+  `CODEATLAS_RUN=<id> npm run e2e` then exercises `e2e/live.spec.ts`, the only
+  suite that is not route-mocked.
 - `codeatlas run --narrate --no-review` — describe a project without reviewing it. The two
   agent capabilities are independent nodes; `--narrate` unset follows `--review`.
 

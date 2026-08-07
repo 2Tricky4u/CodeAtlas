@@ -22,6 +22,8 @@ evaluation evidence.
   `paused_for_approval`.
 - Approval and rejection happen **through the CLI only**. The dashboard is
   strictly GET-only, so the reviewing surface cannot become an acting surface.
+  *(Amended by ADR-0014: the API remains free of external writes and approval
+  decisions, but may perform local analysis — exactly one POST, `/ask`.)*
   A decision records who made it and when; a decided approval cannot be flipped.
 - What is approved is what is posted: the payload is never regenerated between
   approval and publication, so review and publication cannot diverge.

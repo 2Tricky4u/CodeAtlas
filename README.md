@@ -26,9 +26,17 @@ pinned revision (or a GitHub pull request), a completed run produces:
 ## Pipeline
 
 ```
-source_lock -> extract -> build_graph -> base_revision -> graph_diff -> api_change
-            -> change_impact -> export_cytoscape -> review -> finalize
+source_lock -> extract -> build_graph -> base_revision -> api_change -> graph_diff
+            -> change_impact -> project_overview -> architecture -> narrate
+            -> export_cytoscape -> review -> finalize
 ```
+
+(`api_change` runs before `graph_diff` on purpose: the diff's interface labels
+need to know which symbols the public-API delta named, and "changed but not
+exported" is only expressible once that delta exists. `project_overview`,
+`architecture` and `narrate` are the deterministic half of the comprehension
+features — the overview, map, architecture, decisions, protocol and flows tabs
+all come from them.)
 
 `source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
 and derives the changed-path and added-line sets from the mirror. `base_revision` analyzes
@@ -91,17 +99,54 @@ presentation artifacts. No stage may launder inference into fact — the JSON Sc
 uv sync                    # install Python deps into .venv
 uv run poe verify-env      # print the tool matrix (what's installed vs required per milestone)
 uv run poe check           # ruff + mypy --strict + pytest
+uv run poe check-all       # the release gate: both halves, Playwright e2e included
 ```
 
 Toolchain beyond Python is installed and validated per milestone — see
 `docs/runbooks/setup.md` and the plan in the repository history. Runtime data lives in
 `review-artifacts/` and `var/` (both gitignored, never committed).
 
+## Using it
+
+```powershell
+# Analyze a repository (local path or clone URL) at a pinned revision.
+uv run codeatlas run --repo <path-or-url> --repository-id owner/name [--ref SHA]
+#   --narrate        explain what the project is (agent quota; --no-review stays free of reviewers)
+#   --review         run the reviewers too
+#   --replay         answer from recorded cassettes instead of the live engine
+#   --max-tokens N   run-wide agent token budget
+
+# Review a GitHub pull request in shadow mode — analyzes both revisions, posts NOTHING.
+uv run codeatlas review-pr owner/repo N
+
+# Serve the dashboard's API (loopback by default; --ask enables POST /ask, ADR-0014).
+uv run codeatlas serve --workdir var --port 8137 --ask
+# then, in frontend/:  $env:CODEATLAS_API="http://127.0.0.1:8137"; npm run preview
+
+# Run lifecycle and reproducibility.
+uv run codeatlas status <run-id>
+uv run codeatlas resume <run-id>
+uv run codeatlas compare <run-id> <run-id>     # exits nonzero if not reproducible
+
+# Publication — every external write is human-gated (ADR-0011/0015).
+uv run codeatlas request-approval <run-id>
+uv run codeatlas show-approval <approval-id>   # read the exact payload first
+uv run codeatlas approve <approval-id> --by "<you>" [--note "..."] [--publish]
+uv run codeatlas publish <approval-id>         # the second half of approve-now-publish-later
+uv run codeatlas reject <approval-id> --by "<you>"
+```
+
+Publishing additionally requires `CODEATLAS_PUBLISH_ENABLED=1` in the environment
+(default off — ADR-0015) and an unset `CODEATLAS_KILL_SWITCH`. Database access is
+keyring-backed with `CODEATLAS_DB_URL` / `CODEATLAS_DB_HOST` / `CODEATLAS_DB_PORT`
+(and `CODEATLAS_TEST_DB_URL` for the test database) as overrides.
+
 ## Test tiers
 
 Default `pytest` runs unit tests. Markers gate everything needing external capability:
 `subproc` (git/cargo/rust-analyzer), `pg` (local PostgreSQL), `agent_live` (logged-in
-claude CLI), `network` (GitHub), `e2e_ui` (Playwright).
+claude CLI). The Playwright suites run via `poe ui-e2e`; the live suite additionally
+needs a served run (`CODEATLAS_RUN=<id> npm run e2e`).
 
 External integrations are also validated directly against the live service before anything
 depends on them, since a fixture cannot prove that authentication, ref fetching or caching
