@@ -37,3 +37,27 @@ def test_an_outside_read_stays_absolute() -> None:
 
 def test_a_relative_path_is_taken_as_checkout_relative() -> None:
     assert normalize_read_path("src\\cache.rs", CHECKOUT) == "src/cache.rs"
+
+
+class TestGrepTargets:
+    """The live fd run showed two of three reviewers reading exclusively
+    through Grep — 0 opens reported while citing exact lines. Single-file
+    greps count; directory greps attribute to no file (undercounting is the
+    honest failure direction)."""
+
+    def test_a_file_target_counts(self) -> None:
+        from codeatlas.agents.claude_engine import _looks_like_file
+
+        assert _looks_like_file("src/walk.rs")
+        assert _looks_like_file("C:\\work\\checkouts\\abc\\src\\exec\\job.rs")
+
+    def test_a_directory_target_does_not(self) -> None:
+        from codeatlas.agents.claude_engine import _looks_like_file
+
+        assert not _looks_like_file("src")
+        assert not _looks_like_file("src/exec")
+
+    def test_an_extensionless_file_undercounts_and_that_is_the_chosen_direction(self) -> None:
+        from codeatlas.agents.claude_engine import _looks_like_file
+
+        assert not _looks_like_file("Makefile")

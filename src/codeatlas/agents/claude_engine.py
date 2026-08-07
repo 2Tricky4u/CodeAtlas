@@ -164,11 +164,24 @@ class ClaudeAgentEngine:
                                             duration_ms=0,
                                         )
                                     )
-                                elif isinstance(block, ToolUseBlock) and block.name == "Read":
+                                elif isinstance(block, ToolUseBlock) and block.name in (
+                                    "Read",
+                                    "Grep",
+                                ):
                                     # Measured coverage: the engine watches the
                                     # tool stream; the model never self-reports.
-                                    raw = str(block.input.get("file_path", ""))
-                                    if raw:
+                                    # Grep counts only when aimed at one file —
+                                    # the live fd run showed two of three
+                                    # reviewers reading exclusively through
+                                    # Grep, reporting 0 opens while citing
+                                    # exact lines. A directory grep attributes
+                                    # to no file rather than to all of them.
+                                    raw = str(
+                                        block.input.get("file_path")
+                                        or block.input.get("path")
+                                        or ""
+                                    )
+                                    if raw and (block.name == "Read" or _looks_like_file(raw)):
                                         files_read.add(
                                             normalize_read_path(raw, task.workspace.checkout_path)
                                         )
@@ -206,6 +219,18 @@ class ClaudeAgentEngine:
             error=error,
             files_read=sorted(files_read),
         )
+
+
+def _looks_like_file(raw: str) -> bool:
+    """A Grep target counts as a file read only when it names one file.
+
+    Grep's `path` may be a directory or absent (search everything); crediting
+    a directory grep to every file under it would manufacture coverage. A
+    file-looking suffix is the cheap deterministic test — a miss undercounts,
+    which is the honest direction to fail in.
+    """
+    tail = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    return "." in tail
 
 
 def normalize_read_path(raw: str, checkout_path: str) -> str:

@@ -45,7 +45,7 @@
     "transcriptRef": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
     "error": { "type": ["string", "null"] },
     "filesRead": {
-      "description": "Files the agent actually opened with the Read tool, measured by the engine from the tool stream — never claimed by the model. Repo-relative forward-slash paths; paths outside the checkout stay absolute. Absent when the engine does not report reads (replay of older recordings).",
+      "description": "Files the agent actually consulted — opened with Read, or targeted with a single-file Grep — measured by the engine from the tool stream, never claimed by the model. Directory-wide greps attribute to no file (undercounting is the honest failure direction). Repo-relative forward-slash paths; paths outside the checkout stay absolute. Absent when the engine does not report reads (replay of older recordings).",
       "type": ["array", "null"],
       "items": { "type": "string", "minLength": 1 }
     }

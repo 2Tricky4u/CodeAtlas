@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codeatlas.local/schemas/review-coverage.v1.json",
   "title": "Review Coverage",
-  "description": "What each reviewer actually read, measured by the engine from the Read-tool stream — never claimed by the model. A reviewer with measured=false reported nothing (replay of an older recording, or an engine without read reporting): its lists are empty and mean 'unknown', not 'nothing'.",
+  "description": "What each reviewer actually consulted, measured by the engine from the tool stream (Read opens plus single-file Greps) — never claimed by the model. Directory-wide greps attribute to no file, so the numbers can undercount but never inflate. A reviewer with measured=false reported nothing (replay of an older recording, or an engine without read reporting): its lists are empty and mean 'unknown', not 'nothing'.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "sourcePathCount", "reviewers"],

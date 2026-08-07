@@ -239,8 +239,10 @@ function CoveragePanel({ coverage }: { coverage: ReviewCoverage }) {
   return (
     <Panel title="what was actually read" count={`${coverage.sourcePathCount} files offered`}>
       <p className="note" style={{ marginTop: 0 }}>
-        measured by the engine from the Read-tool stream — never the model's own claim · a
-        reviewer that reported nothing reads as unknown, not as 0% or 100%
+        measured by the engine from the tool stream (Read opens + single-file greps) — never
+        the model's own claim · directory-wide greps count toward no file, so these numbers
+        can undercount but never inflate · a reviewer that reported nothing reads as unknown,
+        not as 0% or 100%
       </p>
       <table className="data" data-testid="coverage">
         <thead>
