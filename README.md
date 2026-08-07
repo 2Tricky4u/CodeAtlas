@@ -1,27 +1,220 @@
 # CodeAtlas
 
-Evidence-driven code review and project-visualization platform. Given a repository at a
-pinned revision (or a GitHub pull request), a completed run produces:
+**Evidence-driven code review and project understanding.** Point it at a repository or a
+pull request; get a project you can *walk* — a measured dependency map, a page per module,
+editor-grade source with the measured symbols marked, call-flow diagrams that cannot invent
+an arrow, adversarially-validated review findings, and a question box whose every answer is
+citation-checked. Anything that cannot be traced to a pinned revision, an extractor receipt,
+or a validated finding says so instead of pretending.
 
-- a **deterministic project graph** (packages, symbols, references, dependencies) with an
-  extractor receipt for every fact — and for a pull request, **one graph per revision**, so
-  the run can describe what the code did before as well as after;
-- a **model-free before/after of a change**: the structural delta (symbols and edges added,
-  removed, moved, touched) plus the public-API delta from `cargo public-api` and the
-  breaking-change severity from `cargo-semver-checks`;
-- a **narrative explanation of the change** — before, after, structure, impact, risks —
-  in which every claim cites a pinned line, a graph edge, an API item or an impact entry,
-  and any claim whose citation does not resolve is deleted rather than softened;
-- **validated review findings** (correctness, security, architecture) — every finding is
-  adversarially validated and only publication-eligible with deterministic evidence;
-- **Structurizr C4** architecture views, **Mermaid** protocol/sequence/state diagrams, and a
-  **Cytoscape.js** dependency graph;
-- **ADR links and drift detection** against accepted architecture decisions;
-- **bounded graph views** — a package-level overview, per-package levelized module views
-  drawing only the cycles, and a dependency matrix for the whole project — where a view
-  that fails its readability checks is refused rather than rendered as a hairball;
-- a **read-only dashboard** where every claim drills down to pinned source;
-- **manual human approval gating every external write** (PR comments, ADR changes, fixes).
+![Project overview: measured counts, a cited narrative, a real call flow, where to start](docs/screenshots/overview.png)
+
+Everything in that screenshot is either **measured** (the counts, the flow arrows, the
+fan-in rankings — each backed by an extractor receipt) or **cited** (the narrative's 36
+statements each carry a citation that was validated against this revision; the statements
+that failed validation were deleted and the deletion is disclosed).
+
+---
+
+## The tour
+
+### Browse every file
+
+The **files** tab is the git tree at the analyzed revision — not just the modules the graph
+measured. Bright files carry measured symbol counts and open their module page; docs,
+workflows and scripts are dim but open as pinned source. Generated files are labeled, which
+is also why they carry no findings.
+
+![The file explorer](docs/screenshots/files.png)
+
+### Read source like an editor — and see what was measured
+
+Source renders with VS Code's own grammars (Shiki, Tokyo Night). Two colour channels,
+deliberately distinct: **text colour is the grammar** of the file's extension — never
+content-guessed — while the **coloured left border and the `name ← N` badge mean a symbol
+the graph measured**, spanning its whole definition. An unmarked identifier has no graph
+node, and the panel says so rather than implying full coverage.
+
+![Syntax-coloured source with measured definition spans and fan-in badges](docs/screenshots/source.png)
+
+### One page per module
+
+Click any module named anywhere in the app — a citation, a matrix row, a cycle member, a
+finding's location — and land on its page: what it defines (types first, ranked by fan-in,
+large groups collapsed), who uses each definition, what it imports, the flows passing
+through it, its place in the suggested reading order, and, on a pull-request run, exactly
+what the change did *here*.
+
+![ripgrep's walk.rs: 176 definitions ranked and collapsed, cycle membership, usage](docs/screenshots/module.png)
+
+### The map: packages → levels → matrix → paths
+
+The full graph is never rendered — node-link views stop being readable around 25 nodes, so
+a server-side readability gate refuses hairballs and says why. What you get instead:
+packages first, one package's modules levelized (only cycle edges drawn — the ones worth
+seeing), and the dependency matrix for the whole project, where a cell above the diagonal
+*is* a cycle.
+
+![One package's modules by level, cycles visible](docs/screenshots/map-levels.png)
+
+![The 104×104 dependency matrix](docs/screenshots/matrix.png)
+
+**Path-finding** answers "how does A reach B" — the one node-link task that works at any
+size. Endpoints are offered only if they can participate, every hop is labelled with its
+measured edge kind, and "nothing connects A to B" is an answer, not an empty canvas.
+
+![search() reaches byte() in two labelled hops](docs/screenshots/path.png)
+
+### Jump anywhere
+
+`Ctrl-K` from any tab searches everything the graph measured — files land on their module
+page, symbols land with their definition expanded. Arrows and enter work; so does "nothing
+in this run's graph matches".
+
+![The command palette](docs/screenshots/palette.png)
+
+### Ask questions — with receipts
+
+Ask anything about the module on screen. The agent answers from that module's source and
+graph slice, and every sentence is **citation-checked against the revision**: claims whose
+citations do not resolve are deleted and the deletions disclosed. Answers are cached
+content-addressed — the same question at the same revision is free forever — and every
+previously-asked question is listed for one-click reopening. Each definition also has an
+`explain?` button that asks for you.
+
+![A cached answer: eight claims, every one pinned to a line](docs/screenshots/ask.png)
+
+### Review a change
+
+A pull-request run analyzes **both** revisions and shows the change three ways, none of
+them a text diff: the structural delta (symbols and *relationships* added, removed, moved —
+"storage now imports api" appears in the diff of neither file), the public-API delta
+measured by `cargo public-api` with breaking-change severity from `cargo-semver-checks`,
+and the bounded impact set with its precision caveat attached to the artifact itself.
+
+![The change: structure, public API, and what else could be affected](docs/screenshots/change.png)
+
+### Findings that survived a hostile check
+
+Reviewers propose; a validator that never saw the proposal re-examines each finding in a
+fresh context, with the real build/test toolchain at hand. The review tab shows the whole
+funnel — including what did **not** survive, because a table of survivors looks identical
+whether the check rejected eleven candidates or none. Each finding can show exactly how it
+was checked.
+
+![The validation funnel: 12 proposed, what each verdict was, and why](docs/screenshots/review.png)
+
+### Architecture and decisions
+
+A C4 container view derived from the measured graph (every box names the node it came
+from; nothing is drawn without evidence), exportable as Structurizr DSL — and an audit of
+the repository's own ADRs against the code: **conformed**, **drifting** (stated, not
+softened), or **unverifiable**, which is never allowed to look like conformance.
+
+![C4 containers derived from the graph](docs/screenshots/architecture.png)
+
+![ADRs audited against the code they govern](docs/screenshots/decisions.png)
+
+### An honest "no"
+
+Most projects speak no protocol — and forcing a sequence diagram onto a batch tool would be
+the most convincing *wrong* artifact this tool could produce. When the model says null, the
+page says why, with the reasoning cited to source.
+
+![fd speaks no protocol, and the page explains exactly why](docs/screenshots/protocol-refusal.png)
+
+### Every run accounts for itself
+
+The run detail page opens the manifest — toolchain versions, which model answered at what
+token cost, the run's own degradation notes ("verification tools unavailable: …"), every
+output by role, each row openable. Below it: the agent invocation ledger and a receipt for
+every deterministic tool invocation. This is the page you open when you want to know
+whether to believe the other pages.
+
+![The manifest, the agent ledger, and the receipts](docs/screenshots/provenance.png)
+
+### Nothing leaves the machine without a human
+
+The pipeline runs in **shadow mode**: it prepares the exact review payload and posts
+nothing. Publishing requires, simultaneously: an explicit `request-approval`, a human
+`approve` recorded with name and time, `CODEATLAS_PUBLISH_ENABLED=1` in the environment
+(default off), an unset `CODEATLAS_KILL_SWITCH`, a clean secret scan, and no prior
+publication — every one re-checked at post time, because reaching a code path is not
+evidence of permission. The review tab reads the publication ledger rather than asserting
+an outcome.
+
+---
+
+## From scratch
+
+### Prerequisites
+
+| What | Why | Notes |
+|---|---|---|
+| Python 3.12 + [uv](https://docs.astral.sh/uv/) | the backend | `uv sync` installs everything |
+| Node 20+ | the dashboard | `npm install` in `frontend/` |
+| PostgreSQL 17 | the evidence store | `infra/` has init scripts; credentials live in the OS keyring |
+| Rust toolchain + `rust-analyzer` | extraction | `rustup`, plus `rust-analyzer` on PATH |
+| `cargo-public-api`, `cargo-semver-checks` | the API delta | PR runs degrade gracefully without them |
+| Structurizr CLI, `mmdc` *(optional)* | diagram validation | absence is noted in the manifest, never silent |
+| `claude` CLI, logged in *(optional)* | narration, review, ask | everything deterministic works without it |
+
+`uv run poe verify-env` prints the full tool matrix — what is installed versus required.
+
+### Set up
+
+```powershell
+uv sync                          # Python deps into .venv
+uv run poe verify-env            # check the tool matrix
+# initialize PostgreSQL (see docs/runbooks/setup.md), then:
+uv run python -c "from codeatlas.db.migrate import upgrade_head; from codeatlas.db.session import migrator_engine; e=migrator_engine(); upgrade_head(e); e.dispose()"
+npm --prefix frontend install
+uv run poe check                 # ruff + mypy --strict + pytest: everything green?
+```
+
+### Analyze your first project
+
+```powershell
+# Local path or any URL git can clone. Deterministic half only — no agent, no cost.
+uv run codeatlas run --repo https://github.com/sharkdp/fd --repository-id sharkdp/fd --workdir var
+
+# Add the narrated explanation (agent quota; --review adds the reviewers too):
+uv run codeatlas run --repo <path-or-url> --repository-id owner/name --narrate [--review] [--replay] [--max-tokens N]
+```
+
+### Open the dashboard
+
+```powershell
+uv run codeatlas serve --workdir var --port 8137 --ask     # --ask enables the question box
+$env:CODEATLAS_API = "http://127.0.0.1:8137"
+npm --prefix frontend run preview                          # then open http://localhost:4173
+```
+
+### Review a pull request (shadow mode — posts nothing)
+
+```powershell
+uv run codeatlas review-pr owner/repo 42        # analyzes base AND head, prepares the payload
+uv run codeatlas status <run-id>
+uv run codeatlas compare <run-id> <run-id>      # exits nonzero if two runs are not reproducible
+```
+
+### Publish, if you choose to
+
+```powershell
+uv run codeatlas request-approval <run-id>
+uv run codeatlas show-approval <approval-id>    # read the exact payload first
+$env:CODEATLAS_PUBLISH_ENABLED = "1"            # default off — publication is an explicit act
+uv run codeatlas approve <approval-id> --by "<you>" [--note "..."] --publish
+# or the two-step flow:
+uv run codeatlas approve <approval-id> --by "<you>"
+uv run codeatlas publish <approval-id>
+```
+
+`CODEATLAS_KILL_SWITCH=1` stops every agent invocation and every publication, everywhere,
+immediately. Database overrides: `CODEATLAS_DB_URL` / `CODEATLAS_DB_HOST` /
+`CODEATLAS_DB_PORT` (and `CODEATLAS_TEST_DB_URL` for the test database).
+
+---
 
 ## Pipeline
 
@@ -31,12 +224,11 @@ source_lock -> extract -> build_graph -> base_revision -> api_change -> graph_di
             -> export_cytoscape -> review -> finalize
 ```
 
-(`api_change` runs before `graph_diff` on purpose: the diff's interface labels
-need to know which symbols the public-API delta named, and "changed but not
-exported" is only expressible once that delta exists. `project_overview`,
-`architecture` and `narrate` are the deterministic half of the comprehension
-features — the overview, map, architecture, decisions, protocol and flows tabs
-all come from them.)
+(`api_change` runs before `graph_diff` on purpose: the diff's interface labels need to know
+which symbols the public-API delta named, and "changed but not exported" is only
+expressible once that delta exists. `project_overview`, `architecture` and `narrate` are
+the deterministic half of the comprehension features — the overview, files, map,
+architecture, decisions, protocol and flows tabs all come from them.)
 
 `source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
 and derives the changed-path and added-line sets from the mirror. `base_revision` analyzes
@@ -88,65 +280,19 @@ presentation artifacts. No stage may launder inference into fact — the JSON Sc
 | `.agents/skills/` | Trusted, pinned skill registry + skill definitions |
 | `docs/adr/` | Architecture decision records (MADR) |
 | `docs/runbooks/` | Setup, operations, rollback |
+| `docs/screenshots/` | The images in this README |
 | `fixtures/` | Deliberately-flawed and clean Rust fixture crates for evaluation |
 | `tests/` | unit / integration / e2e / security / regression + cassettes + golden files |
 | `scripts/` | `verify_env.py` tool-matrix probe, live-integration validators, dev helpers |
 | `infra/` | Install/validate scripts, receipts, DB init |
 
-## Setup
-
-```powershell
-uv sync                    # install Python deps into .venv
-uv run poe verify-env      # print the tool matrix (what's installed vs required per milestone)
-uv run poe check           # ruff + mypy --strict + pytest
-uv run poe check-all       # the release gate: both halves, Playwright e2e included
-```
-
-Toolchain beyond Python is installed and validated per milestone — see
-`docs/runbooks/setup.md` and the plan in the repository history. Runtime data lives in
-`review-artifacts/` and `var/` (both gitignored, never committed).
-
-## Using it
-
-```powershell
-# Analyze a repository (local path or clone URL) at a pinned revision.
-uv run codeatlas run --repo <path-or-url> --repository-id owner/name [--ref SHA]
-#   --narrate        explain what the project is (agent quota; --no-review stays free of reviewers)
-#   --review         run the reviewers too
-#   --replay         answer from recorded cassettes instead of the live engine
-#   --max-tokens N   run-wide agent token budget
-
-# Review a GitHub pull request in shadow mode — analyzes both revisions, posts NOTHING.
-uv run codeatlas review-pr owner/repo N
-
-# Serve the dashboard's API (loopback by default; --ask enables POST /ask, ADR-0014).
-uv run codeatlas serve --workdir var --port 8137 --ask
-# then, in frontend/:  $env:CODEATLAS_API="http://127.0.0.1:8137"; npm run preview
-
-# Run lifecycle and reproducibility.
-uv run codeatlas status <run-id>
-uv run codeatlas resume <run-id>
-uv run codeatlas compare <run-id> <run-id>     # exits nonzero if not reproducible
-
-# Publication — every external write is human-gated (ADR-0011/0015).
-uv run codeatlas request-approval <run-id>
-uv run codeatlas show-approval <approval-id>   # read the exact payload first
-uv run codeatlas approve <approval-id> --by "<you>" [--note "..."] [--publish]
-uv run codeatlas publish <approval-id>         # the second half of approve-now-publish-later
-uv run codeatlas reject <approval-id> --by "<you>"
-```
-
-Publishing additionally requires `CODEATLAS_PUBLISH_ENABLED=1` in the environment
-(default off — ADR-0015) and an unset `CODEATLAS_KILL_SWITCH`. Database access is
-keyring-backed with `CODEATLAS_DB_URL` / `CODEATLAS_DB_HOST` / `CODEATLAS_DB_PORT`
-(and `CODEATLAS_TEST_DB_URL` for the test database) as overrides.
-
 ## Test tiers
 
-Default `pytest` runs unit tests. Markers gate everything needing external capability:
-`subproc` (git/cargo/rust-analyzer), `pg` (local PostgreSQL), `agent_live` (logged-in
-claude CLI). The Playwright suites run via `poe ui-e2e`; the live suite additionally
-needs a served run (`CODEATLAS_RUN=<id> npm run e2e`).
+`uv run poe check` is the fast gate (ruff + mypy --strict + pytest); `uv run poe check-all`
+is the release gate — both halves including the Playwright e2e suites. Markers gate what
+needs external capability: `subproc` (git/cargo/rust-analyzer), `pg` (local PostgreSQL),
+`agent_live` (logged-in claude CLI). The live Playwright suite additionally needs a served
+run: `CODEATLAS_RUN=<id> npm run e2e`.
 
 External integrations are also validated directly against the live service before anything
 depends on them, since a fixture cannot prove that authentication, ref fetching or caching
@@ -158,8 +304,8 @@ uv run python scripts/validate_two_revisions.py owner/repo N   # both revisions,
 uv run python scripts/check_real_project.py --repo <url>       # every analysis, real crate
 ```
 
-The last one is the important one for anything graph-shaped. The fixture crate has five
-files; a levelization that collapses, an impact set that reaches everything, or a view that
-is a hairball only show up at real size. It separates what it can verify itself from the
-judgements only a reader of that codebase can make, and `scripts/show_overview.py` and
-`scripts/show_views.py` print the results for a human to look at.
+The last one is the important one for anything graph-shaped: a levelization that collapses,
+an impact set that reaches everything, or a view that is a hairball only show up at real
+size. `scripts/show_overview.py` and `scripts/show_views.py` print the results for a human
+to look at — and the standing rule here is that a green suite is not evidence the
+presentation is right; serving a real project and *looking* is.
