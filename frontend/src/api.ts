@@ -74,6 +74,9 @@ interface ModuleSummary {
   /** Definitions whose own signature says `pub`. Absent on runs from before
    *  the depth metric existed — the UI omits the badge rather than claiming 0. */
   publicCount?: number;
+  /** Commits that touched this file at the analyzed revision (renames restart
+   *  the count). Absent when the run did not measure churn. */
+  churn?: number;
 }
 
 export interface ProjectOverview {
@@ -109,6 +112,8 @@ interface ViewNode {
   fanIn?: number | null;
   fanOut?: number | null;
   inCycle?: boolean;
+  /** Commits that touched this file; null/absent when the run did not measure churn. */
+  churn?: number | null;
 }
 
 interface ViewEdge {

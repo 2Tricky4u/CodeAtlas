@@ -32,6 +32,11 @@ export function OverviewView() {
   const open = (path: string, startLine?: number) =>
     setSource({ revision: overview.revision, path, startLine });
 
+  const mostChanged = [...overview.modules]
+    .filter((m) => m.churn != null && m.churn > 0)
+    .sort((a, b) => (b.churn ?? 0) - (a.churn ?? 0) || a.path.localeCompare(b.path))
+    .slice(0, 8);
+
   return (
     <div data-testid="overview-view">
       <div
@@ -128,6 +133,34 @@ export function OverviewView() {
                         </ModuleLink>
                       </td>
                       <td className="mono-num">→ {module.fanOut}</td>
+                      <td className="mono-num">{module.level}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {/* Churn: where the project actually gets edited. Only rendered when
+              the run measured it — absence is never drawn as zero. */}
+          {mostChanged.length > 0 && (
+            <>
+              <div className="microlabel" style={{ marginTop: 8 }}>
+                most changed
+              </div>
+              <table className="data" data-testid="most-changed">
+                <tbody>
+                  {mostChanged.map((module) => (
+                    <tr key={module.path}>
+                      <td>
+                        <ModuleLink
+                          path={module.path}
+                          className=""
+                          style={{ color: "var(--fg-0)" }}
+                        >
+                          {module.path}
+                        </ModuleLink>
+                      </td>
+                      <td className="mono-num">{module.churn}× </td>
                       <td className="mono-num">{module.level}</td>
                     </tr>
                   ))}

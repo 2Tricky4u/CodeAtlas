@@ -94,7 +94,12 @@
         "fanOut": { "type": "integer", "minimum": 0 },
         "level": { "type": "integer", "minimum": 0 },
         "symbolCount": { "type": "integer", "minimum": 0 },
-        "publicCount": { "type": "integer", "minimum": 0 }
+        "publicCount": { "type": "integer", "minimum": 0 },
+        "churn": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Commits reachable from this revision that touched the file. Renames are not followed: a renamed file restarts its count. Absent when the run did not measure churn."
+        }
       }
     },
     "level": {

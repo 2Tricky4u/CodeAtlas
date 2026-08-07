@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from codeatlas.graph.symbols import namespace_nodes
@@ -69,8 +70,16 @@ class _Module:
     publics: int | None  # None: this graph never measured visibility
 
 
-def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
-    """Everything measurable about this revision's shape."""
+def build_overview(
+    graph: ProjectGraph,
+    repository_id: str,
+    churn: Mapping[str, int] | None = None,
+) -> ProjectOverview:
+    """Everything measurable about this revision's shape.
+
+    `churn` is per-path commit counts at this revision, or None when the run
+    did not measure it — a module then carries churn=None, never a fake zero.
+    """
     modules = _modules(graph)
     depends_on, depended_by = _module_dependencies(graph, set(modules))
 
@@ -88,6 +97,7 @@ def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
             level=level_of[path],
             symbol_count=module.symbols,
             public_count=module.publics,
+            churn=None if churn is None else churn.get(path, 0),
         )
         for path, module in sorted(modules.items())
     ]

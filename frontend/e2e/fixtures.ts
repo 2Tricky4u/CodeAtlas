@@ -52,9 +52,9 @@ export const OVERVIEW = {
     { name: "serde", version: "1.0.210", manifestPath: "", fileCount: 0, symbolCount: 0 },
   ],
   modules: [
-    // cache.rs carries the depth metric; api.rs deliberately omits publicCount
-    // (a run from before the metric) so the badge's absence path stays covered.
-    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12, publicCount: 5 },
+    // cache.rs carries the depth + churn metrics; api.rs deliberately omits
+    // both (a run from before the metrics) so the absence paths stay covered.
+    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12, publicCount: 5, churn: 21 },
     { key: "file:kvstore/src/api.rs", path: "kvstore/src/api.rs", package: "kvstore", fanIn: 1, fanOut: 1, level: 1, symbolCount: 8 },
   ],
   levels: [

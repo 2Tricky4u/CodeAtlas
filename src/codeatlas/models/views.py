@@ -24,6 +24,7 @@ class ViewNode(ContractModel):
     fan_in: int | None = Field(default=None, ge=0)
     fan_out: int | None = Field(default=None, ge=0)
     in_cycle: bool = False
+    churn: int | None = Field(default=None, ge=0)
 
 
 class ViewEdge(ContractModel):

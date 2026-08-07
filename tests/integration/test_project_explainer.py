@@ -66,7 +66,13 @@ def narrated(db_engine, tmp_path_factory: pytest.TempPathFactory):  # type: igno
     graph = merge_fragments(
         repository_id="local/kvstore", head_sha=sha, fragments=[cargo_fragment, scip_fragment]
     )
-    overview = build_overview(graph, repository_id="local/kvstore")
+    # Churn included, as the pipeline measures it — the cassette is keyed on
+    # the overview's content, and the recorded one carries churn.
+    from codeatlas.vcs.git import GitClient
+
+    overview = build_overview(
+        graph, repository_id="local/kvstore", churn=GitClient().file_churn(checkout, sha)
+    )
 
     paths = {node.location.path for node in graph.nodes if node.location}
     index = build_project_index(overview, paths=paths)

@@ -77,7 +77,11 @@ class TestFullRun:
             receipts = s.scalars(
                 select(ExtractorReceiptRow).where(ExtractorReceiptRow.run_id == run_id)
             ).all()
-            assert {r.extractor for r in receipts} == {"cargo-metadata", "rust-analyzer-scip"}
+            assert {r.extractor for r in receipts} == {
+                "cargo-metadata",
+                "rust-analyzer-scip",
+                "git-churn",
+            }
             assert all(r.exit_code == 0 for r in receipts)
 
             snapshot = s.scalar(select(GraphSnapshotRow).where(GraphSnapshotRow.run_id == run_id))
@@ -128,7 +132,8 @@ class TestCrashAndResume:
                 .select_from(ExtractorReceiptRow)
                 .where(ExtractorReceiptRow.run_id == run_id)
             )
-            assert receipt_count == 2, "extract stage must not re-run on resume"
+            # Two extractors plus the churn measurement, each exactly once.
+            assert receipt_count == 3, "extract and overview stages must not re-run on resume"
 
 
 class TestFailurePath:

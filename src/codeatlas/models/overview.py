@@ -29,6 +29,10 @@ class ModuleSummary(ContractModel):
     # None on artifacts produced before the depth metric existed; the UI
     # omits the interface badge rather than claiming zero public items.
     public_count: int | None = Field(default=None, ge=0)
+    # Commits that touched this file at the analyzed revision. Renames are
+    # not followed. None = the run did not measure churn (same semantics as
+    # public_count: absence is never rendered as zero).
+    churn: int | None = Field(default=None, ge=0)
 
 
 class LevelSummary(ContractModel):

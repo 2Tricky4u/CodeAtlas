@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from codeatlas.artifacts.cytoscape import to_cytoscape
-from codeatlas.core.canonical import canonical_json, canonical_sha256
+from codeatlas.core.canonical import canonical_json, canonical_sha256, sha256_bytes
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
 from codeatlas.extractors.base import Extractor, ExtractorError, GraphFragment
@@ -31,6 +31,7 @@ from codeatlas.graph.validate import validate_graph
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.manifest import RunCost, RunManifest, SourceLock
 from codeatlas.models.overview import ProjectOverview
+from codeatlas.models.receipts import ExtractorReceipt
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.pipeline.graph_cache import GRAPH_PIPELINE_VERSION
 from codeatlas.pipeline.state import PipelineState
@@ -675,6 +676,46 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             if item.strip()
         }
 
+    def _measure_churn(
+        mirror: Path, head_sha: str
+    ) -> tuple[dict[str, int] | None, ExtractorReceipt | None]:
+        """Per-path commit counts plus the receipt witnessing the measurement.
+
+        Degrades to (None, None): a mirror that cannot answer costs the run its
+        churn numbers, never its overview. GitReceipt is in-memory only, so the
+        persisted witness is a real ExtractorReceipt like every other measured
+        input to an artifact.
+        """
+        from codeatlas.extractors.base import _rfc3339_now
+        from codeatlas.vcs.git import parse_churn
+
+        started_at = _rfc3339_now()
+        try:
+            proc = deps.git.run(
+                ["-c", "core.quotepath=false", "log", "--format=%x01%H", "--name-only", head_sha],
+                cwd=mirror,
+                timeout_s=600.0,
+            )
+            version = deps.git.run(["--version"], cwd=mirror).stdout.strip()
+        except Exception as exc:
+            log.warning("churn.unmeasured", error=str(exc)[:300])
+            return None, None
+        receipt = ExtractorReceipt(
+            extractor="git-churn",
+            extractor_version=version,
+            revision=head_sha,
+            configuration={
+                "command": "git log --format=%x01%H --name-only",
+                "renames": "not-followed",
+            },
+            started_at=started_at,
+            completed_at=_rfc3339_now(),
+            exit_code=proc.returncode,
+            stdout_sha256=sha256_bytes(proc.stdout.encode("utf-8")),
+            stderr_sha256=sha256_bytes(proc.stderr.encode("utf-8")),
+        )
+        return parse_churn(proc.stdout), receipt
+
     def project_overview(state: PipelineState) -> dict[str, Any]:
         """What this project is and where to start reading it.
 
@@ -682,11 +723,15 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         reviewing a change to it are separate questions, and a repository nobody
         has opened a pull request against still has a shape worth describing.
         """
+        from codeatlas.pipeline.source import mirror_path
         from codeatlas.project.overview import build_overview
         from codeatlas.project.views import build_views
 
         graph = ProjectGraph.model_validate(json.loads(deps.cas.get(state["graph_sha256"])))
-        overview = build_overview(graph, repository_id=state["repository_id"])
+        churn, churn_receipt = _measure_churn(
+            mirror_path(deps, state["repository_id"]), state["head_sha"]
+        )
+        overview = build_overview(graph, repository_id=state["repository_id"], churn=churn)
         payload = canonical_json(overview.contract_dump())
         sha = deps.cas.put(payload)
 
@@ -698,6 +743,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         view_sha = deps.cas.put(view_payload)
 
         with Session(deps.engine) as session:
+            if churn_receipt is not None:
+                repo.record_receipt(session, run_id=state["run_id"], receipt=churn_receipt)
             repo.index_artifact(
                 session,
                 sha256=view_sha,

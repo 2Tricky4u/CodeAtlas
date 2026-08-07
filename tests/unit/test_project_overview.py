@@ -463,6 +463,34 @@ class TestModuleDepth:
         assert module.public_count == 1
 
 
+class TestChurn:
+    """Commits that touched each file, measured — the same optional-metric
+    semantics as publicCount: None means unmeasured, never zero."""
+
+    def _nodes(self) -> list[GraphNode]:
+        return [
+            file_node("kvstore/src/cache.rs"),
+            file_node("kvstore/src/api.rs"),
+            sym_node("cache/get().", "kvstore/src/cache.rs"),
+        ]
+
+    def test_churn_lands_on_the_module_summary(self) -> None:
+        overview = build_overview(
+            graph(self._nodes(), []),
+            repository_id="local/kvstore",
+            churn={"kvstore/src/cache.rs": 12},
+        )
+        by_path = {m.path: m for m in overview.modules}
+        assert by_path["kvstore/src/cache.rs"].churn == 12
+        # Measured run, path never touched by any commit in the log: zero,
+        # honestly distinct from unmeasured.
+        assert by_path["kvstore/src/api.rs"].churn == 0
+
+    def test_without_a_measurement_churn_is_none(self) -> None:
+        overview = build_overview(graph(self._nodes(), []), repository_id="local/kvstore")
+        assert all(m.churn is None for m in overview.modules)
+
+
 class TestHonestyAndDeterminism:
     def test_an_empty_graph_says_so_rather_than_inventing_structure(self) -> None:
         overview = build_overview(graph([], []), repository_id="local/kvstore")

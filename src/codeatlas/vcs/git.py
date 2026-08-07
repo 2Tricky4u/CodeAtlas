@@ -35,6 +35,17 @@ _BASE_CONFIG = (
 )
 
 
+def parse_churn(stdout: str) -> dict[str, int]:
+    """Per-path commit counts from `log --format=%x01%H --name-only` output."""
+    counts: dict[str, int] = {}
+    for line in stdout.splitlines():
+        if not line or line.startswith("\x01"):
+            continue
+        path = line.replace("\\", "/")
+        counts[path] = counts.get(path, 0) + 1
+    return counts
+
+
 class GitError(RuntimeError):
     """A git invocation failed. Carries the full diagnostic context."""
 
@@ -124,6 +135,21 @@ class GitClient:
         return proc
 
     # -- queries -------------------------------------------------------------
+
+    def file_churn(self, repo: Path, sha: str, timeout_s: float = 600.0) -> dict[str, int]:
+        """Commits reachable from `sha` that touch each path, in one log pass.
+
+        Renames are deliberately not followed — `--follow` is per-path and
+        slow, and its rename guessing is heuristic; a renamed file honestly
+        restarts its count. Commit lines carry a \\x01 prefix so a path that
+        looks like 40 hex characters can never be read as a commit boundary.
+        """
+        proc = self.run(
+            ["-c", "core.quotepath=false", "log", "--format=%x01%H", "--name-only", sha],
+            cwd=repo,
+            timeout_s=timeout_s,
+        )
+        return parse_churn(proc.stdout)
 
     def resolve_sha(self, repo: Path, ref: str) -> str:
         proc = self.run(["rev-parse", "--verify", f"{ref}^{{commit}}"], cwd=repo)

@@ -311,6 +311,21 @@ test.describe("module page", () => {
     await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/api.rs`);
     await expect(page.getByTestId("module-view")).toBeVisible();
     await expect(page.getByTestId("interface-badge")).toHaveCount(0);
+    await expect(page.getByTestId("churn-badge")).toHaveCount(0);
+  });
+
+  test("the churn badge states how often the file changed", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("churn-badge")).toHaveText("changed 21×");
+  });
+
+  test("the overview names the most changed modules", async ({ page }) => {
+    // Only cache.rs is measured; api.rs (unmeasured) must not appear as zero.
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    const table = page.getByTestId("most-changed");
+    await expect(table).toContainText("kvstore/src/cache.rs");
+    await expect(table).toContainText("21×");
+    await expect(table).not.toContainText("api.rs");
   });
 
   test("expanding a definition shows who uses it, grouped by module", async ({ page }) => {

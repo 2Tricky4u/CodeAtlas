@@ -90,6 +90,15 @@ export function ModuleView() {
                 interface {summary.publicCount}/{summary.symbolCount}
               </span>
             )}
+            {summary.churn != null && (
+              <span
+                className="badge"
+                data-testid="churn-badge"
+                title="commits that touched this file at the analyzed revision (renames restart the count)"
+              >
+                changed {summary.churn}×
+              </span>
+            )}
           </>
         )}
         {cycle && (

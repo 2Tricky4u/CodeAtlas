@@ -143,13 +143,17 @@ def _project_explainer_inputs(checkout: Path, sha: str, cas: ArtifactStore) -> d
     from codeatlas.extractors.rust.ra_scip import RaScipExtractor
     from codeatlas.graph.merge import merge_fragments
     from codeatlas.project.overview import build_overview
+    from codeatlas.vcs.git import GitClient
 
     cargo_fragment, _ = CargoMetadataExtractor().extract(checkout, sha)
     scip_fragment, _ = RaScipExtractor().extract(checkout, sha)
     graph = merge_fragments(
         repository_id="local/kvstore", head_sha=sha, fragments=[cargo_fragment, scip_fragment]
     )
-    overview = build_overview(graph, repository_id="local/kvstore")
+    # Churn included, exactly as the pipeline measures it — the fixture repo is
+    # its own history, so `git log` works on the checkout directly.
+    churn = GitClient().file_churn(checkout, sha)
+    overview = build_overview(graph, repository_id="local/kvstore", churn=churn)
     return {"overview": cas.put_json(overview.contract_dump())}
 
 

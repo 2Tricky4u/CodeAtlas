@@ -141,12 +141,16 @@ function LevelizedView({
     // `crates/ignore/src/…` and overlap its neighbour.
     const short = shortLabels(view.nodes.map((node) => node.label));
     const maxFanIn = Math.max(1, ...view.nodes.map((node) => node.fanIn ?? 0));
+    const maxChurn = Math.max(1, ...view.nodes.map((node) => node.churn ?? 0));
     const elements: cytoscape.ElementDefinition[] = [
       ...view.nodes.map((node) => ({
         data: {
           ...node,
           label: short.get(node.label) ?? node.label,
           fanIn: node.fanIn ?? 0,
+          // 0 when unmeasured: the border stays at its 1px base, identical to
+          // a run from before the metric — absence never draws as heat.
+          churn: node.churn ?? 0,
         } as cytoscape.NodeDataDefinition,
         position: positions.get(node.id),
       })),
@@ -156,7 +160,7 @@ function LevelizedView({
       container: containerRef.current,
       elements,
       layout: { name: "preset" },
-      style: cytoscapeStyle(maxFanIn),
+      style: cytoscapeStyle(maxFanIn, maxChurn),
       wheelSensitivity: 0.2,
       // Without a ceiling, `fit` on a two-node view blows the labels up to
       // headline size and the diagram reads as a poster rather than a map.
@@ -188,7 +192,7 @@ function LevelizedView({
   );
 }
 
-function cytoscapeStyle(maxFanIn: number): cytoscape.StylesheetJson {
+function cytoscapeStyle(maxFanIn: number, maxChurn: number = 1): cytoscape.StylesheetJson {
   return [
     {
       selector: "node",
@@ -210,13 +214,17 @@ function cytoscapeStyle(maxFanIn: number): cytoscape.StylesheetJson {
           if (element.data("inCycle")) return "#e0af68";
           return kind === "package" ? "#7aa2f7" : "#7dcfff";
         },
-        "border-width": 1,
+        // Border width carries churn — where the project actually gets
+        // edited. Size answers "who is depended on", border "who is touched";
+        // an unmeasured run keeps every border at the 1px base.
+        "border-width": `mapData(churn, 0, ${maxChurn}, 1, 6)`,
         "border-color": "#303952",
       },
     },
     {
+      // Colour only: a fixed width here would clobber the churn channel.
       selector: "node[?inCycle]",
-      style: { "border-color": "#e0af68", "border-width": 2 },
+      style: { "border-color": "#e0af68" },
     },
     {
       selector: "edge",

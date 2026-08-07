@@ -65,7 +65,12 @@
         "path": { "type": ["string", "null"] },
         "fanIn": { "type": ["integer", "null"], "minimum": 0 },
         "fanOut": { "type": ["integer", "null"], "minimum": 0 },
-        "inCycle": { "type": "boolean" }
+        "inCycle": { "type": "boolean" },
+        "churn": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Commits that touched this node's file at the analyzed revision; null when the run did not measure churn."
+        }
       }
     },
     "edge": {

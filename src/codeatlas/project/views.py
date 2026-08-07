@@ -293,6 +293,7 @@ def _levelized_view(
                 fan_in=m.fan_in,
                 fan_out=m.fan_out,
                 in_cycle=m.path in in_cycle,
+                churn=m.churn,
             )
             for m in members
         ],
@@ -328,6 +329,7 @@ def _matrix_view(overview: ProjectOverview, module_edges: dict[tuple[str, str], 
                 path=m.path,
                 fan_in=m.fan_in,
                 fan_out=m.fan_out,
+                churn=m.churn,
             )
             for m in ordered
         ],

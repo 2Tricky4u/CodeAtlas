@@ -174,6 +174,27 @@ class TestLevelizedModuleViews:
         assert all(n.parent == "pkg:core" for n in view.nodes)
 
 
+class TestChurnOnViewNodes:
+    def test_a_measured_module_churn_reaches_the_levelized_view(self) -> None:
+        """The map's heat channel reads off ViewNode — a metric that stops at
+        the overview never draws."""
+        overview = build_overview(
+            TWO_PACKAGES,
+            repository_id="local/kvstore",
+            churn={"core/src/a.rs": 7},
+        )
+        views = build_views(TWO_PACKAGES, overview)
+        levelized = next(v for v in views.views if v.id == "modules:core")
+        by_path = {n.path: n for n in levelized.nodes if n.path}
+        assert by_path["core/src/a.rs"].churn == 7
+        assert by_path["core/src/b.rs"].churn == 0
+
+    def test_unmeasured_stays_absent(self) -> None:
+        views = views_for(TWO_PACKAGES)
+        levelized = next(v for v in views.views if v.kind == "levelized-modules")
+        assert all(n.churn is None for n in levelized.nodes)
+
+
 class TestTheReadabilityGate:
     def _wide(self, count: int) -> ProjectGraph:
         hub = file_node("core/src/hub.rs")

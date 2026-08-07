@@ -616,6 +616,7 @@ PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
             "level": 0,
             "symbolCount": 6,
             "publicCount": 2,
+            "churn": 12,
         }
     ],
     "levels": [{"level": 0, "modules": ["kvstore/src/storage.rs"]}],
@@ -636,6 +637,7 @@ PROJECT_OVERVIEW_EXAMPLE: dict[str, Any] = {
                 "level": 0,
                 "symbolCount": 6,
                 "publicCount": 2,
+                "churn": 12,
             }
         ],
         "dependsOn": [],
@@ -669,7 +671,9 @@ GRAPH_VIEW_EXAMPLE: dict[str, Any] = {
             "kind": "package-dependencies",
             "title": "Packages",
             "layout": "elk-layered",
-            "nodes": [{"id": "pkg:kvstore", "label": "kvstore", "kind": "package", "fanIn": 1}],
+            "nodes": [
+                {"id": "pkg:kvstore", "label": "kvstore", "kind": "package", "fanIn": 1, "churn": 3}
+            ],
             "edges": [
                 {
                     "id": "pkgedge:cli->kvstore",
