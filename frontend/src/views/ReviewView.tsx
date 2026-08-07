@@ -106,6 +106,8 @@ const WHY: Record<string, string> = {
   duplicate: "the same defect as another candidate",
   unresolved: "the validator could neither confirm nor refute it, which is not a pass",
   candidate: "never reached validation",
+  suppressed:
+    "refused in an earlier run at byte-identical code; the remembered verdict is replayed without spending a validation",
 };
 
 const STATUS_TONE: Record<string, "ok" | "warn" | "bad" | "info" | "plain"> = {
@@ -113,6 +115,7 @@ const STATUS_TONE: Record<string, "ok" | "warn" | "bad" | "info" | "plain"> = {
   rejected: "bad",
   duplicate: "info",
   unresolved: "warn",
+  suppressed: "info",
 };
 
 function FunnelPanel({
@@ -168,28 +171,48 @@ function FunnelPanel({
               <th>finding</th>
               <th>proposed by</th>
               <th>severity</th>
+              <th>confidence</th>
               <th>verdict</th>
               <th>claim</th>
+              <th>why</th>
             </tr>
           </thead>
           <tbody>
-            {unpublished.map(({ candidate, status }) => (
-              <tr key={candidate.findingId}>
-                <td className="note">{candidate.findingId}</td>
-                <td className="note">
-                  {candidate.discoveredBySkill?.replace("reviewer-", "") ?? "—"}
-                </td>
-                <td>
-                  <Badge tone={SEVERITY_TONE[candidate.severity] ?? "plain"}>
-                    {candidate.severity}
-                  </Badge>
-                </td>
-                <td title={WHY[status]}>
-                  <Badge tone={STATUS_TONE[status] ?? "plain"}>{status}</Badge>
-                </td>
-                <td>{candidate.claim}</td>
-              </tr>
-            ))}
+            {unpublished.map(({ candidate, status }) => {
+              const finding = byId.get(candidate.findingId);
+              const validation = finding?.validation;
+              const reason =
+                validation && typeof validation.reason === "string" ? validation.reason : null;
+              const decidedIn =
+                validation && typeof validation.decidedInRun === "string"
+                  ? validation.decidedInRun
+                  : null;
+              return (
+                <tr key={candidate.findingId}>
+                  <td className="note">{candidate.findingId}</td>
+                  <td className="note">
+                    {candidate.discoveredBySkill?.replace("reviewer-", "") ?? "—"}
+                  </td>
+                  <td>
+                    <Badge tone={SEVERITY_TONE[candidate.severity] ?? "plain"}>
+                      {candidate.severity}
+                    </Badge>
+                  </td>
+                  <td className="mono-num">
+                    {finding ? finding.confidence.toFixed(2) : "—"}
+                  </td>
+                  <td title={WHY[status]}>
+                    <Badge tone={STATUS_TONE[status] ?? "plain"}>{status}</Badge>
+                  </td>
+                  <td>{candidate.claim}</td>
+                  <td className="note" data-testid="verdict-reason">
+                    {status === "suppressed" && decidedIn
+                      ? `remembered from run ${decidedIn}${reason ? `: ${reason}` : ""}`
+                      : (reason ?? "—")}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

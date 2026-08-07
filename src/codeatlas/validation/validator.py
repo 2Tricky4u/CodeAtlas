@@ -21,6 +21,7 @@ from codeatlas.artifacts.store import ArtifactStore
 from codeatlas.core.logging import get_logger
 from codeatlas.models.findings import Finding
 from codeatlas.models.validation import ValidationEvidence, ValidationResult
+from codeatlas.validation.memory import FindingMemory, RememberedRejection
 from codeatlas.validation.rules import (
     deduplicate,
     is_publication_eligible,
@@ -37,6 +38,12 @@ SKILL_ID = "finding-validator"
 class ValidationOutcome:
     results: dict[str, ValidationResult] = field(default_factory=dict)
     publishable: list[str] = field(default_factory=list)
+    # Suppressed by cross-run memory (ADR-0016): no agent ran, no
+    # ValidationResult exists — the remembered rejection is the record.
+    suppressed: dict[str, RememberedRejection] = field(default_factory=dict)
+    # Finding ids whose verdict came from a live agent dispatch this run —
+    # the only rejections eligible to be remembered.
+    dispatched: set[str] = field(default_factory=set)
 
 
 def _auto_evidence(finding: Finding, index: VerificationIndex) -> list[ValidationEvidence]:
@@ -102,6 +109,7 @@ def validate_findings(
     db_engine: Engine,
     cas: ArtifactStore,
     budget: TokenBudget | None = None,
+    memory: FindingMemory | None = None,
 ) -> ValidationOutcome:
     """Every candidate leaves this stage with a terminal status."""
     outcome = ValidationOutcome()
@@ -120,6 +128,14 @@ def validate_findings(
                 ["file table at the analyzed revision"],
             )
             continue
+
+        if memory is not None:
+            remembered = memory.match(finding)
+            if remembered is not None:
+                # Same repository, byte-identical file, overlapping span: the
+                # earlier rejection still answers this claim. No agent call.
+                outcome.suppressed[finding.finding_id] = remembered
+                continue
 
         auto = _auto_evidence(finding, index)
         payload = {
@@ -158,6 +174,7 @@ def validate_findings(
             )
             continue
 
+        outcome.dispatched.add(finding.finding_id)
         validated = ValidationResult.model_validate(result.output)
         # The validator may only rule on the finding it was given.
         if validated.finding_id != finding.finding_id:
@@ -178,8 +195,13 @@ def validate_findings(
         if eligible:
             outcome.publishable.append(finding.finding_id)
 
-    # Gate: nothing may leave this stage without a terminal status.
-    missing = [f.finding_id for f in findings if f.finding_id not in outcome.results]
+    # Gate: nothing may leave this stage without a terminal status. Suppressed
+    # findings have theirs — the remembered rejection — not a ValidationResult.
+    missing = [
+        f.finding_id
+        for f in findings
+        if f.finding_id not in outcome.results and f.finding_id not in outcome.suppressed
+    ]
     for finding_id in missing:
         finding = next(f for f in findings if f.finding_id == finding_id)
         outcome.results[finding_id] = _unresolved(finding, "not reached by validation")
@@ -189,6 +211,7 @@ def validate_findings(
         run_id=run_id,
         total=len(findings),
         publishable=len(outcome.publishable),
+        suppressed=len(outcome.suppressed),
         statuses={
             status: sum(1 for r in outcome.results.values() if r.status == status)
             for status in ("validated", "rejected", "duplicate", "unresolved")

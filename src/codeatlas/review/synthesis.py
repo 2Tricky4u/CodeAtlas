@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from codeatlas.models.findings import Finding
 from codeatlas.models.validation import ValidationResult
+from codeatlas.validation.memory import RememberedRejection
 
 _SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -20,6 +21,16 @@ _SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 class ReportedFinding:
     finding: Finding
     validation: ValidationResult
+
+    @property
+    def finding_id(self) -> str:
+        return self.finding.finding_id
+
+
+@dataclass(frozen=True, slots=True)
+class SuppressedFinding:
+    finding: Finding
+    remembered: RememberedRejection
 
     @property
     def finding_id(self) -> str:
@@ -36,6 +47,7 @@ class ReviewReport:
     degraded: bool
     coverage_note: str
     failed_skills: list[str] = field(default_factory=list)
+    suppressed: list[SuppressedFinding] = field(default_factory=list)
 
 
 def build_report(
@@ -44,12 +56,25 @@ def build_report(
     findings: list[Finding],
     validations: dict[str, ValidationResult],
     failed_skills: list[str],
+    suppressed: dict[str, RememberedRejection] | None = None,
 ) -> ReviewReport:
     publishable: list[ReportedFinding] = []
     withheld: list[ReportedFinding] = []
-    counts = {"validated": 0, "rejected": 0, "duplicate": 0, "unresolved": 0}
+    remembered = suppressed or {}
+    suppressed_entries: list[SuppressedFinding] = []
+    counts = {
+        "validated": 0,
+        "rejected": 0,
+        "duplicate": 0,
+        "unresolved": 0,
+        "suppressed": len(remembered),
+    }
 
     for finding in findings:
+        hit = remembered.get(finding.finding_id)
+        if hit is not None:
+            suppressed_entries.append(SuppressedFinding(finding=finding, remembered=hit))
+            continue
         validation = validations.get(finding.finding_id)
         if validation is None:
             continue
@@ -65,6 +90,7 @@ def build_report(
 
     publishable.sort(key=_order)
     withheld.sort(key=_order)
+    suppressed_entries.sort(key=lambda entry: entry.finding_id)
 
     degraded = bool(failed_skills)
     coverage_note = (
@@ -84,6 +110,7 @@ def build_report(
         degraded=degraded,
         coverage_note=coverage_note,
         failed_skills=sorted(failed_skills),
+        suppressed=suppressed_entries,
     )
 
 
@@ -97,7 +124,7 @@ def render_markdown(report: ReviewReport) -> str:
         "",
     ]
 
-    if not report.publishable and not report.withheld:
+    if not report.publishable and not report.withheld and not report.suppressed:
         lines += ["No findings: every reviewer completed and reported nothing.", ""]
         return "\n".join(lines)
 
@@ -128,6 +155,22 @@ def render_markdown(report: ReviewReport) -> str:
             lines.append(
                 f"- `{entry.finding_id}` **{entry.validation.status}** · {location} · "
                 f"{entry.finding.claim[:160]}"
+            )
+        lines.append("")
+
+    if report.suppressed:
+        lines += [
+            f"### {len(report.suppressed)} finding(s) suppressed by cross-run memory",
+            "",
+            "Each recurred at byte-identical code after an earlier run rejected it; "
+            "the original rejection is replayed instead of re-validated (ADR-0016).",
+            "",
+        ]
+        for suppressed_entry in report.suppressed:
+            remembered = suppressed_entry.remembered
+            lines.append(
+                f"- `{suppressed_entry.finding_id}` · rejected in run "
+                f"`{remembered.decided_in_run}`: {remembered.reason[:200]}"
             )
         lines.append("")
 

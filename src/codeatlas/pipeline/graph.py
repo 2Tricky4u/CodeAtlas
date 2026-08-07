@@ -502,7 +502,10 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     data={"error": str(exc)[:500]},
                 )
                 session.commit()
-            return {"api_change_sha256": None}
+            return {
+                "api_change_sha256": None,
+                "review_notes": [f"api change skipped: {str(exc)[:200]}"],
+            }
 
         with Session(deps.engine) as session:
             for receipt in [*base_receipts, *head_receipts]:
@@ -534,10 +537,13 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         lints: dict[str, list[Any]] = {}
         analyzed: set[str] = set()
         unknown_reasons: dict[str, str] = {}
+        notes: list[str] = []
         try:
             levels = lint_levels()
         except ExtractorError:
             levels = {}
+            if comparable:
+                notes.append("cargo-semver-checks unavailable: required bumps reported as unknown")
         if levels:
             with Session(deps.engine) as session:
                 for name in sorted(comparable):
@@ -587,7 +593,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 },
             )
             session.commit()
-        return {"api_change_sha256": sha}
+        return {"api_change_sha256": sha, "review_notes": notes}
 
     def change_impact(state: PipelineState) -> dict[str, Any]:
         """Who else could this change affect — bounded, ranked, and hedged.
@@ -949,7 +955,12 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
 
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)
-        stage_validate(deps, ctx, revision_db_id=state["revision_db_id"])
+        stage_validate(
+            deps,
+            ctx,
+            revision_db_id=state["revision_db_id"],
+            repository_id=state["repository_id"],
+        )
         stage_synthesize(deps, ctx)
         stage_diagrams(deps, ctx, deps.cas.get(state["structurizr_dsl_sha256"]).decode("utf-8"))
         payload = stage_payload(deps, ctx, scope=scope)

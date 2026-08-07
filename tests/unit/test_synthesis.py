@@ -11,6 +11,7 @@ from codeatlas.models.findings import Finding
 from codeatlas.models.graph import Evidence, SourceLocation
 from codeatlas.models.validation import ValidationEvidence, ValidationResult
 from codeatlas.review.synthesis import build_report, render_markdown
+from codeatlas.validation.memory import RememberedRejection
 
 
 def _finding(fid: str, category: str = "correctness", severity: str = "high") -> Finding:
@@ -112,6 +113,37 @@ class TestReportStructure:
         )
         assert report.publishable == []
         assert "no findings" in render_markdown(report).lower()
+
+
+class TestSuppressed:
+    """ADR-0016: a suppressed finding must appear in the report with its
+    provenance — silently vanishing would make the memory invisible."""
+
+    def _remembered(self) -> RememberedRejection:
+        return RememberedRejection(
+            fingerprint="sha256:" + "a" * 64,
+            file_blob_sha="b" * 40,
+            start_line=28,
+            end_line=30,
+            reason="the caller validates the key before this unwrap",
+            decided_in_run="01RUNX",
+        )
+
+    def test_suppressed_findings_are_counted_and_rendered(self) -> None:
+        report = build_report(
+            run_id="R",
+            revision_sha="a" * 40,
+            findings=[_finding("F-0001")],
+            validations={},
+            failed_skills=[],
+            suppressed={"F-0001": self._remembered()},
+        )
+        assert report.counts["suppressed"] == 1
+        assert report.publishable == []
+        markdown = render_markdown(report)
+        assert "suppressed by cross-run memory" in markdown
+        assert "01RUNX" in markdown
+        assert "the caller validates the key" in markdown
 
 
 class TestMarkdown:

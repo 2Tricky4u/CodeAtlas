@@ -41,6 +41,18 @@ class TestIdentical:
         assert any("token" in note.lower() for note in result.notes)
 
 
+class TestMemorySuppression:
+    def test_suppression_is_a_note_not_a_difference(self) -> None:
+        """ADR-0016: memory changes how a verdict was reached, not what it is.
+        Snapshots arrive with `suppressed` already folded into `rejected`; the
+        count survives so the comparison can say what happened."""
+        result = compare_runs(
+            _snapshot(), _snapshot(run_id="01J4QDGJ4W8Z9X7C5V3B2N1M0B", suppressed_count=1)
+        )
+        assert result.reproducible is True
+        assert any("memory" in note.lower() for note in result.notes)
+
+
 class TestDifferences:
     def test_graph_hash_difference_is_reported_first(self) -> None:
         result = compare_runs(_snapshot(), _snapshot(graph_sha256="sha256:" + "9" * 64))

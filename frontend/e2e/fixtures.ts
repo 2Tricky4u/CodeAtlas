@@ -52,7 +52,9 @@ export const OVERVIEW = {
     { name: "serde", version: "1.0.210", manifestPath: "", fileCount: 0, symbolCount: 0 },
   ],
   modules: [
-    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12 },
+    // cache.rs carries the depth metric; api.rs deliberately omits publicCount
+    // (a run from before the metric) so the badge's absence path stays covered.
+    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", package: "kvstore", fanIn: 3, fanOut: 0, level: 0, symbolCount: 12, publicCount: 5 },
     { key: "file:kvstore/src/api.rs", path: "kvstore/src/api.rs", package: "kvstore", fanIn: 1, fanOut: 1, level: 1, symbolCount: 8 },
   ],
   levels: [
@@ -136,8 +138,10 @@ export const GRAPH = {
     nodes: [
       { data: { id: "pkg:kvstore", label: "kvstore 0.1.0", kind: "package", producers: ["cargo"] } },
       { data: { id: "file:kvstore/src/cache.rs", label: "kvstore/src/cache.rs", kind: "file", path: "kvstore/src/cache.rs", producers: ["rust-analyzer"] } },
-      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, endLine: 48, producers: ["rust-analyzer"] } },
-      { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23, producers: ["rust-analyzer"] } },
+      // `public` is the measured visibility metric (W2): put is `pub`,
+      // evict_oldest is not, and nodes without the key predate the metric.
+      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, endLine: 48, producers: ["rust-analyzer"], public: false } },
+      { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23, producers: ["rust-analyzer"], public: true } },
       // A second connected component, so "no path" stays expressible: handle
       // calls parse, and neither touches the cache symbols.
       { data: { id: "file:kvstore/src/api.rs", label: "kvstore/src/api.rs", kind: "file", path: "kvstore/src/api.rs", producers: ["rust-analyzer"] } },
@@ -369,6 +373,14 @@ export const CANDIDATE_FINDINGS = {
       claim: "The cache is shared across threads without synchronisation.",
       discoveredBySkill: "reviewer-security",
       location: { path: "kvstore/src/cache.rs", startLine: 12 },
+    },
+    {
+      findingId: "F-0012",
+      category: "correctness",
+      severity: "low",
+      claim: "get() clones the value on every hit.",
+      discoveredBySkill: "reviewer-correctness",
+      location: { path: "kvstore/src/cache.rs", startLine: 33 },
     },
   ],
 };
@@ -720,6 +732,29 @@ export const FINDINGS = [
     introducedByChange: false,
     discoveredBySkill: "reviewer-security",
     validation: null,
+  },
+  // Suppressed by cross-run memory (ADR-0016): no validator ran this run —
+  // the record is the earlier run's rejection, replayed with its provenance.
+  {
+    findingId: "F-0012",
+    category: "correctness",
+    severity: "low",
+    confidence: 0.6,
+    claim: "get() clones the value on every hit.",
+    path: "kvstore/src/cache.rs",
+    startLine: 33,
+    endLine: 35,
+    status: "suppressed",
+    publicationEligible: false,
+    introducedByChange: null,
+    discoveredBySkill: "reviewer-correctness",
+    validation: {
+      status: "suppressed",
+      memoryFingerprint: "sha256:" + "7".repeat(64),
+      decidedInRun: "01J4QDGJ4W8Z9X7C5V3B2N1M0Z",
+      reason: "the clone is required by the wire format; returning a reference cannot cross the response boundary",
+      rememberedBlobSha: "9".repeat(40),
+    },
   },
 ];
 

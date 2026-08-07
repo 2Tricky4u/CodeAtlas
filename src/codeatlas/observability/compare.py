@@ -27,6 +27,10 @@ class RunSnapshot:
     prompt_tokens: int
     completion_tokens: int
     cost_usd: float | None
+    # ADR-0016: `statuses` arrives with `suppressed` folded into `rejected` —
+    # memory changes how a verdict was reached, not what it is. The raw count
+    # survives here so the comparison can still say what happened.
+    suppressed_count: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -86,6 +90,13 @@ def compare_runs(left: RunSnapshot, right: RunSnapshot) -> ComparisonResult:
 
     if left.statuses != right.statuses:
         differences.append(f"validation outcomes differ: {left.statuses} vs {right.statuses}")
+
+    if left.suppressed_count or right.suppressed_count:
+        notes.append(
+            f"cross-run memory suppressed {left.suppressed_count} vs "
+            f"{right.suppressed_count} finding(s), counted as rejected; "
+            "this does not affect reproducibility"
+        )
 
     if left.total_tokens != right.total_tokens:
         notes.append(

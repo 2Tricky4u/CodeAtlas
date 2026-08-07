@@ -217,6 +217,34 @@ class GraphCacheRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class FindingMemoryRow(Base):
+    """An agent-produced rejection, remembered across runs (ADR-0016).
+
+    Keyed by (repository, semantic fingerprint, file blob): the blob in the key
+    makes same-key ⟹ same-decision true by construction, so rows are append-only
+    and never overwritten — after a file edit, the re-rejection records a new
+    row at the new blob. Only post-dispatch rejections land here; dedup and
+    dead-location closures cost no agent call and are never remembered.
+    """
+
+    __tablename__ = "finding_memory"
+    __table_args__ = (UniqueConstraint("repository_id", "fingerprint", "file_blob_sha"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repository.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(71))
+    file_blob_sha: Mapped[str] = mapped_column(String(40))
+    path: Mapped[str] = mapped_column(Text)
+    start_line: Mapped[int | None] = mapped_column(Integer)
+    end_line: Mapped[int | None] = mapped_column(Integer)
+    category: Mapped[str] = mapped_column(String(30))
+    severity: Mapped[str] = mapped_column(String(10))
+    claim: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    decided_in_run: Mapped[str] = mapped_column(ForeignKey("run.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class GraphNodeRow(Base):
     __tablename__ = "graph_node"
     __table_args__ = (UniqueConstraint("snapshot_id", "natural_id"),)

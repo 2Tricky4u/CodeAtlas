@@ -44,8 +44,15 @@ def load_snapshot(session: Session, run_id: str) -> RunSnapshot | None:
     ).one()
 
     statuses: dict[str, int] = {}
+    suppressed_count = 0
     for finding in findings:
-        statuses[finding.status] = statuses.get(finding.status, 0) + 1
+        status = finding.status
+        if status == "suppressed":
+            # ADR-0016: a suppression replays an earlier rejection; folding it
+            # keeps two runs at one revision comparing as reproducible.
+            status = "rejected"
+            suppressed_count += 1
+        statuses[status] = statuses.get(status, 0) + 1
 
     return RunSnapshot(
         run_id=run.id,
@@ -55,6 +62,7 @@ def load_snapshot(session: Session, run_id: str) -> RunSnapshot | None:
         finding_ids=sorted(f.finding_id for f in findings),
         publishable_ids=sorted(f.finding_id for f in findings if f.publication_eligible),
         statuses=statuses,
+        suppressed_count=suppressed_count,
         skill_registry_sha256=run.skill_registry_sha256,
         prompt_tokens=int(tokens[0] or 0),
         completion_tokens=int(tokens[1] or 0),

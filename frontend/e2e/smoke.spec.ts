@@ -293,6 +293,26 @@ test.describe("module page", () => {
     await expect(definitions).toContainText("put");
   });
 
+  test("the interface badge states measured depth, and pub marks name the interface", async ({
+    page,
+  }) => {
+    // cache.rs: 5 of 12 definitions say `pub` in their own signature. Only
+    // put carries public: true in the graph fixture — evict_oldest is
+    // measured private, so exactly one pub mark renders.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("interface-badge")).toHaveText("interface 5/12");
+    await expect(page.getByTestId("pub-mark")).toHaveCount(1);
+    const putRow = page.getByTestId("definition").filter({ hasText: "put" });
+    await expect(putRow).toBeVisible();
+  });
+
+  test("a run from before the depth metric shows no interface badge at all", async ({ page }) => {
+    // api.rs's summary omits publicCount — absent must not render as zero.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/api.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page.getByTestId("interface-badge")).toHaveCount(0);
+  });
+
   test("expanding a definition shows who uses it, grouped by module", async ({ page }) => {
     await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
     await page.getByTestId("definition").filter({ hasText: "evict_oldest" }).click();
@@ -851,9 +871,28 @@ test.describe("review view", () => {
   test("the funnel counts every step, not just the ends", async ({ page }) => {
     await page.goto(`/#/runs/${RUN_ID}/review`);
     const funnel = page.getByTestId("funnel");
-    await expect(funnel).toContainText("2 proposed");
+    await expect(funnel).toContainText("3 proposed");
     await expect(funnel).toContainText("1 validated");
+    await expect(funnel).toContainText("1 suppressed");
     await expect(funnel).toContainText("1 publishable");
+  });
+
+  test("a remembered rejection names the run that decided it", async ({ page }) => {
+    // ADR-0016: suppression must be inspectable, never silent — the row says
+    // which run rejected this finding and why.
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const table = page.getByTestId("not-validated");
+    await expect(table).toContainText("suppressed");
+    await expect(table).toContainText("remembered from run 01J4QDGJ4W8Z9X7C5V3B2N1M0Z");
+    await expect(table).toContainText("required by the wire format");
+    await expect(page.getByTestId("verdict-key")).toContainText("remembered verdict is replayed");
+  });
+
+  test("the funnel shows each candidate's confidence", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const table = page.getByTestId("not-validated");
+    await expect(table).toContainText("0.40");
+    await expect(table).toContainText("0.60");
   });
 
   test("each verdict is explained, because they are not the same answer", async ({ page }) => {
@@ -1289,7 +1328,8 @@ test.describe("evidence surfaced", () => {
     // The adversarial check is the product's differentiator; a survivors table
     // looks identical whether the check was hostile or a rubber stamp.
     await page.goto(`/#/runs/${RUN_ID}/findings`);
-    await page.getByTestId("validation-toggle").click();
+    // .first(): the suppressed F-0012 also carries a validation record now.
+    await page.getByTestId("validation-toggle").first().click();
     const detail = page.getByTestId("validation-detail");
     await expect(detail).toContainText("counter-evidence checked");
     await expect(detail).toContainText("existing eviction tests");

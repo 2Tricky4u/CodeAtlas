@@ -49,6 +49,7 @@ from codeatlas.review.reviewers import (
 )
 from codeatlas.review.scope import ChangedScope
 from codeatlas.review.synthesis import ReviewReport, build_report
+from codeatlas.validation.memory import FindingMemory, remember_rejection
 from codeatlas.validation.validator import ValidationOutcome, validate_findings
 from codeatlas.verify.battery import run_battery
 
@@ -166,7 +167,9 @@ def stage_reviewers(deps: PipelineDeps, ctx: ReviewContext) -> None:
         ctx.notes.append(f"reviewers that did not complete: {', '.join(outcome.failed_skills)}")
 
 
-def stage_validate(deps: PipelineDeps, ctx: ReviewContext, revision_db_id: int) -> None:
+def stage_validate(
+    deps: PipelineDeps, ctx: ReviewContext, revision_db_id: int, repository_id: str
+) -> None:
     battery = run_battery(ctx.checkout, ctx.revision_sha)
     with Session(deps.engine) as session:
         for receipt in battery.receipts:
@@ -176,12 +179,18 @@ def stage_validate(deps: PipelineDeps, ctx: ReviewContext, revision_db_id: int) 
         ctx.notes.append(f"verification tools unavailable: {', '.join(battery.tools_unavailable)}")
 
     with Session(deps.engine) as session:
-        paths = session.scalars(
-            select(FileRow.path).where(FileRow.revision_id == revision_db_id)
+        file_rows = session.execute(
+            select(FileRow.path, FileRow.git_blob_sha).where(FileRow.revision_id == revision_db_id)
         ).all()
+        blob_shas: dict[str, str] = {row.path: row.git_blob_sha for row in file_rows}
+        # One repository's remembered rejections, preloaded so validation
+        # itself never touches the database (ADR-0016).
+        memory = FindingMemory.load(
+            session, repository_id=repository_id, blob_shas=blob_shas, graph=ctx.graph
+        )
     file_lengths = {
         path: len((ctx.checkout / path).read_text(encoding="utf-8", errors="replace").splitlines())
-        for path in paths
+        for path in blob_shas
         if (ctx.checkout / path).is_file()
     }
 
@@ -197,15 +206,56 @@ def stage_validate(deps: PipelineDeps, ctx: ReviewContext, revision_db_id: int) 
         db_engine=deps.engine,
         cas=deps.cas,
         budget=deps.budget,
+        memory=memory,
     )
-    _persist_findings(deps, ctx)
+    _persist_findings(deps, ctx, memory=memory)
+    if ctx.validation.suppressed:
+        ctx.notes.append(
+            f"{len(ctx.validation.suppressed)} finding(s) suppressed by cross-run memory"
+        )
 
 
-def _persist_findings(deps: PipelineDeps, ctx: ReviewContext) -> None:
+def _persist_findings(
+    deps: PipelineDeps, ctx: ReviewContext, memory: FindingMemory | None = None
+) -> None:
     assert ctx.validation is not None
+    outcome = ctx.validation
     with Session(deps.engine) as session:
         for finding in ctx.findings:
-            result = ctx.validation.results.get(finding.finding_id)
+            remembered = outcome.suppressed.get(finding.finding_id)
+            if remembered is not None:
+                # No agent ran; the record is the remembered rejection. This is
+                # deliberately NOT a validation-result.v1 payload — that schema
+                # gates agent output, and an agent must never emit "suppressed".
+                session.add(
+                    FindingRow(
+                        run_id=ctx.run_id,
+                        finding_id=finding.finding_id,
+                        category=finding.category,
+                        severity=finding.severity,
+                        confidence=finding.confidence,
+                        claim=finding.claim,
+                        path=finding.location.path,
+                        start_line=finding.location.start_line,
+                        end_line=finding.location.end_line,
+                        status="suppressed",
+                        duplicate_of=None,
+                        discovered_by_skill=finding.discovered_by_skill,
+                        skill_version=finding.skill_version,
+                        introduced_by_change=None,
+                        publication_eligible=False,
+                        payload=finding.contract_dump(),
+                        validation={
+                            "status": "suppressed",
+                            "memoryFingerprint": remembered.fingerprint,
+                            "decidedInRun": remembered.decided_in_run,
+                            "reason": remembered.reason,
+                            "rememberedBlobSha": remembered.file_blob_sha,
+                        },
+                    )
+                )
+                continue
+            result = outcome.results.get(finding.finding_id)
             session.add(
                 FindingRow(
                     run_id=ctx.run_id,
@@ -227,6 +277,20 @@ def _persist_findings(deps: PipelineDeps, ctx: ReviewContext) -> None:
                     validation=result.contract_dump() if result else None,
                 )
             )
+        if memory is not None:
+            # Same transaction as the finding rows: the memory that justifies
+            # a future suppression must never exist without its evidence.
+            findings_by_id = {f.finding_id: f for f in ctx.findings}
+            for finding_id in sorted(outcome.dispatched):
+                result = outcome.results.get(finding_id)
+                if result is not None and result.status == "rejected":
+                    remember_rejection(
+                        session,
+                        memory,
+                        findings_by_id[finding_id],
+                        reason=result.reason,
+                        run_id=ctx.run_id,
+                    )
         session.commit()
 
 
@@ -238,6 +302,7 @@ def stage_synthesize(deps: PipelineDeps, ctx: ReviewContext) -> None:
         findings=ctx.findings,
         validations=ctx.validation.results,
         failed_skills=ctx.failed_skills,
+        suppressed=ctx.validation.suppressed,
     )
     from codeatlas.review.synthesis import render_markdown
 

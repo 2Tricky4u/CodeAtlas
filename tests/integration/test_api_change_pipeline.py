@@ -90,6 +90,72 @@ def _api_change(deps, run_id) -> dict:  # type: ignore[no-untyped-def]
     return _artifact(deps, run_id, "api-change")
 
 
+def _manifest(deps, run_id) -> dict:  # type: ignore[no-untyped-def]
+    from codeatlas.db.tables import RunRow
+
+    with Session(deps.engine) as s:
+        run_row = s.get(RunRow, run_id)
+        assert run_row is not None and run_row.manifest_sha256 is not None
+        return json.loads(deps.cas.get(run_row.manifest_sha256))  # type: ignore[no-any-return]
+
+
+class TestDegradationsReachTheManifest:
+    """A degraded API analysis must say so in the run's own report — the run
+    event and the artifact's `bumpUnknownReason` exist, but the manifest is
+    the report, and a degraded run says so in its report (CLAUDE.md)."""
+
+    def _run(self, test_engine, root: Path, repository_id: str):  # type: ignore[no-untyped-def]
+        from make_fixture_repos import build_api_change_fixture_repo
+
+        repo = root / "repo"
+        base_sha, head_sha = build_api_change_fixture_repo(FIXTURE_SRC, repo)
+        workdir = root / "wd"
+        deps = PipelineDeps(
+            engine=test_engine,
+            workdir=workdir,
+            cas=ArtifactStore(workdir / "objects"),
+            checkpoint_path=workdir / "checkpoints" / "pipeline.sqlite",
+        )
+        run_id = start_run(
+            deps,
+            repo_path=repo,
+            repository_id=repository_id,
+            ref=head_sha,
+            base_ref=base_sha,
+            pr_number=4,
+        )
+        assert run_status(deps, run_id).startswith("succeeded")
+        return deps, run_id
+
+    def test_an_unavailable_surface_is_a_manifest_note(  # type: ignore[no-untyped-def]
+        self, test_engine, tmp_path: Path, monkeypatch
+    ) -> None:
+        from codeatlas.extractors.base import ExtractorError
+        from codeatlas.extractors.rust import public_api
+
+        def boom(self, workspace, revision):  # type: ignore[no-untyped-def]
+            raise ExtractorError("nightly rustdoc unavailable (simulated)")
+
+        monkeypatch.setattr(public_api.PublicApiExtractor, "extract", boom)
+        deps, run_id = self._run(test_engine, tmp_path, "local/kvstore-api-nosurface")
+        notes = _manifest(deps, run_id)["notes"]
+        assert any("api change skipped" in note for note in notes), notes
+
+    def test_absent_semver_checks_is_a_manifest_note(  # type: ignore[no-untyped-def]
+        self, test_engine, tmp_path: Path, monkeypatch
+    ) -> None:
+        from codeatlas.extractors.base import ExtractorError
+        from codeatlas.extractors.rust import semver_checks
+
+        def gone():  # type: ignore[no-untyped-def]
+            raise ExtractorError("cargo-semver-checks not found on PATH (simulated)")
+
+        monkeypatch.setattr(semver_checks, "lint_levels", gone)
+        deps, run_id = self._run(test_engine, tmp_path, "local/kvstore-api-nosemver")
+        notes = _manifest(deps, run_id)["notes"]
+        assert any("cargo-semver-checks unavailable" in note for note in notes), notes
+
+
 class TestTheRunKnowsWhatTheChangeDidToTheApi:
     def test_the_breaking_removal_is_named_with_its_severity(self, api_pr_run) -> None:  # type: ignore[no-untyped-def]
         deps, run_id, base_sha, head_sha = api_pr_run

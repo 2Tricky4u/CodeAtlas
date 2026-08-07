@@ -27,7 +27,13 @@ def db_engine():  # type: ignore[no-untyped-def]
     engine.dispose()
 
 
-def _seed(db_engine, sha: str, graph_hash: str, findings: list[tuple[str, bool]]) -> str:  # type: ignore[no-untyped-def]
+def _seed(  # type: ignore[no-untyped-def]
+    db_engine,
+    sha: str,
+    graph_hash: str,
+    findings: list[tuple[str, bool]],
+    status_overrides: dict[str, str] | None = None,
+) -> str:
     """A run with a graph snapshot, receipts, findings and an agent invocation."""
     from codeatlas.core.ids import new_task_id
     from codeatlas.db import repositories as repo
@@ -83,6 +89,9 @@ def _seed(db_engine, sha: str, graph_hash: str, findings: list[tuple[str, bool]]
             )
         )
         for finding_id, eligible in findings:
+            status = (status_overrides or {}).get(
+                finding_id, "validated" if eligible else "unresolved"
+            )
             s.add(
                 FindingRow(
                     run_id=run.id,
@@ -92,7 +101,7 @@ def _seed(db_engine, sha: str, graph_hash: str, findings: list[tuple[str, bool]]
                     confidence=0.9,
                     claim="c",
                     path="a.rs",
-                    status="validated" if eligible else "unresolved",
+                    status=status,
                     discovered_by_skill="reviewer-correctness",
                     skill_version="1.0.0",
                     publication_eligible=eligible,
@@ -134,6 +143,30 @@ class TestSnapshot:
     def test_unknown_run_returns_none(self, db_engine) -> None:  # type: ignore[no-untyped-def]
         with Session(db_engine) as s:
             assert load_snapshot(s, "01AAAAAAAAAAAAAAAAAAAAAAAA") is None
+
+
+class TestMemoryFolding:
+    """ADR-0016: run 2 suppresses what run 1 rejected — same verdict, cheaper
+    path. The snapshot folds `suppressed` into `rejected` so the ADR-0007
+    reproducibility promise survives the memory being useful."""
+
+    def test_a_suppressed_second_run_compares_reproducible(self, db_engine) -> None:  # type: ignore[no-untyped-def]
+        sha, graph = "c" * 40, "sha256:" + "3" * 64
+        first = _seed(
+            db_engine, sha, graph, [("F-0001", False)], status_overrides={"F-0001": "rejected"}
+        )
+        second = _seed(
+            db_engine, sha, graph, [("F-0001", False)], status_overrides={"F-0001": "suppressed"}
+        )
+        with Session(db_engine) as s:
+            left, right = load_snapshot(s, first), load_snapshot(s, second)
+        assert left and right
+        assert left.statuses == right.statuses == {"rejected": 1}
+        assert left.suppressed_count == 0
+        assert right.suppressed_count == 1
+        result = compare_runs(left, right)
+        assert result.reproducible is True, result.differences
+        assert any("memory" in note.lower() for note in result.notes)
 
 
 class TestComparison:
