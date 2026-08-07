@@ -20,7 +20,20 @@ def test_committed_openapi_matches_live_app() -> None:
     )
 
 
-def test_openapi_declares_only_get_operations() -> None:
+def test_openapi_declares_only_get_operations_plus_ask() -> None:
+    """ADR-0014: the API performs no external writes and no approval decisions.
+
+    Every route is GET except exactly one — POST /ask, the local-analysis
+    endpoint that ADR restates the rule to permit. A second mutating route
+    appearing here is a decision, not a diff: it must argue local analysis
+    under ADR-0014 or it is prohibited.
+    """
     committed = json.loads((REPO_ROOT / "schemas" / "openapi.json").read_text(encoding="utf-8"))
-    for path, operations in committed["paths"].items():
-        assert set(operations) <= {"get"}, f"{path} exposes non-GET operations"
+    mutating = {
+        path: sorted(set(operations) - {"get"})
+        for path, operations in committed["paths"].items()
+        if set(operations) - {"get"}
+    }
+    assert mutating == {"/api/runs/{run_id}/ask": ["post"]}, (
+        f"unexpected mutating operations: {mutating}"
+    )
