@@ -72,3 +72,41 @@ class FailingEngine:
 
     def run(self, task: AgentTask, instructions: str) -> AgentResult:
         raise RuntimeError("engine exploded")
+
+
+class FlakyEngine:
+    """Typed failures for the first N attempts, then success — retry tests.
+
+    Records every (task, instructions) pair so a test can assert the second
+    attempt carried the first failure's error text, and that task ids differ.
+    """
+
+    name = "flaky"
+
+    def __init__(
+        self,
+        first_status: str,
+        output: object,
+        error: str = "['findings']: 'x' is not of type 'array'",
+        failures: int = 1,
+    ) -> None:
+        self.first_status = first_status
+        self.output = output
+        self.error = error
+        self.failures = failures
+        self.calls: list[tuple[AgentTask, str]] = []
+
+    def run(self, task: AgentTask, instructions: str) -> AgentResult:
+        self.calls.append((task, instructions))
+        if len(self.calls) <= self.failures:
+            return AgentResult(
+                task_id=task.task_id,
+                status=self.first_status,  # type: ignore[arg-type]
+                output=None,
+                error=self.error,
+                command_receipts=[],
+                usage=UsageStats(
+                    prompt_tokens=1, completion_tokens=0, cost_usd=None, wall_ms=1, model_id="flaky"
+                ),
+            )
+        return _result(task, self.output)

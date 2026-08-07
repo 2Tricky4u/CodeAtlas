@@ -16,10 +16,11 @@ from typing import Any
 from sqlalchemy import Engine
 
 from codeatlas.agents.budget import TokenBudget
-from codeatlas.agents.dispatch import RunnableEngine, build_task, dispatch
+from codeatlas.agents.dispatch import RunnableEngine, build_task, dispatch_with_retry
 from codeatlas.agents.registry import SkillRegistry
 from codeatlas.artifacts.store import ArtifactStore
 from codeatlas.core.logging import get_logger
+from codeatlas.models.agent import AgentTask
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
@@ -107,19 +108,21 @@ def run_reviewers(
     """
 
     def _one(skill_id: str) -> tuple[str, list[Finding] | None]:
-        task = build_task(
-            skill=registry.get(skill_id),
-            run_id=run_id,
-            revision_sha=revision_sha,
-            checkout=checkout,
-            inputs=inputs,
-        )
+        def task_factory() -> AgentTask:
+            return build_task(
+                skill=registry.get(skill_id),
+                run_id=run_id,
+                revision_sha=revision_sha,
+                checkout=checkout,
+                inputs=inputs,
+            )
+
         try:
-            result = dispatch(
+            result = dispatch_with_retry(
                 engine=engine,
                 registry=registry,
                 skill_id=skill_id,
-                task=task,
+                task_factory=task_factory,
                 db_engine=db_engine,
                 cas=cas,
                 budget=budget,

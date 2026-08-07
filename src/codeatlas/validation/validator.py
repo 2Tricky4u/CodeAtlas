@@ -15,10 +15,11 @@ from pathlib import Path
 from sqlalchemy import Engine
 
 from codeatlas.agents.budget import TokenBudget
-from codeatlas.agents.dispatch import RunnableEngine, build_task, dispatch
+from codeatlas.agents.dispatch import RunnableEngine, build_task, dispatch_with_retry
 from codeatlas.agents.registry import SkillRegistry
 from codeatlas.artifacts.store import ArtifactStore
 from codeatlas.core.logging import get_logger
+from codeatlas.models.agent import AgentTask
 from codeatlas.models.findings import Finding
 from codeatlas.models.validation import ValidationEvidence, ValidationResult
 from codeatlas.validation.memory import FindingMemory, RememberedRejection
@@ -146,19 +147,23 @@ def validate_findings(
                 "summary": index.summary(),
             },
         }
-        task = build_task(
-            skill=registry.get(SKILL_ID),
-            run_id=run_id,
-            revision_sha=revision_sha,
-            checkout=checkout,
-            inputs={"candidate": cas.put_json(payload)},
-        )
+        candidate_sha = cas.put_json(payload)
+
+        def task_factory(candidate_sha: str = candidate_sha) -> AgentTask:
+            return build_task(
+                skill=registry.get(SKILL_ID),
+                run_id=run_id,
+                revision_sha=revision_sha,
+                checkout=checkout,
+                inputs={"candidate": candidate_sha},
+            )
+
         try:
-            result = dispatch(
+            result = dispatch_with_retry(
                 engine=engine,
                 registry=registry,
                 skill_id=SKILL_ID,
-                task=task,
+                task_factory=task_factory,
                 db_engine=db_engine,
                 cas=cas,
                 budget=budget,

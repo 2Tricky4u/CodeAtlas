@@ -51,6 +51,13 @@ and project settings cannot inject instructions; `max_turns` plus a wall-clock
 timeout bound every task; output must validate against the task's JSON Schema or
 the result is `schema_invalid`.
 
+Amendment (X phase): the "one bounded repair turn" this ADR originally described
+was never implemented inside the engine. It now exists at dispatch level —
+`dispatch_with_retry` retries `schema_invalid` (quoting the validation errors
+back) and `timeout` exactly once, on live engines only, with each attempt
+recorded as its own invocation row. Replay never retries: a stale cassette must
+fail loudly (ADR-0012).
+
 ## Consequences
 
 - The whole pipeline is testable offline via replay; only the M8 adapter suite

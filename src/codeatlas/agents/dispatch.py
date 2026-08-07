@@ -8,6 +8,7 @@ produced it, under which instructions, at what cost.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -67,13 +68,23 @@ def dispatch(
     db_engine: Engine,
     cas: ArtifactStore,
     budget: TokenBudget | None = None,
+    instructions_suffix: str | None = None,
 ) -> AgentResult:
-    """Run one agent task and persist the invocation record."""
+    """Run one agent task and persist the invocation record.
+
+    `instructions_suffix` is appended after the skill's instructions — the
+    retry path uses it to quote the previous attempt's validation errors. It
+    is not part of the cassette key, and ReplayEngine ignores instructions
+    entirely, so replay behavior cannot depend on it.
+    """
     skill = registry.get(skill_id)
     if budget is not None:
         budget.check_task(task)
 
-    result = engine.run(task, skill.instructions())
+    instructions = skill.instructions()
+    if instructions_suffix:
+        instructions = f"{instructions}\n\n{instructions_suffix}"
+    result = engine.run(task, instructions)
 
     if budget is not None:
         budget.consume(result)
@@ -113,3 +124,65 @@ def dispatch(
         denials=len(result.permission_denials),
     )
     return result
+
+
+# The two typed failures worth one more attempt: both were observed flapping
+# at real size with identical prompts (each reviewer succeeded and failed
+# across sibling fd runs). Exceptions are not retried — they mean the harness
+# broke, not the model — and neither is anything under replay (ADR-0012:
+# a missing or stale cassette must fail loudly, never be papered over).
+RETRYABLE_STATUSES = frozenset({"schema_invalid", "timeout"})
+
+
+def dispatch_with_retry(
+    engine: RunnableEngine,
+    registry: SkillRegistry,
+    skill_id: str,
+    task_factory: Callable[[], AgentTask],
+    db_engine: Engine,
+    cas: ArtifactStore,
+    budget: TokenBudget | None = None,
+) -> AgentResult:
+    """`dispatch`, plus the one bounded repair attempt ADR-0005 promises.
+
+    Each attempt is a fresh task (task ids are unique) and lands its own
+    invocation row — a rescued run is visibly a rescue, never a clean first
+    try. On `schema_invalid` the second attempt sees the validation errors;
+    a timeout has nothing useful to quote.
+    """
+    result = dispatch(
+        engine=engine,
+        registry=registry,
+        skill_id=skill_id,
+        task=task_factory(),
+        db_engine=db_engine,
+        cas=cas,
+        budget=budget,
+    )
+    if result.status not in RETRYABLE_STATUSES or engine.name == "replay":
+        return result
+
+    suffix = None
+    if result.status == "schema_invalid" and result.error:
+        suffix = (
+            "## Your previous attempt failed validation\n"
+            f"The JSON you produced was rejected: {result.error}\n"
+            "Correct exactly these problems and reply again, following the "
+            "output contract."
+        )
+    log.info(
+        "agent.retry",
+        skill=skill_id,
+        prior_status=result.status,
+        prior_error=(result.error or "")[:300],
+    )
+    return dispatch(
+        engine=engine,
+        registry=registry,
+        skill_id=skill_id,
+        task=task_factory(),
+        db_engine=db_engine,
+        cas=cas,
+        budget=budget,
+        instructions_suffix=suffix,
+    )

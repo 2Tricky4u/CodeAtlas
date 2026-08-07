@@ -7,8 +7,10 @@ structural rather than advisory:
 - `cwd` is the pinned read-only checkout;
 - `allowed_tools` is derived from the skill's declared permissions, and a
   `can_use_tool` callback denies anything outside them (network tools always);
-- output must validate against the task's schema; one bounded repair turn is
-  allowed, after which the result is `schema_invalid`;
+- output must validate against the task's schema or the result is
+  `schema_invalid`. The engine validates once; the one bounded repair attempt
+  lives at dispatch level (`dispatch_with_retry`), where the retry lands its
+  own invocation row instead of hiding inside this session;
 - `max_turns` and a wall-clock timeout bound the run.
 """
 
