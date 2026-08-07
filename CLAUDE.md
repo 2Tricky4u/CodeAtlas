@@ -4,7 +4,7 @@
 
 - `uv run poe check` — ruff + mypy --strict + pytest (default tiers). Run before every commit.
 - `uv run poe verify-env` — tool matrix: what is installed vs required per milestone.
-- `uv run pytest -m subproc` / `-m pg` / `-m agent_live` / `-m network` — capability-gated tiers.
+- `uv run pytest -m subproc` / `-m pg` / `-m agent_live` — capability-gated tiers.
 - `uv run poe ui` — dashboard fast loop: `tsc -b` + vitest. `poe ui-full` adds Playwright.
 - `uv run poe check-all` — both halves, e2e included. The release gate; no CI exists.
 - `codeatlas serve --workdir var --port N` + `CODEATLAS_API=http://127.0.0.1:N npm run preview`

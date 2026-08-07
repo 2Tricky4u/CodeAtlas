@@ -8,7 +8,7 @@ import type { GraphIndex, GraphNode } from "../graph";
 // Types before functions: a file's types are its vocabulary and the reason a
 // reader opens it. walk.rs has 148 functions; alphabetical order buried
 // WalkBuilder below all of them.
-export const KIND_ORDER = ["type", "constant", "function"];
+const KIND_ORDER = ["type", "constant", "function"];
 
 /** Definitions grouped by kind (KIND_ORDER first, unknown kinds after), each
  *  group most-used first — fan-in is why a definition matters. */

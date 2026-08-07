@@ -9,7 +9,7 @@ extractor-conflict reconciliation arrives with multi-extractor overlap.)
 
 from __future__ import annotations
 
-from codeatlas.models.graph import ProjectGraph
+from codeatlas.models.graph import DETERMINISTIC_EVIDENCE_KINDS, ProjectGraph
 
 
 def validate_graph(graph: ProjectGraph, valid_paths: set[str] | None = None) -> list[str]:
@@ -44,10 +44,14 @@ def validate_graph(graph: ProjectGraph, valid_paths: set[str] | None = None) -> 
             violations.append(f"edge {edge.id}: source endpoint {edge.source} does not exist")
         if edge.target not in node_ids:
             violations.append(f"edge {edge.id}: target endpoint {edge.target} does not exist")
-        if all(ev.kind == "llm-inference" for ev in edge.evidence):
+        # The evidence-discipline allowlist, load-bearing: an edge must carry
+        # at least one measured kind. (Equivalent to "not all llm-inference"
+        # while the vocabulary is the deterministic set plus llm-inference —
+        # but the allowlist is the rule, so it is what the check reads.)
+        if not any(ev.kind in DETERMINISTIC_EVIDENCE_KINDS for ev in edge.evidence):
             violations.append(
-                f"edge {edge.id}: only llm-inference evidence on a graph edge "
-                "(deterministic edges require at least one non-LLM evidence item)"
+                f"edge {edge.id}: no deterministic evidence on a graph edge "
+                "(every edge requires at least one measured evidence item)"
             )
 
     return violations

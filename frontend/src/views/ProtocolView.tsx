@@ -16,7 +16,6 @@ import {
   api,
   type ProtocolEvidence,
   type ProtocolModel,
-  type ProtocolParticipant,
 } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
 import { Mermaid } from "./Mermaid";
@@ -223,4 +222,3 @@ function EvidenceChip({
   );
 }
 
-export type { ProtocolParticipant };

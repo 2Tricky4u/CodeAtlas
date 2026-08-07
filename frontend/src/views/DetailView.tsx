@@ -122,7 +122,9 @@ export function DetailView() {
                   <td className="note" title={invocation.cassetteKey ?? undefined}>
                     {invocation.engine}
                   </td>
-                  <td className="note">{invocation.modelId ?? "—"}</td>
+                  <td className="note" title={invocation.transcriptSha256 ?? undefined}>
+                    {invocation.modelId ?? "—"}
+                  </td>
                   <td>
                     <Badge tone={invocation.status === "succeeded" ? "ok" : "bad"}>
                       {invocation.status}

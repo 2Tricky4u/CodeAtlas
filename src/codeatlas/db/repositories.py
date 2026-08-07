@@ -6,6 +6,7 @@ Contract payloads go in as `contract_dump()` JSONB verbatim.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -41,16 +42,14 @@ def ensure_repository(
     return row
 
 
-def ensure_revision(
-    session: Session, repository_id: str, sha: str, ref_name: str | None = None
-) -> RevisionRow:
+def ensure_revision(session: Session, repository_id: str, sha: str) -> RevisionRow:
     row = session.scalar(
         select(RevisionRow).where(
             RevisionRow.repository_id == repository_id, RevisionRow.sha == sha
         )
     )
     if row is None:
-        row = RevisionRow(repository_id=repository_id, sha=sha, ref_name=ref_name)
+        row = RevisionRow(repository_id=repository_id, sha=sha)
         session.add(row)
         session.flush()
     return row
@@ -72,6 +71,7 @@ def create_run(
         base_revision_id=base_revision_id,
         pr_number=pr_number,
         status="created",
+        started_at=datetime.now(UTC),
     )
     session.add(row)
     session.flush()
@@ -82,6 +82,9 @@ def get_run(session: Session, run_id: str) -> RunRow | None:
     return session.get(RunRow, run_id)
 
 
+_TERMINAL_RUN_STATUSES = frozenset({"succeeded", "succeeded_with_gaps", "failed", "cancelled"})
+
+
 def set_run_status(session: Session, run_id: str, status: str) -> None:
     if status not in RUN_STATUSES:
         raise ValueError(f"unknown run status: {status!r}")
@@ -89,6 +92,8 @@ def set_run_status(session: Session, run_id: str, status: str) -> None:
     if run is None:
         raise ValueError(f"unknown run: {run_id}")
     run.status = status
+    if status in _TERMINAL_RUN_STATUSES and run.finished_at is None:
+        run.finished_at = datetime.now(UTC)
     session.flush()
 
 

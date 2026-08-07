@@ -17,14 +17,14 @@ export interface RunSummary {
   baseGraph: GraphMeta | null;
 }
 
-export interface GraphMeta {
+interface GraphMeta {
   snapshotId: number;
   nodeCount: number;
   edgeCount: number;
   canonicalSha256: string;
 }
 
-export interface RunEvent {
+interface RunEvent {
   stage: string;
   event: string;
   level: string;
@@ -37,7 +37,7 @@ export interface RunDetail extends RunSummary {
   receipts: Record<string, unknown>[];
 }
 
-export interface CytoscapeElement {
+interface CytoscapeElement {
   data: Record<string, unknown> & { id: string };
 }
 
@@ -57,13 +57,13 @@ export interface SourceSlice {
 
 // --- project-overview.v1 ----------------------------------------------------
 
-export interface OverviewSuggestion {
+interface OverviewSuggestion {
   key?: string | null;
   path: string;
   reason: string;
 }
 
-export interface ModuleSummary {
+interface ModuleSummary {
   key: string;
   path: string;
   package?: string | null;
@@ -96,7 +96,7 @@ export interface ProjectOverview {
 
 // --- graph-view.v1 ----------------------------------------------------------
 
-export interface ViewNode {
+interface ViewNode {
   id: string;
   label: string;
   kind: string;
@@ -108,7 +108,7 @@ export interface ViewNode {
   inCycle?: boolean;
 }
 
-export interface ViewEdge {
+interface ViewEdge {
   id: string;
   source: string;
   target: string;
@@ -117,7 +117,7 @@ export interface ViewEdge {
   violatesLevels?: boolean;
 }
 
-export interface ReadabilityCheck {
+interface ReadabilityCheck {
   name: string;
   passed: boolean;
   value: number;
@@ -147,7 +147,7 @@ export interface GraphViews {
 
 // --- change artifacts -------------------------------------------------------
 
-export interface DiffNode {
+interface DiffNode {
   stableKey: string;
   id: string;
   kind: string;
@@ -157,7 +157,7 @@ export interface DiffNode {
   endLine?: number;
 }
 
-export interface DiffEdge {
+interface DiffEdge {
   id: string;
   kind: string;
   sourceKey: string;
@@ -169,7 +169,7 @@ export interface DiffEdge {
 }
 
 /** Only the labels the diff can prove; interpretation stays in the narrative. */
-export interface ChangeLabel {
+interface ChangeLabel {
   name: string;
   basis: string;
 }
@@ -186,7 +186,7 @@ export interface GraphDiff {
   summary: Record<string, number>;
 }
 
-export interface MovedNode {
+interface MovedNode {
   stableKey: string;
   kind: string;
   label: string;
@@ -194,7 +194,7 @@ export interface MovedNode {
   afterPath: string;
 }
 
-export interface RenameGuess {
+interface RenameGuess {
   beforeKey: string;
   afterKey: string;
   beforeLabel: string;
@@ -204,14 +204,14 @@ export interface RenameGuess {
   basis: string;
 }
 
-export interface SemverLint {
+interface SemverLint {
   id: string;
   level: "major" | "minor";
   summary: string;
   locations?: string[];
 }
 
-export interface PackageApiDelta {
+interface PackageApiDelta {
   name: string;
   added: string[];
   removed: string[];
@@ -229,7 +229,7 @@ export interface ApiChange {
   tools: Record<string, string>;
 }
 
-export interface ImpactedSymbol {
+interface ImpactedSymbol {
   stableKey: string;
   label: string;
   kind: string;
@@ -263,7 +263,7 @@ export type Citation =
   | { kind: "api-item"; item: string }
   | { kind: "impact"; stableKey: string };
 
-export interface ExplanationClaim {
+interface ExplanationClaim {
   text: string;
   citations: Citation[];
 }
@@ -291,7 +291,7 @@ export interface ArchitectureContainer {
   path?: string | null;
 }
 
-export interface ArchitectureRelationship {
+interface ArchitectureRelationship {
   sourceKey: string;
   targetKey: string;
   description: string;
@@ -311,7 +311,7 @@ export interface Architecture {
 
 // --- the review itself ------------------------------------------------------
 
-export interface Requirement {
+interface Requirement {
   id: string;
   sourceKind: string;
   sourceRef?: string | null;
@@ -380,6 +380,7 @@ export interface AgentInvocation {
   completionTokens: number;
   costUsd: number | null;
   durationMs: number;
+  transcriptSha256: string | null;
 }
 
 /** run-manifest.v1 — the reproducibility contract, now openable. */
@@ -433,7 +434,7 @@ export interface ProtocolParticipant {
   evidence: ProtocolEvidence;
 }
 
-export interface ProtocolMessage {
+interface ProtocolMessage {
   name: string;
   producer: string;
   consumer: string;
@@ -441,14 +442,14 @@ export interface ProtocolMessage {
   evidence: ProtocolEvidence;
 }
 
-export interface ProtocolTimeout {
+interface ProtocolTimeout {
   state: string;
   duration: string;
   transition: string;
   evidence?: ProtocolEvidence;
 }
 
-export interface Protocol {
+interface Protocol {
   id: string;
   version: string;
   transport: string;
@@ -527,7 +528,7 @@ export type ProjectCitation =
   | { kind: "package"; name: string }
   | { kind: "cycle"; members: string[] };
 
-export interface ProjectClaim {
+interface ProjectClaim {
   text: string;
   citations: ProjectCitation[];
 }

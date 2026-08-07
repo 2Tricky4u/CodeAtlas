@@ -72,7 +72,9 @@ def test_llm_only_edge_rejected() -> None:
     a, b = _node("pkg:cargo/a@1"), _node("pkg:cargo/b@1")
     e = GraphEdge(id="edge:1", source=a.id, target=b.id, kind="calls", evidence=[LLM])
     violations = validate_graph(_graph([a, b], [e]))
-    assert any("llm-inference" in v for v in violations)
+    # The check reads the DETERMINISTIC_EVIDENCE_KINDS allowlist now, so the
+    # violation is phrased as missing measured evidence.
+    assert any("no deterministic evidence" in v for v in violations)
 
 
 def test_mixed_evidence_edge_allowed() -> None:

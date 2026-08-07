@@ -89,6 +89,20 @@ class TestVerification:
         registry = SkillRegistry.load(tmp_path, allow_untrusted=True)
         assert registry.get("reviewer-x").trust == "experimental"
 
+    def test_network_permission_is_refused_not_silently_dropped(self, tmp_path: Path) -> None:
+        """`network:` was parsed from the registry and discarded — a knob that
+        looked enforced without being enforced. There is no network grant to
+        give, so asking for one fails the load outright."""
+        sha = _write_skill(tmp_path, "reviewer-x")
+        registry_path = _write_registry(tmp_path, "reviewer-x", sha)
+        registry_path.write_text(
+            registry_path.read_text(encoding="utf-8").replace("network: false", "network: true"),
+            encoding="utf-8",
+            newline="\n",
+        )
+        with pytest.raises(RegistryError, match="network"):
+            SkillRegistry.load(tmp_path)
+
     def test_missing_skill_directory_fails_closed(self, tmp_path: Path) -> None:
         _write_registry(tmp_path, "ghost", "sha256:" + "0" * 64)
         with pytest.raises(RegistryError):

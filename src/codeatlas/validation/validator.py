@@ -38,10 +38,6 @@ class ValidationOutcome:
     results: dict[str, ValidationResult] = field(default_factory=dict)
     publishable: list[str] = field(default_factory=list)
 
-    def status_of(self, finding_id: str) -> str:
-        result = self.results.get(finding_id)
-        return result.status if result else "unresolved"
-
 
 def _auto_evidence(finding: Finding, index: VerificationIndex) -> list[ValidationEvidence]:
     """Tool output at the finding's location, attached without asking an agent."""

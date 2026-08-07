@@ -3,7 +3,7 @@
 // backend rather than silently passing here.
 
 export const HEAD = "f".repeat(40);
-export const BASE = "e".repeat(40);
+const BASE = "e".repeat(40);
 export const RUN_ID = "01J4QDGJ4W8Z9X7C5V3B2N1M0K";
 
 export const RUN = {
@@ -728,7 +728,7 @@ export const SOURCE = {
 // one run to the next), and a module big enough to trigger the definition
 // collapse, the focus neighbour cap and the flow-walk truncation.
 
-export const HEAD2 = "d".repeat(40);
+const HEAD2 = "d".repeat(40);
 export const RUN_ID_2 = "01J4QDGJ4W8Z9X7C5V3B2N1M0R";
 
 export const RUN2 = {

@@ -10,14 +10,6 @@ from codeatlas.models.base import ContractModel
 
 SectionId = Literal["before", "after", "structural", "impact", "risks"]
 
-SECTION_TITLES: dict[str, str] = {
-    "before": "What it did before",
-    "after": "What it does now",
-    "structural": "What moved",
-    "impact": "What else could be affected",
-    "risks": "What to look at",
-}
-
 
 class SourceCitation(ContractModel):
     kind: Literal["source"] = "source"

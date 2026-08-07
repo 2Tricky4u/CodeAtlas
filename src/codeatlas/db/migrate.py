@@ -1,4 +1,5 @@
-"""Programmatic Alembic entry points (used by tests, CLI, and runbooks)."""
+"""Programmatic Alembic entry points. Used by the test fixtures; production
+schema changes run `alembic upgrade head` against the keyring-resolved DSN."""
 
 from __future__ import annotations
 

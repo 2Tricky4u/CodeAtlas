@@ -87,6 +87,9 @@ def run(
     replay: Annotated[
         bool, typer.Option(help="Use recorded cassettes instead of the live engine")
     ] = False,
+    max_tokens: Annotated[
+        int, typer.Option(help="Run-wide agent token budget (only spent with --review/--narrate)")
+    ] = 2_000_000,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
     """Analyze a repository at a pinned revision.
@@ -112,7 +115,9 @@ def run(
         # a relative path passes the check here and then fails to exist there.
         repo = str(local.resolve())
 
-    deps = _deps(workdir, test_db, review=review, narrate=narrate, replay=replay)
+    deps = _deps(
+        workdir, test_db, review=review, narrate=narrate, replay=replay, max_tokens=max_tokens
+    )
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
     status = run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
@@ -206,6 +211,7 @@ def review_pr(
         bool, typer.Option(help="Also explain what the project is, not just the change")
     ] = True,
     replay: Annotated[bool, typer.Option(help="Use recorded cassettes")] = False,
+    max_tokens: Annotated[int, typer.Option(help="Run-wide agent token budget")] = 2_000_000,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
     """Review a GitHub pull request in shadow mode — analyze and post NOTHING.
@@ -234,7 +240,9 @@ def review_pr(
     typer.echo(f"  base {pr.base_sha[:12]} -> head {pr.head_sha[:12]}")
     typer.echo(f"  {len(pr.changed_paths)} changed file(s)")
 
-    deps = _deps(workdir, test_db, review=True, narrate=narrate, replay=replay)
+    deps = _deps(
+        workdir, test_db, review=True, narrate=narrate, replay=replay, max_tokens=max_tokens
+    )
     deps.github_owner = owner
     deps.github_repo = repo_name
     deps.pr_number = pr_number

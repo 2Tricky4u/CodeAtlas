@@ -13,7 +13,7 @@
 import type { GraphIndex, GraphNode } from "../graph";
 import { shortLabels } from "./layout";
 
-export interface FlowStep {
+interface FlowStep {
   fromModule: string;
   toModule: string;
   /** The callee whose use created this arrow. */

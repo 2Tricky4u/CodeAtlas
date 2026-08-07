@@ -11,7 +11,6 @@ import {
   EXPLANATION,
   FINDINGS,
   GRAPH,
-  HEAD,
   IMPACT,
   OVERVIEW,
   RUN,
@@ -40,7 +39,6 @@ async function mockApi(page: Page) {
   await page.route(`**/api/runs/${RUN_ID}/artifact/project-explanation`, (r) =>
     r.fulfill({ json: recordedNarrative() }),
   );
-  void HEAD;
 }
 
 function recordedNarrative(): unknown {

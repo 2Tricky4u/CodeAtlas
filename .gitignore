@@ -40,3 +40,6 @@ infra/tools/
 
 # Local database backups
 var/backups/
+
+# TypeScript incremental build state
+frontend/*.tsbuildinfo

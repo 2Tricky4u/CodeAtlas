@@ -54,12 +54,14 @@ packages = ["src/codeatlas"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 timeout = 120
+# `network` and `e2e_ui` were declared here and gated zero tests — the
+# documented `-m network` tier silently selected nothing, and Playwright runs
+# via npm, not pytest. The single live GitHub posting test (M12) will declare
+# its marker when it exists.
 markers = [
     "subproc: needs local git/cargo/rust-analyzer subprocesses",
     "pg: needs local PostgreSQL test database",
     "agent_live: needs logged-in claude CLI (consumes subscription quota)",
-    "network: needs network access / GitHub scratch repository",
-    "e2e_ui: needs Playwright browser",
 ]
 
 [tool.ruff]

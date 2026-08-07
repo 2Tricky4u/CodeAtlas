@@ -5,18 +5,18 @@
 // looking at the same run see the same picture, and the picture can be tested
 // without a browser.
 
-export interface PositionedNode {
+interface PositionedNode {
   id: string;
   label: string;
   level?: number | null;
 }
 
-export interface PositionedEdge {
+interface PositionedEdge {
   source: string;
   target: string;
 }
 
-export interface Point {
+interface Point {
   x: number;
   y: number;
 }
@@ -256,14 +256,14 @@ function componentsWithin(
 
 // --- filtering ---------------------------------------------------------------
 
-export interface FilterableNode {
+interface FilterableNode {
   id: string;
   label: string;
   kind: string;
   producers?: string[];
 }
 
-export interface FilterableEdge {
+interface FilterableEdge {
   id: string;
   source: string;
   target: string;
@@ -279,7 +279,7 @@ export interface Filters {
   producers?: ReadonlySet<string>;
 }
 
-export interface FilterResult<N, E> {
+interface FilterResult<N, E> {
   nodes: N[];
   edges: E[];
   hiddenNodes: number;
@@ -329,7 +329,7 @@ export function applyFilters<N extends FilterableNode, E extends FilterableEdge>
 
 // --- search ------------------------------------------------------------------
 
-export interface SearchableNode {
+interface SearchableNode {
   id: string;
   label: string;
   kind?: string;

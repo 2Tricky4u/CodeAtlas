@@ -101,6 +101,12 @@ class TestFullRun:
                 "finalize",
             } <= stages
 
+            # The timing columns are written, not decorative: created at start,
+            # stamped when the run reaches a terminal status.
+            assert run_row.started_at is not None
+            assert run_row.finished_at is not None
+            assert run_row.finished_at >= run_row.started_at
+
 
 class TestCrashAndResume:
     def test_resume_completes_without_rerunning_extract(

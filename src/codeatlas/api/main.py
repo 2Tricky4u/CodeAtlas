@@ -239,6 +239,7 @@ def create_app(
                 "completionTokens": r.completion_tokens,
                 "costUsd": r.cost_usd,
                 "durationMs": r.duration_ms,
+                "transcriptSha256": r.transcript_sha256,
             }
             for r in rows
         ]

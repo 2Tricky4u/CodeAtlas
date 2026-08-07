@@ -86,6 +86,12 @@ class SkillRegistry:
             if trust != "trusted" and not allow_untrusted:
                 raise RegistryError(f"skill {entry['id']}: trust status {trust!r} is not 'trusted'")
             permissions = entry.get("permissions") or {}
+            if permissions.get("network"):
+                # There is no network grant to give — the task PermissionSet
+                # pins network to False. A registry entry asking for one used
+                # to be read and silently dropped; it is refused instead, so
+                # the knob cannot look enforced without being enforced.
+                raise RegistryError(f"skill {entry['id']}: network access is not grantable")
             skills[entry["id"]] = Skill(
                 id=entry["id"],
                 version=str(entry["version"]),

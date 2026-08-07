@@ -34,7 +34,6 @@
   --warn: #e0af68;
   --bad: #f7768e;
   --info: #7dcfff;
-  --purple: #bb9af7;
 
   /* graph node kinds */
   --kind-package: #7aa2f7;
@@ -173,16 +172,6 @@ pre {
 
 .mono-num {
   font-variant-numeric: tabular-nums;
-}
-
-.kbd {
-  padding: 0 5px;
-  border: 1px solid var(--border-strong);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  background: var(--bg-2);
-  font-size: 11px;
-  color: var(--fg-1);
 }
 
 /* data tables */

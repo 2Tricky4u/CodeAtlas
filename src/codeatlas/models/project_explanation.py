@@ -14,14 +14,6 @@ from codeatlas.models.explanation import DroppedClaim
 
 ProjectSectionId = Literal["what", "structure", "entry", "hotspots", "caution"]
 
-PROJECT_SECTION_TITLES: dict[str, str] = {
-    "what": "What this project is",
-    "structure": "How it is organised",
-    "entry": "Where to start reading",
-    "hotspots": "What everything leans on",
-    "caution": "What will surprise you",
-}
-
 
 class ProjectSourceCitation(ContractModel):
     """A file at the revision the overview describes.
@@ -89,7 +81,6 @@ class ProjectExplanation(ContractModel):
 
 
 __all__ = [
-    "PROJECT_SECTION_TITLES",
     "CycleCitation",
     "DroppedClaim",
     "ModuleCitation",

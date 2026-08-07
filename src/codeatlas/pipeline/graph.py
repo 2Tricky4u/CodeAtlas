@@ -23,7 +23,7 @@ from codeatlas.artifacts.cytoscape import to_cytoscape
 from codeatlas.core.canonical import canonical_json, canonical_sha256
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
-from codeatlas.extractors.base import ExtractorError, GraphFragment
+from codeatlas.extractors.base import Extractor, ExtractorError, GraphFragment
 from codeatlas.extractors.rust.cargo_meta import CargoMetadataExtractor
 from codeatlas.extractors.rust.ra_scip import RaScipExtractor
 from codeatlas.graph.merge import merge_fragments
@@ -40,7 +40,9 @@ log = get_logger("codeatlas.pipeline")
 
 NodeFn = Callable[[PipelineState], dict[str, Any]]
 
-EXTRACTORS = (CargoMetadataExtractor, RaScipExtractor)
+# Typed against the Protocol so a new extractor that drifts from the
+# interface fails mypy here, not at runtime inside a stage.
+EXTRACTORS: tuple[type[Extractor], ...] = (CargoMetadataExtractor, RaScipExtractor)
 
 
 def _load_file_table(
@@ -190,9 +192,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             added_lines = {path: sorted(lines) for path, lines in parse_added_lines(diff).items()}
 
         with Session(deps.engine) as session:
-            revision = repo.ensure_revision(
-                session, repository_id=repository_id, sha=head_sha, ref_name=ref
-            )
+            revision = repo.ensure_revision(session, repository_id=repository_id, sha=head_sha)
             run_row = repo.get_run(session, state["run_id"])
             if run_row is None:
                 raise StageFailure("source_lock", f"run {state['run_id']} not found")
@@ -200,7 +200,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             run_row.status = "running"
             if base_sha:
                 base_revision = repo.ensure_revision(
-                    session, repository_id=repository_id, sha=base_sha, ref_name=base_ref
+                    session, repository_id=repository_id, sha=base_sha
                 )
                 run_row.base_revision_id = base_revision.id
                 run_row.kind = "pr"

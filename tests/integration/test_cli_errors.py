@@ -71,6 +71,16 @@ class TestArgumentValidation:
         assert result.exit_code == 1  # type: ignore[union-attr]
 
 
+class TestBudgetFlag:
+    def test_the_token_budget_is_configurable_from_the_cli(self) -> None:
+        """`_deps(max_tokens=...)` existed with no caller ever passing it —
+        the budget was not configurable despite the parameter existing."""
+        result = CliRunner().invoke(app, ["run", "--help"])
+        assert "--max-tokens" in result.output  # type: ignore[union-attr]
+        result = CliRunner().invoke(app, ["review-pr", "--help"])
+        assert "--max-tokens" in result.output  # type: ignore[union-attr]
+
+
 class TestServe:
     def test_serve_wires_the_read_only_app(self, db_engine, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         captured: dict[str, object] = {}

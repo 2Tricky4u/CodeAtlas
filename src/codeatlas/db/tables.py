@@ -51,7 +51,6 @@ class RepositoryRow(Base):
     id: Mapped[str] = mapped_column(String(200), primary_key=True)
     provider: Mapped[str] = mapped_column(String(20))
     remote_url: Mapped[str | None] = mapped_column(Text)
-    default_branch: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -62,7 +61,6 @@ class RevisionRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     repository_id: Mapped[str] = mapped_column(ForeignKey("repository.id"))
     sha: Mapped[str] = mapped_column(String(40))
-    ref_name: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -91,11 +89,10 @@ class RunRow(Base):
     base_revision_id: Mapped[int | None] = mapped_column(ForeignKey("revision.id"))
     head_revision_id: Mapped[int] = mapped_column(ForeignKey("revision.id"))
     status: Mapped[str] = mapped_column(String(30), default="created")
-    pipeline_version: Mapped[str | None] = mapped_column(String(60))
+    # The manifest carries pipeline version, config hash, toolchain and cost;
+    # duplicating them as columns produced four fields nothing wrote or read.
+    # The registry hash stays: it is what the reproducibility comparison reads.
     skill_registry_sha256: Mapped[str | None] = mapped_column(String(71))
-    config_sha256: Mapped[str | None] = mapped_column(String(71))
-    toolchain: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    cost: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     manifest_sha256: Mapped[str | None] = mapped_column(String(71))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
