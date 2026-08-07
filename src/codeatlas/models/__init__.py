@@ -8,6 +8,7 @@ from codeatlas.models.api import ApiChange, ApiSurface
 from codeatlas.models.architecture import Architecture
 from codeatlas.models.base import ContractModel
 from codeatlas.models.code_answer import CodeAnswer
+from codeatlas.models.coverage import ReviewCoverage
 from codeatlas.models.diff import GraphDiff
 from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
@@ -44,6 +45,7 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "project-explanation.v1.json": ProjectExplanation,
     "project-overview.v1.json": ProjectOverview,
     "graph-view.v1.json": GraphViews,
+    "review-coverage.v1.json": ReviewCoverage,
 }
 
 __all__ = [

@@ -18,6 +18,7 @@ import {
   type Finding,
   type IntentPackage,
   type Publication,
+  type ReviewCoverage,
   type ReviewPayload,
 } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel, SEVERITY_TONE, shortSha } from "../ui";
@@ -31,6 +32,7 @@ export function ReviewView() {
   const [payload, setPayload] = useState<ReviewPayload | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
+  const [coverage, setCoverage] = useState<ReviewCoverage | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,8 +51,9 @@ export function ReviewView() {
       api.reviewPayload(runId),
       api.approvals(runId),
       api.publications(runId),
+      api.reviewCoverage(runId),
     ])
-      .then(([i, c, f, m, p, a, pubs]) => {
+      .then(([i, c, f, m, p, a, pubs, cov]) => {
         setIntent(i);
         setCandidates(c);
         setValidated(f);
@@ -58,6 +61,7 @@ export function ReviewView() {
         setPayload(p);
         setApprovals(a);
         setPublications(pubs);
+        setCoverage(cov);
         setLoaded(true);
       })
       .catch((e: Error) => setError(e.message));
@@ -80,6 +84,8 @@ export function ReviewView() {
     <div data-testid="review-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <ApprovalPanel approvals={approvals} payload={payload} publications={publications} />
       {candidates && <FunnelPanel candidates={candidates} findings={validated ?? []} />}
+
+      {coverage && <CoveragePanel coverage={coverage} />}
 
       {intent && <IntentPanel intent={intent} />}
 
@@ -227,6 +233,64 @@ function FunnelPanel({
     </Panel>
   );
 }
+
+function CoveragePanel({ coverage }: { coverage: ReviewCoverage }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  return (
+    <Panel title="what was actually read" count={`${coverage.sourcePathCount} files offered`}>
+      <p className="note" style={{ marginTop: 0 }}>
+        measured by the engine from the Read-tool stream — never the model's own claim · a
+        reviewer that reported nothing reads as unknown, not as 0% or 100%
+      </p>
+      <table className="data" data-testid="coverage">
+        <thead>
+          <tr>
+            <th>reviewer</th>
+            <th>read</th>
+            <th>not read</th>
+          </tr>
+        </thead>
+        <tbody>
+          {coverage.reviewers.map((reviewer) => (
+            <tr key={reviewer.skillId}>
+              <td className="note">{reviewer.skillId.replace("reviewer-", "")}</td>
+              {reviewer.measured ? (
+                <>
+                  <td className="mono-num">
+                    {reviewer.filesRead.length} of {coverage.sourcePathCount}
+                  </td>
+                  <td>
+                    {reviewer.notRead.length === 0 ? (
+                      <span className="note">nothing skipped</span>
+                    ) : expanded === reviewer.skillId ? (
+                      <span className="note" data-testid="not-read-list">
+                        {reviewer.notRead.join(" · ")}
+                      </span>
+                    ) : (
+                      <button
+                        className="note"
+                        style={{ cursor: "pointer" }}
+                        data-testid="show-not-read"
+                        onClick={() => setExpanded(reviewer.skillId)}
+                      >
+                        {reviewer.notRead.length} file(s) — show
+                      </button>
+                    )}
+                  </td>
+                </>
+              ) : (
+                <td colSpan={2} className="note" data-testid="coverage-unmeasured">
+                  not reported by this engine (replayed recording) — coverage unknown
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Panel>
+  );
+}
+
 
 function ApprovalPanel({
   approvals,

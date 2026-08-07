@@ -140,6 +140,7 @@ class ClaudeAgentEngine:
         prompt = _build_prompt(task, instructions, self._resolve_inputs(task))
         started = time.monotonic()
         text_parts: list[str] = []
+        files_read: set[str] = set()
         usage = UsageStats(
             prompt_tokens=0, completion_tokens=0, cost_usd=None, wall_ms=0, model_id="unknown"
         )
@@ -163,6 +164,14 @@ class ClaudeAgentEngine:
                                             duration_ms=0,
                                         )
                                     )
+                                elif isinstance(block, ToolUseBlock) and block.name == "Read":
+                                    # Measured coverage: the engine watches the
+                                    # tool stream; the model never self-reports.
+                                    raw = str(block.input.get("file_path", ""))
+                                    if raw:
+                                        files_read.add(
+                                            normalize_read_path(raw, task.workspace.checkout_path)
+                                        )
                         elif isinstance(message, ResultMessage):
                             usage = _usage_from(message)
                             structured = getattr(message, "structured_output", None)
@@ -195,7 +204,24 @@ class ClaudeAgentEngine:
             permission_denials=denials,
             transcript_ref=None,
             error=error,
+            files_read=sorted(files_read),
         )
+
+
+def normalize_read_path(raw: str, checkout_path: str) -> str:
+    """Repo-relative forward-slash when inside the checkout; verbatim-posix otherwise.
+
+    Honesty over prettiness: a read outside the pinned checkout stays visible
+    as the absolute path it was, rather than being prettified into looking
+    like repository content.
+    """
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            return candidate.relative_to(Path(checkout_path)).as_posix()
+        except ValueError:
+            return candidate.as_posix()
+    return candidate.as_posix()
 
 
 def _permission_violation(

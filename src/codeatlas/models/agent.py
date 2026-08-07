@@ -69,3 +69,7 @@ class AgentResult(ContractModel):
     permission_denials: list[str] = Field(default_factory=list)
     transcript_ref: str | None = Field(default=None, pattern=SHA256_PATTERN)
     error: str | None = None
+    # Files the agent actually opened with the Read tool — measured by the
+    # engine from the tool stream, never claimed by the model. None when the
+    # engine does not report reads (replay of older recordings).
+    files_read: list[str] | None = None

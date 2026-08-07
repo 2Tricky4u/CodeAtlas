@@ -555,6 +555,23 @@ export interface ProjectExplanation {
   notes?: string[];
 }
 
+/** What each reviewer actually read — measured by the engine from the
+ *  Read-tool stream, never claimed by the model. measured=false means the
+ *  engine reported nothing (replay of an older recording): unknown, not 0%. */
+export interface ReviewerCoverage {
+  skillId: string;
+  measured: boolean;
+  filesRead: string[];
+  notRead: string[];
+}
+
+export interface ReviewCoverage {
+  schemaVersion: string;
+  revision: string;
+  sourcePathCount: number;
+  reviewers: ReviewerCoverage[];
+}
+
 export interface Finding {
   findingId: string;
   category: string;
@@ -626,6 +643,8 @@ export const api = {
   intent: (id: string) => getOptional<IntentPackage>(`/api/runs/${id}/artifact/intent`),
   candidateFindings: (id: string) =>
     getOptional<CandidateFindings>(`/api/runs/${id}/artifact/candidate-findings`),
+  reviewCoverage: (id: string) =>
+    getOptional<ReviewCoverage>(`/api/runs/${id}/artifact/review-coverage`),
   reviewMarkdown: (id: string) => getOptionalText(`/api/runs/${id}/artifact/review-markdown`),
   reviewPayload: (id: string) =>
     getOptional<ReviewPayload>(`/api/runs/${id}/artifact/review-payload-dry-run`),

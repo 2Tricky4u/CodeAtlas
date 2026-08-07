@@ -34,6 +34,7 @@ from codeatlas.artifacts.structurizr.validate import (
 from codeatlas.core.logging import get_logger
 from codeatlas.db import repositories as repo
 from codeatlas.db.tables import FileRow, FindingRow
+from codeatlas.models.coverage import ReviewCoverage, ReviewerCoverage
 from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
@@ -165,6 +166,31 @@ def stage_reviewers(deps: PipelineDeps, ctx: ReviewContext) -> None:
     )
     if outcome.failed_skills:
         ctx.notes.append(f"reviewers that did not complete: {', '.join(outcome.failed_skills)}")
+
+    # Coverage, measured not claimed: what the engine saw each reviewer read,
+    # diffed against the files every reviewer was offered. A reviewer whose
+    # engine reported nothing carries measured=False with empty lists —
+    # unknown is a third state, never rendered as read or unread.
+    offered = set(source_paths)
+    coverage = ReviewCoverage(
+        revision=ctx.revision_sha,
+        source_path_count=len(source_paths),
+        reviewers=[
+            ReviewerCoverage(
+                skill_id=skill_id,
+                measured=read is not None,
+                files_read=sorted(offered & set(read)) if read is not None else [],
+                not_read=sorted(offered - set(read)) if read is not None else [],
+            )
+            for skill_id, read in sorted(outcome.files_read.items())
+        ],
+    )
+    ctx.publish(
+        deps,
+        "review-coverage",
+        coverage.contract_dump(),
+        schema_id="review-coverage.v1",
+    )
 
 
 def stage_validate(

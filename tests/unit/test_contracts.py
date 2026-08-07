@@ -41,6 +41,7 @@ EXPECTED_SCHEMAS = {
     "adr-audit.v1.json",
     "code-answer.v1.json",
     "graph-view.v1.json",
+    "review-coverage.v1.json",
 }
 
 
@@ -227,6 +228,27 @@ AGENT_RESULT_EXAMPLE: dict[str, Any] = {
     },
     "transcriptRef": "sha256:" + "4" * 64,
     "error": None,
+    "filesRead": ["kvstore/src/api.rs", "kvstore/src/cache.rs"],
+}
+
+REVIEW_COVERAGE_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "revision": "a" * 40,
+    "sourcePathCount": 4,
+    "reviewers": [
+        {
+            "skillId": "reviewer-correctness",
+            "measured": True,
+            "filesRead": ["kvstore/src/api.rs", "kvstore/src/cache.rs"],
+            "notRead": ["kvstore/src/lib.rs", "kvstore/src/storage.rs"],
+        },
+        {
+            "skillId": "reviewer-security",
+            "measured": False,
+            "filesRead": [],
+            "notRead": [],
+        },
+    ],
 }
 
 MANIFEST_EXAMPLE: dict[str, Any] = {
@@ -727,6 +749,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "adr-audit.v1.json": ADR_AUDIT_EXAMPLE,
     "code-answer.v1.json": CODE_ANSWER_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
+    "review-coverage.v1.json": REVIEW_COVERAGE_EXAMPLE,
 }
 
 

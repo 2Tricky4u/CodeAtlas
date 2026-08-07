@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/review-coverage.v1.json",
+  "title": "Review Coverage",
+  "description": "What each reviewer actually read, measured by the engine from the Read-tool stream — never claimed by the model. A reviewer with measured=false reported nothing (replay of an older recording, or an engine without read reporting): its lists are empty and mean 'unknown', not 'nothing'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "sourcePathCount", "reviewers"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourcePathCount": {
+      "description": "How many source files were offered to every reviewer.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "reviewers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skillId", "measured", "filesRead", "notRead"],
+        "properties": {
+          "skillId": { "type": "string", "minLength": 1 },
+          "measured": { "type": "boolean" },
+          "filesRead": {
+            "description": "Offered source files the engine saw this reviewer open, sorted.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "notRead": {
+            "description": "Offered source files the engine never saw opened, sorted. Empty when measured=false — unknown is never rendered as unread.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

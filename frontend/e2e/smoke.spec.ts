@@ -15,6 +15,7 @@ import {
   DETAIL2,
   FILES,
   INTENT,
+  REVIEW_COVERAGE,
   REVIEW_MARKDOWN,
   REVIEW_PAYLOAD,
   DIFF,
@@ -119,6 +120,7 @@ async function mockApi(
   await reviewArtifact("intent", INTENT);
   await reviewArtifact("candidate-findings", CANDIDATE_FINDINGS);
   await reviewArtifact("review-payload-dry-run", REVIEW_PAYLOAD);
+  await reviewArtifact("review-coverage", REVIEW_COVERAGE);
   await page.route(`**/api/runs/${RUN_ID}/artifact/review-markdown`, (route) =>
     withReview
       ? route.fulfill({ body: REVIEW_MARKDOWN, headers: { "content-type": "text/markdown" } })
@@ -901,6 +903,16 @@ test.describe("review view", () => {
     await expect(table).toContainText("remembered from run 01J4QDGJ4W8Z9X7C5V3B2N1M0Z");
     await expect(table).toContainText("required by the wire format");
     await expect(page.getByTestId("verdict-key")).toContainText("remembered verdict is replayed");
+  });
+
+  test("coverage is measured, and unknown is neither read nor unread", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    const table = page.getByTestId("coverage");
+    await expect(table).toContainText("3 of 4");
+    await expect(page.getByTestId("coverage-unmeasured")).toContainText("coverage unknown");
+    // The skipped list is collapsed until asked for.
+    await page.getByTestId("show-not-read").click();
+    await expect(page.getByTestId("not-read-list")).toContainText("kvstore/src/storage.rs");
   });
 
   test("the funnel shows each candidate's confidence", async ({ page }) => {

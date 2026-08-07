@@ -9,7 +9,7 @@ conclusions: there is no channel, not merely a rule against it.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,9 @@ REVIEWER_SKILLS: tuple[str, ...] = (
 class ReviewOutcome:
     findings: list[Finding]
     failed_skills: list[str]  # reviewers that did not complete; coverage is degraded
+    # Per reviewer: files the engine measured it reading, or None when the
+    # engine reported nothing (replay of older recordings). Never model-claimed.
+    files_read: dict[str, list[str] | None] = field(default_factory=dict)
 
 
 def build_reviewer_inputs(
@@ -107,7 +110,7 @@ def run_reviewers(
     than silently presenting partial review as complete.
     """
 
-    def _one(skill_id: str) -> tuple[str, list[Finding] | None]:
+    def _one(skill_id: str) -> tuple[str, list[Finding] | None, list[str] | None]:
         def task_factory() -> AgentTask:
             return build_task(
                 skill=registry.get(skill_id),
@@ -129,19 +132,21 @@ def run_reviewers(
             )
         except Exception as exc:
             log.error("reviewer.dispatch_failed", skill=skill_id, error=str(exc))
-            return skill_id, None
+            return skill_id, None, None
         if result.status != "succeeded" or result.output is None:
             log.error("reviewer.failed", skill=skill_id, status=result.status, error=result.error)
-            return skill_id, None
+            return skill_id, None, result.files_read
         findings = [Finding.model_validate(item) for item in result.output.get("findings", [])]
-        return skill_id, findings
+        return skill_id, findings, result.files_read
 
     with ThreadPoolExecutor(max_workers=len(skills)) as pool:
         results = list(pool.map(_one, skills))
 
     batches: list[list[Finding]] = []
     failed: list[str] = []
-    for skill_id, findings in sorted(results, key=lambda r: r[0]):
+    files_read: dict[str, list[str] | None] = {}
+    for skill_id, findings, read in sorted(results, key=lambda r: r[0]):
+        files_read[skill_id] = read
         if findings is None:
             failed.append(skill_id)
         else:
@@ -154,4 +159,4 @@ def run_reviewers(
         findings=len(merged),
         failed_skills=failed,
     )
-    return ReviewOutcome(findings=merged, failed_skills=failed)
+    return ReviewOutcome(findings=merged, failed_skills=failed, files_read=files_read)

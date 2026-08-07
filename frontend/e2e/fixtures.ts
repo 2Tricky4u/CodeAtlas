@@ -385,6 +385,28 @@ export const CANDIDATE_FINDINGS = {
   ],
 };
 
+/** Measured coverage: correctness read 3 of 4 offered files; security's
+ *  engine reported nothing (a replayed recording) — unknown, never 0%. */
+export const REVIEW_COVERAGE = {
+  schemaVersion: "1.0.0",
+  revision: HEAD,
+  sourcePathCount: 4,
+  reviewers: [
+    {
+      skillId: "reviewer-correctness",
+      measured: true,
+      filesRead: ["kvstore/src/api.rs", "kvstore/src/cache.rs", "kvstore/src/lib.rs"],
+      notRead: ["kvstore/src/storage.rs"],
+    },
+    {
+      skillId: "reviewer-security",
+      measured: false,
+      filesRead: [],
+      notRead: [],
+    },
+  ],
+};
+
 export const REVIEW_MARKDOWN = `# CodeAtlas review
 
 1 finding survived validation of 2 candidates.
