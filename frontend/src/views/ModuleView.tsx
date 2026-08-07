@@ -91,6 +91,8 @@ export function ModuleView() {
         </button>
       </header>
 
+      {overview && <ReadingOrder overview={overview} path={path} />}
+
       {cycle && (
         <div className="caveat" data-testid="cycle-note">
           this module cannot be read alone — it is mutually dependent with{" "}
@@ -181,6 +183,46 @@ export function ModuleView() {
       )}
 
       <SourcePanel request={source} onClose={() => setSource(null)} />
+    </div>
+  );
+}
+
+/** "Start here" as a walk rather than a list: when this module is one of the
+ *  overview's ranked entry points, say which step it is and where the walk
+ *  goes next — so "where do I begin" keeps answering past the first click.
+ *  Derived from the overview already on the page; nothing new is fetched. */
+function ReadingOrder({ overview, path }: { overview: ProjectOverview; path: string }) {
+  // startHere, not entryPoints: the walk is the *ranked* list with a reason
+  // per step, the same one the overview page numbers. entryPoints is the raw
+  // set of roots, and live it begins at an auxiliary crate's lib.rs.
+  const order = overview.startHere;
+  const position = order.findIndex((entry) => entry.path === path);
+  if (position === -1) return null;
+  const entry = order[position]!;
+  const previous = order[position - 1];
+  const next = order[position + 1];
+  return (
+    <div
+      className="panel"
+      style={{ padding: "8px 12px", display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}
+      data-testid="reading-order"
+    >
+      <Badge tone="info">
+        reading order · {position + 1} of {order.length}
+      </Badge>
+      <span className="note">{entry.reason}</span>
+      <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        {previous && (
+          <ModuleLink path={previous.path} title={previous.reason}>
+            <span data-testid="reading-prev">← {previous.path.split("/").pop()}</span>
+          </ModuleLink>
+        )}
+        {next && (
+          <ModuleLink path={next.path} title={next.reason}>
+            <span data-testid="reading-next">{next.path.split("/").pop()} →</span>
+          </ModuleLink>
+        )}
+      </span>
     </div>
   );
 }

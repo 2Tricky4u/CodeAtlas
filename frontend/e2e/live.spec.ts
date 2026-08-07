@@ -81,8 +81,12 @@ test.describe("live", () => {
   });
 
   test("review", async ({ page }) => {
+    // A run analysed without the review stages must say so — the funnel on a
+    // reviewed run, the statement on any other. Blank is the only failure.
     await page.goto(`/#/runs/${RUN}/review`);
-    await expect(page.getByTestId("review-view")).toBeVisible();
+    await expect(
+      page.getByTestId("review-view").or(page.getByText("this run was not reviewed")),
+    ).toBeVisible();
     await page.waitForTimeout(600);
     await page.screenshot({ path: "../var/ui-shots/live-review.png", fullPage: true });
   });
@@ -123,6 +127,35 @@ test.describe("live", () => {
     await page.getByRole("button", { name: "open source" }).click();
     await page.waitForTimeout(600);
     await page.screenshot({ path: "../var/ui-shots/live-source.png", fullPage: true });
+  });
+
+  test("palette and reading order at real size", async ({ page }) => {
+    // core/main.rs is the overview's first entry point; the page should say so
+    // and offer the walk's next step.
+    await page.goto(`/#/runs/${RUN}/module/crates/core/main.rs`);
+    await expect(page.getByTestId("reading-order")).toContainText("1 of 7");
+    // Then jump elsewhere via the palette.
+    await page.keyboard.press("Control+k");
+    await page.getByTestId("palette-input").fill("WalkBuilder");
+    await page.getByTestId("palette-match").first().click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: "../var/ui-shots/live-palette.png" });
+  });
+
+  test("the graph is fetched once per run", async ({ page }) => {
+    let graphFetches = 0;
+    page.on("request", (request) => {
+      if (request.url().includes("/graph")) graphFetches += 1;
+    });
+    await page.goto(`/#/runs/${RUN}/module/crates/core/main.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await page.goto(`/#/runs/${RUN}/module/crates/ignore/src/walk.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await page.goto(`/#/runs/${RUN}/map`);
+    await page.getByTestId("path-tab").click();
+    await expect(page.getByTestId("path-from")).toBeVisible();
+    expect(graphFetches).toBe(1);
   });
 
   test("focus on a real symbol", async ({ page }) => {

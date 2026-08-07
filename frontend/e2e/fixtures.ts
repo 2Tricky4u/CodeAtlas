@@ -64,9 +64,12 @@ export const OVERVIEW = {
     dependsOn: [],
   },
   orphans: [],
-  entryPoints: [{ key: "file:kvstore/src/lib.rs", path: "kvstore/src/lib.rs", reason: "library root (lib.rs)" }],
+  entryPoints: [
+    { key: "file:kvstore/src/lib.rs", path: "kvstore/src/lib.rs", reason: "library root (lib.rs)" },
+  ],
   startHere: [
-    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", reason: "3 module(s) depend on it; depends on nothing" },
+    { key: "file:kvstore/src/lib.rs", path: "kvstore/src/lib.rs", reason: "library root (lib.rs)" },
+    { key: "file:kvstore/src/cache.rs", path: "kvstore/src/cache.rs", reason: "most depended on" },
   ],
   counts: { packages: 1, files: 4, symbols: 28, edges: 30 },
   notes: [],

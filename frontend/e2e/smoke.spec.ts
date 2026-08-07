@@ -156,7 +156,7 @@ test.describe("project overview", () => {
     await page.goto(`/#/runs/${RUN_ID}/overview`);
     const start = page.getByTestId("start-here");
     await expect(start).toContainText("kvstore/src/cache.rs");
-    await expect(start).toContainText("3 module(s) depend on it");
+    await expect(start).toContainText("most depended on");
   });
 
   test("clicking a suggestion explains the module rather than dead-ending in text", async ({
@@ -278,6 +278,51 @@ test.describe("module page", () => {
     await page.goto(`/#/runs/${RUN_ID}/findings`);
     await page.getByTestId("module-link").first().click();
     await expect(page.getByTestId("module-view")).toBeVisible();
+  });
+});
+
+test.describe("command palette", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("ctrl-k opens it from any tab; a symbol lands on its definition", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/findings`);
+    // The listener mounts with the run layout; pressing before hydration is a no-op.
+    await expect(page.getByTestId("findings-view")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByTestId("palette")).toBeVisible();
+    await page.getByTestId("palette-input").fill("evict");
+    await page.getByTestId("palette-match").first().click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page).toHaveURL(/symbol=/);
+  });
+
+  test("no match is stated, and escape closes", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("overview-view")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByTestId("palette")).toBeVisible();
+    await page.getByTestId("palette-input").fill("zzghost");
+    await expect(page.getByTestId("palette")).toContainText("nothing in this run's graph");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("palette")).toHaveCount(0);
+  });
+});
+
+test.describe("reading order", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a start-here module knows its step and where the walk goes", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    const order = page.getByTestId("reading-order");
+    await expect(order).toContainText("2 of 2");
+    await expect(order).toContainText("most depended on");
+    await expect(page.getByTestId("reading-prev")).toContainText("lib.rs");
+  });
+
+  test("a module outside the walk shows no step", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/api.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page.getByTestId("reading-order")).toHaveCount(0);
   });
 });
 

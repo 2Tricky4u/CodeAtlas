@@ -17,6 +17,7 @@ import { DetailView } from "./views/DetailView";
 import { FindingsView } from "./views/FindingsView";
 import { MapView } from "./views/MapView";
 import { ModuleView } from "./views/ModuleView";
+import { CommandPalette } from "./CommandPalette";
 import { OverviewView } from "./views/OverviewView";
 import { ProtocolView } from "./views/ProtocolView";
 import { ReviewView } from "./views/ReviewView";
@@ -200,6 +201,7 @@ function RunLayout() {
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 16 }}>
         <Outlet />
       </div>
+      <CommandPalette />
     </>
   );
 }
