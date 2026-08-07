@@ -115,3 +115,25 @@ class TestRepoRegistry:
         for skill in registry.skills.values():
             assert skill.trust == "trusted"
             assert skill.permissions.network is False
+
+    def test_registry_directories_and_generator_agree(self) -> None:
+        """The one generated artifact that had no drift gate.
+
+        registry.yaml is written by scripts/update_registry.py from a
+        hard-coded list. The existing verification is one-directional: every
+        *registered* skill must hash-match. A new skill directory with no
+        registry entry — or an entry dropped from the generator while its
+        directory remains — was invisible. Three-way set equality closes it.
+        """
+        import sys
+
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        from update_registry import SKILLS
+
+        on_disk = {child.name for child in SKILLS_DIR.iterdir() if (child / "SKILL.md").is_file()}
+        registered = set(SkillRegistry.load(SKILLS_DIR).skills)
+        generated = {str(skill["id"]) for skill in SKILLS}
+        assert on_disk == registered == generated, (
+            "skill directories, registry.yaml and update_registry.SKILLS disagree — "
+            "run `uv run python scripts/update_registry.py` and check in the result"
+        )
