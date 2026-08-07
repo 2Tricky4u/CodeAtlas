@@ -1408,12 +1408,13 @@ test.describe("the code explorer", () => {
   });
 
   test("source text carries the grammar of its extension", async ({ page }) => {
-    // Lexical colour, not evidence: `pub fn` renders as a keyword because
-    // the file is .rs, and the note says text colour is only the grammar.
+    // Lexical colour, not evidence: Shiki tokens arrive as inline-coloured
+    // text spans because the file is .rs; the note says text colour is only
+    // the grammar.
     await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
     await page.getByRole("button", { name: "open source" }).click();
     await expect(
-      page.locator('[data-testid="source-panel"] .hljs-keyword').first(),
+      page.locator('[data-testid="source-panel"] .line span[style*="color"]').first(),
     ).toBeVisible();
   });
 

@@ -13,11 +13,11 @@
   },
   "dependencies": {
     "cytoscape": "^3.30.0",
-    "highlight.js": "^11.11.1",
     "mermaid": "^11.16.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "shiki": "^4.4.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

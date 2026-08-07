@@ -174,45 +174,9 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 
-/* syntax colour (highlight.js) — presentation only, tokenized by the
-   extension's grammar. The measured channel is the span border + badge;
-   these classes make no claim that anything was measured. */
-.hljs-comment,
-.hljs-quote {
-  color: var(--fg-2);
-  font-style: italic;
-}
-.hljs-keyword,
-.hljs-selector-tag {
-  color: var(--accent);
-}
-.hljs-string,
-.hljs-regexp {
-  color: var(--ok);
-}
-.hljs-number,
-.hljs-literal,
-.hljs-built_in,
-.hljs-symbol {
-  color: #ff9e64;
-}
-.hljs-title {
-  color: var(--info);
-}
-.hljs-title.class_,
-.hljs-type {
-  color: #bb9af7;
-}
-.hljs-attr,
-.hljs-attribute,
-.hljs-meta,
-.hljs-section {
-  color: var(--warn);
-}
-.hljs-punctuation,
-.hljs-operator {
-  color: var(--fg-1);
-}
+/* Syntax colour comes from Shiki's Tokyo Night theme as inline token
+   colours — no classes needed here. The measured channel is the span
+   border + badge; text colour makes no claim that anything was measured. */
 
 /* data tables */
 table.data {

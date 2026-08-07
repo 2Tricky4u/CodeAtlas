@@ -8,12 +8,12 @@
 // no node for stays plain text, and the panel says so once rather than
 // implying full coverage. A link here means something was measured.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type SourceSlice } from "../api";
 import { graphIndex, type GraphIndex, type GraphNode } from "../graph";
 import { KindDot, Panel } from "../ui";
-import { highlightToLines, languageFor } from "./highlight";
+import { languageFor, tokenizeLines, type ThemedToken } from "./highlight";
 import { kindColor } from "./layout";
 import { SymbolLink } from "./links";
 
@@ -36,6 +36,7 @@ export function SourcePanel({
   const { runId } = useParams();
   const [slice, setSlice] = useState<SourceSlice | null>(null);
   const [index, setIndex] = useState<GraphIndex | null>(null);
+  const [tokens, setTokens] = useState<ThemedToken[][] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,15 +53,23 @@ export function SourcePanel({
     if (runId) graphIndex(runId).then(setIndex).catch(() => setIndex(null));
   }, [request, runId]);
 
-  // Syntax colour: deterministic tokenization by the extension's grammar —
-  // presentation only. The measured channel stays the border and the badge.
-  const syntax = useMemo(
-    () =>
-      slice && request
-        ? highlightToLines(slice.lines.join("\n"), languageFor(request.path))
-        : null,
-    [slice, request],
-  );
+  // Syntax colour: VS Code's own grammars via Shiki, chosen strictly by the
+  // extension — presentation only. The measured channel stays the border and
+  // the badge. Async because the grammars load once on first use; a plain
+  // render appears first and colours arrive with the tokens.
+  useEffect(() => {
+    setTokens(null);
+    if (!slice || !request) return;
+    let stale = false;
+    tokenizeLines(slice.lines.join("\n"), languageFor(request.path))
+      .then((lines) => {
+        if (!stale) setTokens(lines);
+      })
+      .catch(() => setTokens(null));
+    return () => {
+      stale = true;
+    };
+  }, [slice, request]);
 
   if (!request) return null;
 
@@ -121,10 +130,16 @@ export function SourcePanel({
                   }
                 >
                   <span className="ln mono-num">{number}</span>
-                  {syntax?.[lineIndex] ? (
-                    // hljs entity-escapes the source and emits only its own
-                    // span tags; the splitter keeps each line balanced.
-                    <span dangerouslySetInnerHTML={{ __html: syntax[lineIndex]! }} />
+                  {tokens?.[lineIndex]?.length ? (
+                    // Tokens render as text nodes with a colour — the source
+                    // can never become markup, by construction.
+                    <span>
+                      {tokens[lineIndex]!.map((token, tokenIndex) => (
+                        <span key={tokenIndex} style={{ color: token.color }}>
+                          {token.content}
+                        </span>
+                      ))}
+                    </span>
                   ) : (
                     <span>{line || " "}</span>
                   )}

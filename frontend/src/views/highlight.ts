@@ -1,34 +1,23 @@
 // Syntax colour for the source viewer — presentation, not evidence.
 //
-// This is deterministic lexical tokenization: keywords, strings and comments
-// coloured by the grammar the file's *extension* names. It claims nothing was
-// measured — the measured channel stays what it was (the kind-coloured span
-// border and the fan-in badge). The language is never guessed from content:
-// an extension we do not know renders plain, which is the honest default.
+// Shiki runs the same TextMate grammars VS Code does (the closest web
+// equivalent to nvim's tree-sitter fidelity), themed Tokyo Night — the
+// palette this app already speaks. Tokenization is deterministic and the
+// grammar comes only from the file's *extension*, never content-guessed: an
+// unknown extension renders plain, which is the honest default. The output
+// is tokens, not HTML, so the source text is rendered as React text nodes —
+// nothing the file contains can become markup.
+//
+// The measured channel is untouched: only the kind-coloured span border and
+// the fan-in badge claim anything was measured.
 
-import hljs from "highlight.js/lib/core";
-import bash from "highlight.js/lib/languages/bash";
-import ini from "highlight.js/lib/languages/ini";
-import json from "highlight.js/lib/languages/json";
-import markdown from "highlight.js/lib/languages/markdown";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import typescript from "highlight.js/lib/languages/typescript";
-import yaml from "highlight.js/lib/languages/yaml";
-
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("ini", ini);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("markdown", markdown);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("typescript", typescript);
+import { createHighlighterCore, type HighlighterCore, type ThemedToken } from "shiki/core";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 const BY_EXTENSION: Record<string, string> = {
   rs: "rust",
-  toml: "ini",
-  lock: "ini", // Cargo.lock is TOML
+  toml: "toml",
+  lock: "toml", // Cargo.lock is TOML
   json: "json",
   md: "markdown",
   markdown: "markdown",
@@ -38,9 +27,9 @@ const BY_EXTENSION: Record<string, string> = {
   bash: "bash",
   py: "python",
   ts: "typescript",
-  tsx: "typescript",
-  js: "typescript",
-  mjs: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  mjs: "javascript",
 };
 
 /** The grammar this path's extension names, or null — never content-guessed. */
@@ -51,50 +40,51 @@ export function languageFor(path: string): string | null {
   return BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? null;
 }
 
-/**
- * Highlight a whole slice and return one HTML string per line.
- *
- * Highlighting line-by-line would break multi-line constructs (a block
- * comment's second line would render as code), so the slice is tokenized as
- * one text and then split, closing every open span at each newline and
- * reopening it on the next line — each line stays a self-contained, balanced
- * fragment. Returns null when the language is unknown so callers fall back to
- * plain text rendering rather than innerHTML.
- */
-export function highlightToLines(code: string, language: string | null): string[] | null {
-  if (!language) return null;
-  const html = hljs.highlight(code, { language, ignoreIllegals: true }).value;
-  return splitPreservingSpans(html);
+// One highlighter per page session, created on first use — the same memoise-
+// and-evict-on-failure shape graphIndex uses, for the same reason.
+let highlighterPromise: Promise<HighlighterCore> | null = null;
+
+function highlighter(): Promise<HighlighterCore> {
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighterCore({
+      themes: [import("shiki/themes/tokyo-night.mjs")],
+      langs: [
+        import("shiki/langs/rust.mjs"),
+        import("shiki/langs/toml.mjs"),
+        import("shiki/langs/json.mjs"),
+        import("shiki/langs/markdown.mjs"),
+        import("shiki/langs/yaml.mjs"),
+        import("shiki/langs/bash.mjs"),
+        import("shiki/langs/python.mjs"),
+        import("shiki/langs/typescript.mjs"),
+        import("shiki/langs/tsx.mjs"),
+        import("shiki/langs/javascript.mjs"),
+      ],
+      engine: createJavaScriptRegexEngine({ forgiving: true }),
+    });
+    highlighterPromise.catch(() => {
+      highlighterPromise = null;
+    });
+  }
+  return highlighterPromise;
 }
 
-function splitPreservingSpans(html: string): string[] {
-  const lines: string[] = [];
-  const open: string[] = [];
-  let current = "";
-  let i = 0;
-  while (i < html.length) {
-    const ch = html[i]!;
-    if (ch === "\n") {
-      lines.push(current + "</span>".repeat(open.length));
-      current = open.join("");
-      i += 1;
-    } else if (html.startsWith("</span>", i)) {
-      open.pop();
-      current += "</span>";
-      i += 7;
-    } else if (ch === "<") {
-      // hljs output contains only its own <span class="hljs-…"> tags; the
-      // source text itself arrives entity-escaped.
-      const end = html.indexOf(">", i);
-      const tag = html.slice(i, end + 1);
-      open.push(tag);
-      current += tag;
-      i = end + 1;
-    } else {
-      current += ch;
-      i += 1;
-    }
-  }
-  lines.push(current + "</span>".repeat(open.length));
-  return lines;
+export type { ThemedToken };
+
+/**
+ * Tokenize a whole slice: one array of themed tokens per input line.
+ *
+ * The slice is tokenized as one text, so multi-line constructs keep their
+ * meaning — a block comment's second line is still a comment. Shiki already
+ * returns tokens grouped by line, so the line count matches the input and no
+ * HTML splitting is involved. Null when the language is unknown; callers
+ * render plain text.
+ */
+export async function tokenizeLines(
+  code: string,
+  language: string | null,
+): Promise<ThemedToken[][] | null> {
+  if (!language) return null;
+  const shiki = await highlighter();
+  return shiki.codeToTokensBase(code, { lang: language, theme: "tokyo-night" });
 }
