@@ -14,6 +14,7 @@ export function DetailView() {
   useEffect(() => {
     if (!runId) return;
     setDetail(null);
+    setError(null);
     api
       .runDetail(runId)
       .then(setDetail)

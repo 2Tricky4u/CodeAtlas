@@ -27,11 +27,17 @@ export function ArchitectureView() {
   useEffect(() => {
     if (!runId) return;
     setModel(undefined);
+    setError(null);
     api
       .architecture(runId)
       .then(setModel)
       .catch((e: Error) => setError(e.message));
-    api.structurizrDsl(runId).then(setDsl).catch(() => setDsl(null));
+    // 404 resolves to null (a run without a DSL is a state); any other
+    // failure surfaces — swallowing it rendered a broken server as absence.
+    api
+      .structurizrDsl(runId)
+      .then(setDsl)
+      .catch((e: Error) => setError(e.message));
   }, [runId]);
 
   if (error) return <ErrorBox error={error} />;

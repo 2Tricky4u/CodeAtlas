@@ -33,13 +33,25 @@ export function ProtocolView() {
 
   useEffect(() => {
     if (!runId) return;
+    // Reset everything, not just the model: a stale error (or the previous
+    // run's diagram) surviving a run switch is the previous run's protocol
+    // wearing this run's heading.
     setModel(undefined);
+    setError(null);
+    setSequence(null);
+    setState(null);
     api
       .protocolModel(runId)
       .then(setModel)
       .catch((e: Error) => setError(e.message));
-    api.protocolDiagram(runId, "sequence").then(setSequence).catch(() => setSequence(null));
-    api.protocolDiagram(runId, "state").then(setState).catch(() => setState(null));
+    api
+      .protocolDiagram(runId, "sequence")
+      .then(setSequence)
+      .catch((e: Error) => setError(e.message));
+    api
+      .protocolDiagram(runId, "state")
+      .then(setState)
+      .catch((e: Error) => setError(e.message));
     api
       .runDetail(runId)
       .then((detail) => setRevision(detail.headSha))

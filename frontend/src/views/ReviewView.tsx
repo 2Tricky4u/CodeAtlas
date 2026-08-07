@@ -35,13 +35,17 @@ export function ReviewView() {
   useEffect(() => {
     if (!runId) return;
     setLoaded(false);
+    setError(null);
+    // No inner catches: each helper already maps a 404 to null (absence is a
+    // state), so anything that rejects here is a real failure and must land
+    // in the error box, not render as "this run was not reviewed".
     Promise.all([
-      api.intent(runId).catch(() => null),
-      api.candidateFindings(runId).catch(() => null),
-      api.findings(runId).catch(() => []),
-      api.reviewMarkdown(runId).catch(() => null),
-      api.reviewPayload(runId).catch(() => null),
-      api.approvals(runId).catch(() => []),
+      api.intent(runId),
+      api.candidateFindings(runId),
+      api.findings(runId),
+      api.reviewMarkdown(runId),
+      api.reviewPayload(runId),
+      api.approvals(runId),
     ])
       .then(([i, c, f, m, p, a]) => {
         setIntent(i);

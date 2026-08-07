@@ -11,6 +11,7 @@ import {
   ARCHITECTURE,
   CANDIDATE_FINDINGS,
   DETAIL,
+  DETAIL2,
   INTENT,
   REVIEW_MARKDOWN,
   REVIEW_PAYLOAD,
@@ -18,18 +19,23 @@ import {
   EXPLANATION,
   FINDINGS,
   GRAPH,
+  GRAPH2,
   HEAD,
   IMPACT,
   OVERVIEW,
+  OVERVIEW2,
   PROJECT_EXPLANATION,
   PROTOCOL_MODEL,
   PROTOCOL_NONE,
   PROTOCOL_SEQUENCE,
   RUN,
+  RUN2,
   RUN_ID,
+  RUN_ID_2,
   SOURCE,
   STRUCTURIZR_DSL,
   VIEWS,
+  VIEWS2,
 } from "./fixtures";
 
 async function mockApi(
@@ -39,7 +45,22 @@ async function mockApi(
   const withChange = options.withChange ?? true;
   const withNarrative = options.withNarrative ?? true;
   const withReview = options.withReview ?? true;
-  await page.route("**/api/runs", (route) => route.fulfill({ json: [RUN] }));
+  await page.route("**/api/runs", (route) => route.fulfill({ json: [RUN, RUN2] }));
+
+  // The second run: repository kind, big module, no artifacts. Routed first so
+  // a test can shadow any run-1 route (LIFO) without touching run 2.
+  await page.route(`**/api/runs/${RUN_ID_2}`, (route) => route.fulfill({ json: DETAIL2 }));
+  await page.route(`**/api/runs/${RUN_ID_2}/overview`, (route) =>
+    route.fulfill({ json: OVERVIEW2 }),
+  );
+  await page.route(`**/api/runs/${RUN_ID_2}/views`, (route) => route.fulfill({ json: VIEWS2 }));
+  await page.route(`**/api/runs/${RUN_ID_2}/graph`, (route) => route.fulfill({ json: GRAPH2 }));
+  await page.route(`**/api/runs/${RUN_ID_2}/findings`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/runs/${RUN_ID_2}/artifact/**`, (route) =>
+    route.fulfill({ status: 404, json: { detail: "none" } }),
+  );
+  await page.route(`**/api/runs/${RUN_ID_2}/approval`, (route) => route.fulfill({ json: [] }));
+
   await page.route(`**/api/runs/${RUN_ID}`, (route) => route.fulfill({ json: DETAIL }));
   await page.route(`**/api/runs/${RUN_ID}/overview`, (route) => route.fulfill({ json: OVERVIEW }));
   await page.route(`**/api/runs/${RUN_ID}/views`, (route) => route.fulfill({ json: VIEWS }));
@@ -871,5 +892,299 @@ test.describe("findings and run detail", () => {
     await expect(view).toContainText("cargo-metadata");
     await expect(view).toContainText("cargo metadata --format-version 1 --locked");
     await expect(view).toContainText("base graph");
+  });
+});
+
+test.describe("error surfaces", () => {
+  // A 500 and a 404 are different facts: "this run has none" versus "the
+  // server broke". Every case here pins that a break is *shown*, because a
+  // break rendered as absence is a silent failure wearing a state's costume.
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a failing run list is an error, not an empty sidebar", async ({ page }) => {
+    await page.route("**/api/runs", (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto("/");
+    await expect(page.getByRole("alert")).toBeVisible();
+  });
+
+  test("no runs at all is stated", async ({ page }) => {
+    await page.route("**/api/runs", (route) => route.fulfill({ json: [] }));
+    await page.goto("/");
+    await expect(page.getByTestId("runs-list")).toContainText("no runs yet");
+  });
+
+  test("a failing overview shows the error", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/overview`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByRole("alert")).toBeVisible();
+  });
+
+  test("a failing views payload shows the error on the map", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/views`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await expect(page.getByRole("alert")).toBeVisible();
+  });
+
+  test("a broken DSL artifact is an error, not a missing document", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/structurizr-dsl`, (route) =>
+      route.fulfill({ status: 500, body: "boom", headers: { "content-type": "text/plain" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/architecture`);
+    await expect(page.getByRole("alert")).toBeVisible();
+  });
+
+  test("a broken review markdown is an error, not an unreviewed run", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/review-markdown`, (route) =>
+      route.fulfill({ status: 500, body: "boom", headers: { "content-type": "text/plain" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByRole("alert")).toBeVisible();
+  });
+
+  test("a protocol artifact that does not exist reads as not-modelled", async ({ page }) => {
+    // Distinct from PROTOCOL_NONE (an artifact saying "no protocol"): here the
+    // run never produced the artifact at all.
+    await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-model`, (route) =>
+      route.fulfill({ status: 404, json: { detail: "none" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByTestId("empty-state")).toContainText("did not model a protocol");
+  });
+});
+
+test.describe("switching runs", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("run A's map error does not follow the reader to run B", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/views`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await page.goto(`/#/runs/${RUN_ID_2}/map`);
+    await expect(page.locator('[data-testid="graph"] canvas').first()).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+
+  test("run A's protocol error does not become run B's protocol", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-model`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/protocol`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await page.goto(`/#/runs/${RUN_ID_2}/protocol`);
+    await expect(page.getByTestId("empty-state")).toContainText("did not model a protocol");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+});
+
+test.describe("flows on the page", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("the overview draws the entry-point flow with its measured hops", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    const flow = page.getByTestId("flow").first();
+    await expect(flow).toBeVisible();
+    await expect(flow).toContainText("3 modules");
+    await expect(flow).toContainText("2 hop(s)");
+  });
+
+  test("a module the flow does not pass through says so", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("no-flows")).toContainText("passes through here");
+  });
+
+  test("a graph fetch failure is an error, not a silently absent panel", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/graph`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("flows-error")).toBeVisible();
+  });
+
+  test("a walk past the cap states its remainder", async ({ page }) => {
+    // RUN2's entry chain crosses 17 modules; the walk stops at 14 steps and
+    // must say the chain continues — the disclosure flows.ts promises.
+    await page.goto(`/#/runs/${RUN_ID_2}/overview`);
+    await expect(page.getByTestId("flow-truncated")).toContainText("continues");
+  });
+});
+
+test.describe("the module page at scale", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  const BIG = `/#/runs/${RUN_ID_2}/module/big/src/lib.rs`;
+
+  test("types come first and fan-in ranks within a kind", async ({ page }) => {
+    await page.goto(BIG);
+    const definitions = page.getByTestId("definition");
+    // Alpha (fan-in 26) leads the types; f13 (called by three siblings) leads
+    // the functions, ahead of the alphabet: positions 0-3 types, 4-15 the
+    // first twelve constants, 16 the top-ranked function.
+    await expect(definitions.nth(0)).toHaveText("Alpha");
+    await expect(definitions.nth(16)).toHaveText("f13");
+  });
+
+  test("a large kind collapses to its most-used members, expandable", async ({ page }) => {
+    await page.goto(BIG);
+    await expect(page.getByTestId("definition")).toHaveCount(4 + 12 + 12);
+    await page
+      .getByTestId("show-all-definitions")
+      .filter({ hasText: "14 less-used function" })
+      .click();
+    await expect(page.getByTestId("definition")).toHaveCount(4 + 12 + 26);
+  });
+
+  test("a symbol deep link expands its own group and only its own", async ({ page }) => {
+    await page.goto(`${BIG}?symbol=${encodeURIComponent("sym2:f20")}`);
+    await expect(page.getByTestId("definition").filter({ hasText: "f20" })).toBeVisible();
+    // The constants group (13 > GROUP_LIMIT) stays collapsed: exactly one
+    // show-all button remains, and it is not the functions'.
+    await expect(page.getByTestId("show-all-definitions")).toHaveCount(1);
+    await expect(page.getByTestId("show-all-definitions")).toContainText("constant");
+  });
+
+  test("the public-surface panel names this file's items, not substrings", async ({ page }) => {
+    // Back on run 1: the API delta contains compute_output, which contains
+    // `put` — cache.rs must claim evict_oldest and not compute_output.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    const apiHere = page.getByTestId("api-here");
+    await expect(apiHere).toContainText("evict_oldest");
+    await expect(apiHere).not.toContainText("compute_output");
+  });
+});
+
+test.describe("ask, continued", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("enter submits; a cached answer and a module citation both render", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) =>
+      route.fulfill({
+        json: {
+          question: "who calls put?",
+          scope: "kvstore/src/cache.rs",
+          answer: "Only the request handler.",
+          claims: [
+            {
+              text: "handle_request is the sole caller.",
+              citations: [{ kind: "module", key: "kvstore/src/api.rs" }],
+            },
+          ],
+          refused: null,
+          droppedClaims: [],
+          cached: true,
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("ask-input").fill("who calls put?");
+    await page.getByTestId("ask-input").press("Enter");
+    await expect(page.getByTestId("ask-answer")).toContainText("cached");
+    await expect(page.getByTestId("ask-claims")).toContainText("kvstore/src/api.rs");
+  });
+
+  test("an unreachable server is said in words", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) => route.abort());
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByTestId("ask-input").fill("why?");
+    await page.getByTestId("ask-submit").click();
+    await expect(page.getByTestId("ask-error")).toContainText("could not reach the server");
+  });
+});
+
+test.describe("palette by keyboard", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("arrows and enter select without a mouse", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("overview-view")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await page.getByTestId("palette-input").fill("evict");
+    await expect(page.getByTestId("palette-match").first()).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await expect(page).toHaveURL(/symbol=/);
+  });
+
+  test("ctrl-k toggles closed again", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/overview`);
+    await expect(page.getByTestId("overview-view")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByTestId("palette")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByTestId("palette")).toHaveCount(0);
+  });
+});
+
+test.describe("matrix semantics", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a cell reads row-depends-on-column, with the measured weight", async ({ page }) => {
+    // The one assertion that would catch a transposed matrix: the fixture's
+    // edge is api.rs -> cache.rs, so the readout must name them in that order.
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByRole("button", { name: /dependency matrix/ }).click();
+    await page.getByTestId("matrix-hit").hover();
+    const readout = page.getByTestId("matrix-readout");
+    await expect(readout).toContainText("kvstore/src/api.rs");
+    await expect(readout).toContainText("kvstore/src/cache.rs");
+    await expect(readout).toContainText("2 reference(s)");
+  });
+});
+
+test.describe("focus at scale", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a neighbourhood past the cap says how much is not drawn", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID_2}/map`);
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("Alpha");
+    await page.getByTestId("focus-match").filter({ hasText: "type · Alpha" }).first().click();
+    // 26 readers plus the containing file: 27 neighbours, 24 drawn.
+    await expect(page.getByTestId("focus-truncated")).toContainText("24 of 27");
+  });
+});
+
+test.describe("one graph fetch per run", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("module pages, the path view and focus mode share one payload", async ({ page }) => {
+    // The live suite pins this against ripgrep; this pins it in the default
+    // loop, where the regression would otherwise hide until a live run.
+    let graphFetches = 0;
+    page.on("request", (request) => {
+      if (request.url().includes(`/api/runs/${RUN_ID}/graph`)) graphFetches += 1;
+    });
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/api.rs`);
+    await expect(page.getByTestId("module-view")).toBeVisible();
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await expect(page.getByTestId("path-from")).toBeVisible();
+    await page.getByTestId("focus-tab").click();
+    await page.getByTestId("focus-search").fill("evict");
+    await expect(page.getByTestId("focus-match").first()).toBeVisible();
+    expect(graphFetches).toBe(1);
+  });
+});
+
+test.describe("path view failure", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("a graph that cannot load is an error, not eternal loading", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/graph`, (route) =>
+      route.fulfill({ status: 500, json: { detail: "boom" } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/map`);
+    await page.getByTestId("path-tab").click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByText("loading the graph…")).toHaveCount(0);
   });
 });

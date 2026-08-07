@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import cytoscape from "cytoscape";
 import { api, type GraphPayload, type GraphView, type GraphViews } from "../api";
+import { graphPayload } from "../graph";
 import { Badge, Empty, ErrorBox, Loading, Panel } from "../ui";
 import { ModuleLink } from "./links";
 import { PathView } from "./PathView";
@@ -36,6 +37,7 @@ export function MapView() {
     if (!runId) return;
     setViews(null);
     setActiveId(null);
+    setError(null);
     api
       .views(runId)
       .then((payload) => {
@@ -459,10 +461,13 @@ function FocusView({
   const [focusId, setFocusId] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({});
   const [hidden, setHidden] = useState({ nodes: 0, edges: 0 });
+  const [capped, setCapped] = useState<{ total: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.runGraph(runId).then(setGraph).catch(() => setGraph(null));
+    // The shared memoised payload — the same fetch every module page rides.
+    // A raw api.runGraph here was the one bypass of the once-per-run rule.
+    graphPayload(runId).then(setGraph).catch(() => setGraph(null));
   }, [runId]);
 
   // What this graph actually contains, so the filters offer real choices rather
@@ -517,6 +522,10 @@ function FocusView({
     }
     const shown = [...neighbors].slice(0, NEIGHBOR_LIMIT + 1);
     const shownSet = new Set(shown);
+    // The cap is disclosed like the filters are: dropping neighbours without
+    // a count reads as "this is the whole neighbourhood" when it is not.
+    const totalNeighbours = neighbors.size - 1;
+    setCapped(totalNeighbours > NEIGHBOR_LIMIT ? { total: totalNeighbours } : null);
     const inScope = graph.elements.nodes.filter((node) => shownSet.has(node.data.id));
     const scopedEdges = edges.filter(
       (edge) =>
@@ -665,6 +674,15 @@ function FocusView({
             <p className="note" style={{ marginBottom: 0 }}>
               showing the 1-hop neighborhood · tap a neighbor to refocus, tap the center to
               open its source
+              {capped && (
+                <>
+                  {" · "}
+                  <span data-testid="focus-truncated">
+                    showing {NEIGHBOR_LIMIT} of {capped.total} neighbours — the rest are not
+                    drawn
+                  </span>
+                </>
+              )}
               {hidden.nodes + hidden.edges > 0 && (
                 <>
                   {" · "}

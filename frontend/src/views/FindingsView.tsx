@@ -27,6 +27,7 @@ export function FindingsView() {
   useEffect(() => {
     if (!runId) return;
     setFindings(null);
+    setError(null);
     api.runDetail(runId).then(setRun).catch(() => setRun(null));
     api
       .findings(runId)

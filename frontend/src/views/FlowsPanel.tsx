@@ -25,10 +25,26 @@ export function FlowsPanel({
   const [index, setIndex] = useState<GraphIndex | null>(null);
   const [overview, setOverview] = useState<ProjectOverview | null>(null);
   const [drawn, setDrawn] = useState(DRAWN_LIMIT);
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
-    graphIndex(runId).then(setIndex).catch(() => setIndex(null));
-    api.overview(runId).then(setOverview).catch(() => setOverview(null));
+    setDrawn(DRAWN_LIMIT);
+    setFailed(null);
+    // A failed fetch must not render as "no panel" — silence here reads as
+    // "this project has no flows", which is a different fact entirely.
+    graphIndex(runId)
+      .then(setIndex)
+      .catch((e: Error) => {
+        setIndex(null);
+        setFailed(e.message);
+      });
+    api
+      .overview(runId)
+      .then(setOverview)
+      .catch((e: Error) => {
+        setOverview(null);
+        setFailed(e.message);
+      });
   }, [runId]);
 
   const flows = useMemo(() => {
@@ -40,6 +56,16 @@ export function FlowsPanel({
       flow.steps.some((s) => s.fromModule === throughModule || s.toModule === throughModule),
     );
   }, [index, overview, throughModule]);
+
+  if (failed) {
+    return (
+      <Panel title={throughModule ? "flows through this module" : "the main flows"}>
+        <div className="caveat" data-testid="flows-error">
+          the flows could not be derived: {failed}
+        </div>
+      </Panel>
+    );
+  }
 
   if (flows === null) return null;
 
@@ -92,6 +118,11 @@ function FlowFigure({ flow }: { flow: Flow }) {
         <Badge>{flow.moduleCount} modules</Badge>
         <Badge>{flow.steps.length} hop(s)</Badge>
       </div>
+      {flow.truncated && (
+        <p className="caveat" style={{ margin: "0 0 4px" }} data-testid="flow-truncated">
+          stopped after {flow.steps.length} hops — the chain continues past what is drawn
+        </p>
+      )}
       <Mermaid source={flowToMermaid(flow)} />
     </div>
   );

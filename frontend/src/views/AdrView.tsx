@@ -39,6 +39,7 @@ export function AdrView() {
   useEffect(() => {
     if (!runId) return;
     setAudit(undefined);
+    setError(null);
     api
       .adrAudit(runId)
       .then(setAudit)

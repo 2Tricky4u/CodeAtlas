@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import { graphIndex, shortestPath, type GraphIndex, type GraphNode, type PathStep } from "../graph";
-import { Empty, Panel } from "../ui";
+import { Empty, ErrorBox, Panel } from "../ui";
 import { kindColor, rankMatches } from "./layout";
 
 export function PathView({
@@ -20,11 +20,18 @@ export function PathView({
   onOpenSource: (path: string) => void;
 }) {
   const [index, setIndex] = useState<GraphIndex | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [from, setFrom] = useState<GraphNode | null>(null);
   const [to, setTo] = useState<GraphNode | null>(null);
 
   useEffect(() => {
-    graphIndex(runId).then(setIndex).catch(() => setIndex(null));
+    setError(null);
+    graphIndex(runId)
+      .then(setIndex)
+      .catch((e: Error) => {
+        setIndex(null);
+        setError(e.message);
+      });
   }, [runId]);
 
   const path = useMemo(
@@ -32,6 +39,8 @@ export function PathView({
     [index, from, to],
   );
 
+  // A terminal failure must not wear the loading message forever.
+  if (error) return <ErrorBox error={error} />;
   if (!index) return <Empty>loading the graph…</Empty>;
 
   return (

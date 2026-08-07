@@ -138,6 +138,14 @@ export const GRAPH = {
       { data: { id: "file:kvstore/src/api.rs", label: "kvstore/src/api.rs", kind: "file", path: "kvstore/src/api.rs", producers: ["rust-analyzer"] } },
       { data: { id: "sym:handle", label: "handle_request", kind: "function", path: "kvstore/src/api.rs", startLine: 15, producers: ["rust-analyzer"] } },
       { data: { id: "sym:parse", label: "parse", kind: "function", path: "kvstore/src/api.rs", startLine: 40, producers: ["rust-analyzer"] } },
+      // The entry-point chain lib.rs -> api.rs -> fmt.rs: three modules, so
+      // deriveFlows finally has a flow to draw under mock. It joins the api
+      // component without touching the cache one — the no-path test depends
+      // on handle never reaching evict.
+      { data: { id: "file:kvstore/src/lib.rs", label: "kvstore/src/lib.rs", kind: "file", path: "kvstore/src/lib.rs", producers: ["rust-analyzer"] } },
+      { data: { id: "sym:run", label: "run", kind: "function", path: "kvstore/src/lib.rs", startLine: 5, producers: ["rust-analyzer"] } },
+      { data: { id: "file:kvstore/src/fmt.rs", label: "kvstore/src/fmt.rs", kind: "file", path: "kvstore/src/fmt.rs", producers: ["rust-analyzer"] } },
+      { data: { id: "sym:render", label: "render", kind: "function", path: "kvstore/src/fmt.rs", startLine: 8, producers: ["rust-analyzer"] } },
     ],
     edges: [
       { data: { id: "e0", source: "pkg:kvstore", target: "file:kvstore/src/cache.rs", kind: "contains" } },
@@ -147,6 +155,10 @@ export const GRAPH = {
       { data: { id: "e3", source: "file:kvstore/src/api.rs", target: "sym:handle", kind: "contains" } },
       { data: { id: "e4", source: "file:kvstore/src/api.rs", target: "sym:parse", kind: "contains" } },
       { data: { id: "e5", source: "sym:handle", target: "sym:parse", kind: "calls" } },
+      { data: { id: "e6", source: "file:kvstore/src/lib.rs", target: "sym:run", kind: "contains" } },
+      { data: { id: "e7", source: "file:kvstore/src/fmt.rs", target: "sym:render", kind: "contains" } },
+      { data: { id: "e8", source: "sym:run", target: "sym:handle", kind: "calls" } },
+      { data: { id: "e9", source: "sym:handle", target: "sym:render", kind: "calls" } },
     ],
   },
 };
@@ -187,7 +199,12 @@ export const API_CHANGE = {
   packages: [
     {
       name: "kvstore",
-      added: ["pub fn kvstore::cache::Cache::evict(&mut self, usize) -> usize"],
+      added: [
+        "pub fn kvstore::cache::Cache::evict(&mut self, usize) -> usize",
+        // `compute_output` contains `put` as a substring; the module page must
+        // not attribute this item to cache.rs's `put`.
+        "pub fn kvstore::api::compute_output(&self) -> usize",
+      ],
       removed: ["pub fn kvstore::cache::Cache::evict_oldest(&mut self, usize)"],
       unchangedCount: 112,
       requiredBump: "major",
@@ -600,4 +617,123 @@ export const SOURCE = {
     "        for _ in 0..n {",
     "            match self.order.pop_front() {",
   ],
+};
+
+// --- a second run: repository kind, at a size the first fixture stays too ----
+// --- small to exercise -------------------------------------------------------
+//
+// Serves two purposes: run-switch scenarios (stale state must not leak from
+// one run to the next), and a module big enough to trigger the definition
+// collapse, the focus neighbour cap and the flow-walk truncation.
+
+export const HEAD2 = "d".repeat(40);
+export const RUN_ID_2 = "01J4QDGJ4W8Z9X7C5V3B2N1M0R";
+
+export const RUN2 = {
+  id: RUN_ID_2,
+  repositoryId: "local/bigmod",
+  kind: "repository",
+  status: "succeeded",
+  headSha: HEAD2,
+  baseSha: null,
+  prNumber: null,
+  createdAt: "2026-08-07T09:00:00+00:00",
+  manifestSha256: "sha256:" + "4".repeat(64),
+  graph: { snapshotId: 3, nodeCount: 81, edgeCount: 95, canonicalSha256: "sha256:" + "5".repeat(64) },
+  baseGraph: null,
+};
+
+export const DETAIL2 = { ...RUN2, events: [], receipts: [] };
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const bigElements = (() => {
+  const nodes: { data: Record<string, unknown> }[] = [
+    { data: { id: "file2:big/src/lib.rs", label: "big/src/lib.rs", kind: "file", path: "big/src/lib.rs", producers: ["rust-analyzer"] } },
+  ];
+  const edges: { data: Record<string, unknown> }[] = [];
+  const define = (id: string, label: string, kind: string, startLine: number) => {
+    nodes.push({ data: { id, label, kind, path: "big/src/lib.rs", startLine, producers: ["rust-analyzer"] } });
+    edges.push({ data: { id: `c:${id}`, source: "file2:big/src/lib.rs", target: id, kind: "contains" } });
+  };
+
+  // Four types with descending fan-in: Alpha 26, Beta 2, Gamma 1, Delta 0.
+  define("sym2:Alpha", "Alpha", "type", 3);
+  define("sym2:Beta", "Beta", "type", 9);
+  define("sym2:Gamma", "Gamma", "type", 15);
+  define("sym2:Delta", "Delta", "type", 21);
+  // Thirteen constants: one past GROUP_LIMIT, so this group collapses — and
+  // must stay collapsed when a *function* is deep-linked.
+  for (let i = 0; i < 13; i += 1) define(`sym2:K${pad(i)}`, `K${pad(i)}`, "constant", 30 + i);
+  // Twenty-six functions, every one reading Alpha — the focus hub past the
+  // 24-neighbour cap. f13 is called by three siblings, so fan-in ranking must
+  // lift it above the alphabet.
+  for (let i = 0; i < 26; i += 1) {
+    const id = `sym2:f${pad(i)}`;
+    define(id, `f${pad(i)}`, "function", 60 + i * 4);
+    edges.push({ data: { id: `r:${id}`, source: id, target: "sym2:Alpha", kind: "reads" } });
+  }
+  for (const caller of ["f00", "f01", "f02"]) {
+    edges.push({ data: { id: `call:${caller}`, source: `sym2:${caller}`, target: "sym2:f13", kind: "calls" } });
+  }
+  edges.push({ data: { id: "rb:0", source: "sym2:f00", target: "sym2:Beta", kind: "reads" } });
+  edges.push({ data: { id: "rb:1", source: "sym2:f01", target: "sym2:Beta", kind: "reads" } });
+  edges.push({ data: { id: "rg:0", source: "sym2:f00", target: "sym2:Gamma", kind: "reads" } });
+
+  // A 17-module call chain: the flow walk must hit its 14-step cap and state
+  // the remainder instead of silently ending the story.
+  for (let i = 0; i < 17; i += 1) {
+    const path = `big/src/c${pad(i)}.rs`;
+    const file = `file2:${path}`;
+    const fn = `sym2:g${pad(i)}`;
+    nodes.push({ data: { id: file, label: path, kind: "file", path, producers: ["rust-analyzer"] } });
+    nodes.push({ data: { id: fn, label: `g${pad(i)}`, kind: "function", path, startLine: 1, producers: ["rust-analyzer"] } });
+    edges.push({ data: { id: `cc:${i}`, source: file, target: fn, kind: "contains" } });
+    if (i > 0) {
+      edges.push({ data: { id: `gc:${i}`, source: `sym2:g${pad(i - 1)}`, target: fn, kind: "calls" } });
+    }
+  }
+  return { nodes, edges };
+})();
+
+export const GRAPH2 = { revision: HEAD2, repository: "local/bigmod", elements: bigElements };
+
+export const OVERVIEW2 = {
+  repositoryId: "local/bigmod",
+  revision: HEAD2,
+  packages: [
+    { name: "big", version: "0.1.0", manifestPath: "big/Cargo.toml", fileCount: 18, symbolCount: 60 },
+  ],
+  modules: [
+    { key: "file2:big/src/lib.rs", path: "big/src/lib.rs", package: "big", fanIn: 0, fanOut: 0, level: 0, symbolCount: 43 },
+    { key: "file2:big/src/c00.rs", path: "big/src/c00.rs", package: "big", fanIn: 0, fanOut: 1, level: 1, symbolCount: 1 },
+  ],
+  levels: [{ level: 0, modules: ["big/src/lib.rs"] }],
+  cycles: [],
+  hubs: { dependedOn: [], dependsOn: [] },
+  orphans: [],
+  entryPoints: [{ key: "file2:big/src/c00.rs", path: "big/src/c00.rs", reason: "binary root" }],
+  startHere: [],
+  counts: { packages: 1, files: 18, symbols: 60, edges: 95 },
+  notes: [],
+};
+
+export const VIEWS2 = {
+  repositoryId: "local/bigmod",
+  revision: HEAD2,
+  views: [
+    {
+      id: "packages",
+      kind: "package-dependencies",
+      title: "Packages",
+      layout: "elk-layered",
+      nodes: [{ id: "pkg:big", label: "big", kind: "package", level: 0, fanIn: 0, fanOut: 0 }],
+      edges: [],
+      suppressedEdges: 0,
+      readability: { passed: true, checks: [] },
+      notes: [],
+    },
+  ],
+  refused: [],
+  notes: [],
 };
