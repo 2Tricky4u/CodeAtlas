@@ -23,7 +23,9 @@
   no timestamps in hashed payloads. Double runs at the same revision must hash identically.
 - **No silent failure.** Nodes return typed errors; a degraded run says so in its report.
 - **All external writes are approval-gated.** Publication code paths must re-check the approval
-  row, config flag, and `CODEATLAS_KILL_SWITCH` — never rely on control flow alone.
+  row, the config flag (`CODEATLAS_PUBLISH_ENABLED=1`, default off — ADR-0015), and
+  `CODEATLAS_KILL_SWITCH` — never rely on control flow alone. `codeatlas publish <id>` or
+  `approve --publish` are the only paths out, and both go through the gate.
 - **TDD.** Failing test first, minimal implementation, green, refactor. No placeholders.
 
 ## Style
