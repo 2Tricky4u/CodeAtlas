@@ -45,7 +45,12 @@ large groups collapsed, `pub` items marked), who uses each definition, what it i
 the flows passing through it, its place in the suggested reading order, and, on a
 pull-request run, exactly what the change did *here*. The header's `interface m/n` badge
 is the measured module depth — how much of the module is surface versus implementation,
-read from the signatures rust-analyzer rendered (`pub(crate)` counts as internal).
+read from the signatures rust-analyzer rendered (`pub(crate)` counts as internal) — and
+`changed N×` is the file's churn, counted from git history in one receipted pass (the
+overview ranks the most-changed modules, and the map draws churn as border thickness).
+Every run also exports its understanding as an
+[`llms.txt`](https://llmstxt.org/)-shaped artifact (`/api/runs/{id}/artifact/llms-txt`)
+so other agents can consume what was measured without knowing this tool.
 
 ![ripgrep's walk.rs: 176 definitions ranked and collapsed, cycle membership, usage](docs/screenshots/module.png)
 
@@ -102,7 +107,11 @@ Reviewers propose; a validator that never saw the proposal re-examines each find
 fresh context, with the real build/test toolchain at hand. The review tab shows the whole
 funnel — including what did **not** survive, because a table of survivors looks identical
 whether the check rejected eleven candidates or none. Every verdict carries a written
-rationale and a confidence, both visible in the funnel.
+rationale and a confidence, both visible in the funnel. A coverage panel shows what each
+reviewer **actually read** — measured by the engine from the tool stream, never the
+model's own claim, with "unknown" honestly distinct from read and unread. A reviewer
+that fails with invalid output or a timeout gets exactly one retry (the validation
+errors quoted back), and both attempts stay visible in the agent ledger.
 
 Rejections are also **remembered across runs** (ADR-0016): a finding that recurs at
 byte-identical code is suppressed instead of re-validated, shown with the original run

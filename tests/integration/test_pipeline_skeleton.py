@@ -96,11 +96,18 @@ class TestFullRun:
             cyto = json.loads(deps.cas.get(manifest["outputs"]["cytoscape"]))
             assert len(cyto["elements"]["nodes"]) == snapshot.node_count
 
+            # The llms-txt export exists on every run — with narration off it
+            # falls back to the measured counts, never invented prose.
+            llms = deps.cas.get(manifest["outputs"]["llms-txt"]).decode("utf-8")
+            assert llms.startswith("# local/kvstore\n")
+            assert "measured by CodeAtlas" in llms
+
             stages = {e.stage for e in run_row.events if e.event == "finished"}
             assert {
                 "source_lock",
                 "extract",
                 "build_graph",
+                "export_llms",
                 "export_cytoscape",
                 "finalize",
             } <= stages

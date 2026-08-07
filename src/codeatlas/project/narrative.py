@@ -141,6 +141,39 @@ def validate_project_explanation(
     return validated, dropped
 
 
+_CANONICAL_SECTIONS = ("what", "structure", "entry", "hotspots", "caution")
+_DENSITY_FLOOR = 5
+
+
+def density_notes(explanation: ProjectExplanation, available_files: int) -> list[str]:
+    """Deterministic thinness disclosures — notes, never gates.
+
+    A narrative that survived citation checking can still be a glance dressed
+    as understanding. Unsaid words cannot be forced after the fact, so this
+    discloses: fewer distinct files cited than min(5, files that exist), or
+    canonical sections that never made it. Silence is earned by density.
+    """
+    notes: list[str] = []
+    cited = {
+        citation.path
+        for section in explanation.sections
+        for claim in section.claims
+        for citation in claim.citations
+        if isinstance(citation, ProjectSourceCitation)
+    }
+    floor = min(_DENSITY_FLOOR, available_files)
+    if explanation.sections and len(cited) < floor:
+        notes.append(
+            f"narrative cites only {len(cited)} distinct file(s) of {available_files}; "
+            "it may describe less of the project than it appears to"
+        )
+    present = {section.id for section in explanation.sections}
+    missing = [sid for sid in _CANONICAL_SECTIONS if sid not in present]
+    if explanation.sections and missing:
+        notes.append("narrative sections absent: " + ", ".join(missing))
+    return notes
+
+
 def measure_cited_files(explanation: ProjectExplanation, read_lines: object) -> dict[str, int]:
     """Line counts for the files this explanation actually cites.
 

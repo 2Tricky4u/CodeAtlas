@@ -48,6 +48,9 @@ class PipelineState(TypedDict, total=False):
     # does not need a change to explain, and is switched separately.
     project_explanation_sha256: str | None
     protocol_model_sha256: str | None
+    # The llms.txt-shaped export — always produced (falls back to measured
+    # counts when narration was off), so plain `str` once export_llms ran.
+    llms_txt_sha256: str
     # Review half (present only when an agent engine is configured)
     review_artifacts: Annotated[dict[str, str], operator.or_]
     finding_count: int

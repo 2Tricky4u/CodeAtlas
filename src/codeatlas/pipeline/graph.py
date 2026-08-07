@@ -939,6 +939,29 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
             session.commit()
         return {"cytoscape_sha256": sha}
 
+    def export_llms(state: PipelineState) -> dict[str, Any]:
+        """The run's understanding at llms.txt shape (roadmap 3.7).
+
+        Deterministic, positioned after narrate so the summary can come from
+        the narrative when the run paid for one — and from the measured counts
+        when it did not. The role is `llms-txt`: roles cannot contain a dot.
+        """
+        from codeatlas.models.project_explanation import ProjectExplanation
+        from codeatlas.pipeline.artifacts_out import publish_artifact
+        from codeatlas.pipeline.llms_stage import render_llms_txt
+
+        overview = ProjectOverview.model_validate(
+            json.loads(deps.cas.get(state["project_overview_sha256"]))
+        )
+        explanation = None
+        if explanation_sha := state.get("project_explanation_sha256"):
+            explanation = ProjectExplanation.model_validate(
+                json.loads(deps.cas.get(explanation_sha))
+            )
+        text = render_llms_txt(overview, explanation)
+        sha = publish_artifact(deps, state["run_id"], "llms-txt", text, media_type="text/plain")
+        return {"llms_txt_sha256": sha}
+
     def review(state: PipelineState) -> dict[str, Any]:
         """The review half: intent, reviewers, verification, validation, synthesis.
 
@@ -1084,6 +1107,9 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         else {}
                     ),
                     **(
+                        {"llms-txt": llms_sha} if (llms_sha := state.get("llms_txt_sha256")) else {}
+                    ),
+                    **(
                         {"apiChange": api_change_sha}
                         if (api_change_sha := state.get("api_change_sha256"))
                         else {}
@@ -1144,6 +1170,7 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         "project_overview": project_overview,
         "architecture": architecture,
         "narrate": narrate,
+        "export_llms": export_llms,
         "export_cytoscape": export_cytoscape,
         "review": review,
         "finalize": finalize,
@@ -1166,7 +1193,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
     builder.add_edge("change_impact", "project_overview")
     builder.add_edge("project_overview", "architecture")
     builder.add_edge("architecture", "narrate")
-    builder.add_edge("narrate", "export_cytoscape")
+    builder.add_edge("narrate", "export_llms")
+    builder.add_edge("export_llms", "export_cytoscape")
     builder.add_edge("export_cytoscape", "review")
     builder.add_edge("review", "finalize")
     builder.add_edge("finalize", END)

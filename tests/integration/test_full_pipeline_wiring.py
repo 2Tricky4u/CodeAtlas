@@ -109,6 +109,7 @@ class TestEveryNodeRan:
             "project_overview",
             "architecture",
             "narrate",
+            "export_llms",
             "export_cytoscape",
             "review",
             "finalize",
@@ -127,6 +128,7 @@ class TestEveryHalfProducedItsArtifacts:
             "structurizr-dsl",
             "adr-audit",
             "source-lock",
+            "llms-txt",
             "run-manifest",
         } <= _roles(db_engine, run_id)
 

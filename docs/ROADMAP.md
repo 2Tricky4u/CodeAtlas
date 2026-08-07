@@ -14,6 +14,15 @@ semantic fingerprints (ADR-0016), reviewer noise rules (linter territory, certai
 scope-creep as `spec` findings), required validation rationale, and the measured
 module-depth metric (`publicCount`, `metrics.public`).
 
+Shipped in the X phase: the bounded dispatch retry ADR-0005 always described
+(schema_invalid errors quoted back, live engines only — the reliability half of §2.5);
+coverage read-receipts in their *measured* form (§2.2 — engine-observed Read-tool
+paths, three-state read/not-read/unknown, `review-coverage.v1`); the churn metric
+(§3.1 — `git log` on the mirror, receipted, module badge + most-changed table + map
+border-width channel); evidence-density floor notes on the narrative (§3.5); and the
+`llms-txt` artifact (§3.7). Sections below are kept for their unshipped remainders —
+§2.5's cost-tiering experiment and §3.1's changed-in-PR filter are still open.
+
 ---
 
 ## 1. Publication UX (blocked on arming publication)

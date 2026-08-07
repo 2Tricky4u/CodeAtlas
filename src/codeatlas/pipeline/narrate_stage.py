@@ -98,6 +98,11 @@ def narrate_project(
             f"{len(dropped)} project explanation claim(s) removed: their citations did "
             "not resolve against the deterministic overview"
         )
+    # Thinness disclosures (X4): a narrative that survived citation checking
+    # can still describe less than it appears to. Notes, never gates.
+    from codeatlas.project.narrative import density_notes
+
+    notes.extend(density_notes(explanation, available_files=len(blobs)))
     log.info(
         "narrate.explained",
         run_id=run_id,
