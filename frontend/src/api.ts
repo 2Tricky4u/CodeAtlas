@@ -71,6 +71,9 @@ interface ModuleSummary {
   fanOut: number;
   level: number;
   symbolCount: number;
+  /** Definitions whose own signature says `pub`. Absent on runs from before
+   *  the depth metric existed — the UI omits the badge rather than claiming 0. */
+  publicCount?: number;
 }
 
 export interface ProjectOverview {

@@ -66,6 +66,7 @@ class _Module:
     path: str
     package: str | None
     symbols: int
+    publics: int | None  # None: this graph never measured visibility
 
 
 def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
@@ -86,6 +87,7 @@ def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
             fan_out=len(depends_on.get(path, set())),
             level=level_of[path],
             symbol_count=module.symbols,
+            public_count=module.publics,
         )
         for path, module in sorted(modules.items())
     ]
@@ -126,10 +128,18 @@ def build_overview(graph: ProjectGraph, repository_id: str) -> ProjectOverview:
 def _modules(graph: ProjectGraph) -> dict[str, _Module]:
     """One module per file node, with the symbols it holds."""
     symbols: dict[str, int] = defaultdict(int)
+    publics: dict[str, int] = defaultdict(int)
+    measured = False
     packages: dict[str, str] = {}
     for node in graph.nodes:
         if node.kind in ("function", "type", "module", "constant") and node.location:
             symbols[node.location.path] += 1
+            if node.metrics is not None and "public" in node.metrics:
+                # Once any node carries the metric, absence on a sibling means
+                # "not pub" (another extractor's fragment), not "unmeasured".
+                measured = True
+                if node.metrics["public"] is True:
+                    publics[node.location.path] += 1
 
     for node in graph.nodes:
         if node.kind == "package" and node.location:
@@ -146,7 +156,10 @@ def _modules(graph: ProjectGraph) -> dict[str, _Module]:
             continue
         path = node.location.path
         modules[path] = _Module(
-            path=path, package=_package_for(path, packages), symbols=symbols.get(path, 0)
+            path=path,
+            package=_package_for(path, packages),
+            symbols=symbols.get(path, 0),
+            publics=publics.get(path, 0) if measured else None,
         )
     return modules
 

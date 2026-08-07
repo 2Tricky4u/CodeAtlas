@@ -81,6 +81,15 @@ export function ModuleView() {
             <Badge>fan-in {summary.fanIn}</Badge>
             <Badge>fan-out {summary.fanOut}</Badge>
             <Badge>{summary.symbolCount} symbol(s)</Badge>
+            {summary.publicCount != null && (
+              <span
+                className="badge"
+                data-testid="interface-badge"
+                title="definitions whose own signature says pub / all definitions (measured)"
+              >
+                interface {summary.publicCount}/{summary.symbolCount}
+              </span>
+            )}
           </>
         )}
         {cycle && (
@@ -286,6 +295,16 @@ function DefinitionList({
                   >
                     {definition.label}
                   </button>{" "}
+                  {definition.public === true && (
+                    <span
+                      className="note"
+                      data-testid="pub-mark"
+                      style={{ color: "var(--accent)", marginRight: 6 }}
+                      title="this definition's own signature says pub (measured; pub(crate) counts as internal)"
+                    >
+                      pub
+                    </span>
+                  )}
                   <span className="note mono-num">
                     {callers.length > 0 ? `← ${callers.length}` : "unused here"}
                   </span>

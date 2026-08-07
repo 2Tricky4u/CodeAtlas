@@ -134,6 +134,50 @@ class TestConstantsAndStatics:
         assert not any(e.kind == "calls" for e in fragment.edges)
 
 
+class TestVisibility:
+    """Module depth needs to know which definitions are the interface.
+
+    Visibility is read from the item's own rendered signature
+    (`SymbolInformation.signature_documentation`): the exact prefix `pub `.
+    Restricted forms (`pub(crate)`, `pub(super)`) and inherited visibility
+    (enum variants, trait-impl methods) count as internal — the metric
+    measures what the signature states, not what the language resolves.
+    """
+
+    def test_a_pub_fn_is_measured_public(self, fragment) -> None:  # type: ignore[no-untyped-def]
+        put = next(n for n in fragment.nodes if "[Cache]put()" in n.id)
+        assert put.metrics == {"public": True}
+
+    def test_a_private_fn_is_measured_not_omitted(self, fragment) -> None:  # type: ignore[no-untyped-def]
+        """False is a measurement; a missing key would read as 'never looked'."""
+        main = next(n for n in fragment.nodes if n.id.endswith(" main()."))
+        assert main.metrics == {"public": False}
+
+    def test_a_trait_impl_method_counts_as_internal(self, fragment) -> None:  # type: ignore[no-untyped-def]
+        default = next(n for n in fragment.nodes if "[Default]default()" in n.id)
+        assert default.metrics == {"public": False}
+
+    def test_pub_crate_is_internal(self) -> None:
+        index = scip_pb2.Index()
+        doc = index.documents.add()
+        doc.relative_path = "src/lib.rs"
+        function_kind = scip_pb2.SymbolInformation.Kind.Value("Function")  # type: ignore[attr-defined]
+        for symbol, name, sig in (
+            ("rust-analyzer cargo demo 0.1.0 lib/open().", "open", "pub fn open()"),
+            ("rust-analyzer cargo demo 0.1.0 lib/seal().", "seal", "pub(crate) fn seal()"),
+        ):
+            info = doc.symbols.add()
+            info.symbol, info.display_name, info.kind = symbol, name, function_kind
+            info.signature_documentation.text = sig
+            occ = doc.occurrences.add()
+            occ.symbol = symbol
+            occ.symbol_roles = 1
+            occ.range.extend([0, 0, 0, 10])
+        fragment = normalize_scip(index, ra_version="rust-analyzer test")
+        flags = {n.label: n.metrics for n in fragment.nodes if n.kind == "function"}
+        assert flags == {"open": {"public": True}, "seal": {"public": False}}
+
+
 class TestEdges:
     def test_contains_edges_file_to_symbol(self, fragment) -> None:  # type: ignore[no-untyped-def]
         contains = [e for e in fragment.edges if e.kind == "contains"]

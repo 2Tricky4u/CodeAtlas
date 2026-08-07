@@ -29,6 +29,8 @@ def to_cytoscape(graph: ProjectGraph) -> dict[str, Any]:
                 data["startLine"] = node.location.start_line
             if node.location.end_line is not None:
                 data["endLine"] = node.location.end_line
+        if node.metrics is not None and "public" in node.metrics:
+            data["public"] = bool(node.metrics["public"])
         nodes.append({"data": data})
 
     edges: list[dict[str, Any]] = []

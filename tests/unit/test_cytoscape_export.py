@@ -45,6 +45,37 @@ def _graph() -> ProjectGraph:
     )
 
 
+def test_the_visibility_metric_is_projected() -> None:
+    """The dashboard's pub badge reads `data.public`; nodes measured private say
+    False, and nodes from graphs that never measured visibility say nothing."""
+    g = ProjectGraph(
+        repository=RepositoryRef(id="local/x"),
+        revision=RevisionRef(head="e" * 40),
+        nodes=[
+            GraphNode(
+                id="sym:scip/a",
+                kind="function",
+                label="a",
+                metrics={"public": True},
+                evidence=[LS],
+            ),
+            GraphNode(
+                id="sym:scip/b",
+                kind="function",
+                label="b",
+                metrics={"public": False},
+                evidence=[LS],
+            ),
+            GraphNode(id="sym:scip/c", kind="function", label="c", evidence=[LS]),
+        ],
+        edges=[],
+    )
+    data = {n["data"]["id"]: n["data"] for n in to_cytoscape(g)["elements"]["nodes"]}
+    assert data["sym:scip/a"]["public"] is True
+    assert data["sym:scip/b"]["public"] is False
+    assert "public" not in data["sym:scip/c"]
+
+
 def test_counts_and_core_fields() -> None:
     payload = to_cytoscape(_graph())
     assert payload["revision"] == "e" * 40

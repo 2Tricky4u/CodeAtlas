@@ -87,6 +87,7 @@ class _Definition:
     end_line: int
     node_kind: NodeKind
     display_name: str
+    public: bool
 
 
 # SCIP SymbolInformation.Kind values for things a module can depend on, as
@@ -131,6 +132,18 @@ def _classify(symbol: str, kind: int = 0) -> NodeKind | None:
     return None  # fields, impl blocks, type parameters, meta descriptors
 
 
+def _is_public(signature: str) -> bool:
+    """Visibility as the item's own rendered signature states it.
+
+    Exactly `pub ` — restricted forms (`pub(crate)`, `pub(super)`) stay
+    internal, and so does inherited visibility (enum variants, trait-impl
+    methods), because their signatures carry no `pub` of their own. The
+    metric measures what rust-analyzer rendered, not what the language
+    resolves.
+    """
+    return signature.startswith("pub ")
+
+
 def _display_name(symbol: str, info_names: dict[str, str]) -> str:
     name = info_names.get(symbol, "")
     if name:
@@ -171,12 +184,15 @@ def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
     definitions: dict[str, _Definition] = {}
     info_names: dict[str, str] = {}
     info_kinds: dict[str, int] = {}
+    info_signatures: dict[str, str] = {}
     for doc in documents:
         for info in doc.symbols:
             if info.display_name:
                 info_names[info.symbol] = info.display_name
             if info.kind:
                 info_kinds[info.symbol] = info.kind
+            if info.signature_documentation.text:
+                info_signatures[info.symbol] = info.signature_documentation.text
     for doc in documents:
         path = doc.relative_path.replace("\\", "/")
         for occ in doc.occurrences:
@@ -193,6 +209,7 @@ def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
                 end_line=end,
                 node_kind=kind,
                 display_name=_display_name(occ.symbol, info_names),
+                public=_is_public(info_signatures.get(occ.symbol, "")),
             )
 
     nodes: dict[str, GraphNode] = {}
@@ -220,6 +237,9 @@ def normalize_scip(index: Any, ra_version: str) -> GraphFragment:
             location=SourceLocation(
                 path=defn.path, start_line=defn.start_line + 1, end_line=defn.end_line + 1
             ),
+            # False is a measurement; only graphs from before this metric
+            # existed omit the key entirely.
+            metrics={"public": defn.public},
             evidence=[strong],
         )
         file_id = f"file:{defn.path}"

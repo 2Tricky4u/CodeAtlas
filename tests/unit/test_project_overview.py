@@ -42,12 +42,19 @@ def file_node(path: str) -> GraphNode:
     )
 
 
-def sym_node(name: str, path: str, kind: str = "function", package: str = "kvstore") -> GraphNode:
+def sym_node(
+    name: str,
+    path: str,
+    kind: str = "function",
+    package: str = "kvstore",
+    public: bool | None = None,
+) -> GraphNode:
     return GraphNode(
         id=f"sym:scip/rust-analyzer cargo {package} 0.1.0 {name}",
         kind=kind,  # type: ignore[arg-type]
         label=name.rstrip("().#/").rsplit("/", 1)[-1],
         location=SourceLocation(path=path, start_line=1, end_line=5),
+        metrics=None if public is None else {"public": public},
         evidence=[LSP],
     )
 
@@ -401,6 +408,59 @@ class TestRollupAndCounts:
         assert overview.counts.files == 3
         assert overview.counts.symbols == 3
         assert overview.counts.edges == len(STACK.edges)
+
+
+class TestModuleDepth:
+    """Interface size vs implementation size, measured — never guessed."""
+
+    def test_public_count_measures_the_interface(self) -> None:
+        f = file_node("kvstore/src/cache.rs")
+        overview = build_overview(
+            graph(
+                [
+                    f,
+                    sym_node("cache/get().", "kvstore/src/cache.rs", public=True),
+                    sym_node("cache/evict().", "kvstore/src/cache.rs", public=False),
+                    sym_node("cache/Cache#", "kvstore/src/cache.rs", kind="type", public=True),
+                ],
+                [],
+            ),
+            repository_id="local/kvstore",
+        )
+        module = next(m for m in overview.modules if m.path == "kvstore/src/cache.rs")
+        assert module.symbol_count == 3
+        assert module.public_count == 2
+
+    def test_a_graph_without_visibility_metrics_refuses_to_count(self) -> None:
+        """An old graph has no measurement; claiming zero would be a lie."""
+        overview = build_overview(
+            graph(
+                [
+                    file_node("kvstore/src/cache.rs"),
+                    sym_node("cache/get().", "kvstore/src/cache.rs"),
+                ],
+                [],
+            ),
+            repository_id="local/kvstore",
+        )
+        assert overview.modules[0].public_count is None
+
+    def test_an_unmeasured_definition_in_a_measured_graph_is_internal(self) -> None:
+        """Once any node carries the metric, absence means 'not pub', not 'unknown' —
+        a merged fragment from another extractor should not turn the count off."""
+        overview = build_overview(
+            graph(
+                [
+                    file_node("kvstore/src/cache.rs"),
+                    sym_node("cache/get().", "kvstore/src/cache.rs", public=True),
+                    sym_node("cache/helper().", "kvstore/src/cache.rs"),
+                ],
+                [],
+            ),
+            repository_id="local/kvstore",
+        )
+        module = next(m for m in overview.modules if m.path == "kvstore/src/cache.rs")
+        assert module.public_count == 1
 
 
 class TestHonestyAndDeterminism:

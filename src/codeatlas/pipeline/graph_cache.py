@@ -36,7 +36,10 @@ from codeatlas.db.tables import GraphCacheRow
 # 1.1.0: constants and statics became nodes, and a function reading one became a
 # `reads` edge. Before this, every `const` reference was dropped, so a module
 # whose only dependents read a constant from it looked like an orphan.
-GRAPH_PIPELINE_VERSION = "1.1.0"
+#
+# 1.2.0: definition nodes carry `metrics.public`, read from the signature
+# rust-analyzer rendered. The module-depth metric is derived from it.
+GRAPH_PIPELINE_VERSION = "1.2.0"
 
 
 def fingerprint_from(

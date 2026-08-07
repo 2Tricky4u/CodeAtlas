@@ -22,6 +22,9 @@ export interface GraphNode {
   startLine?: number;
   endLine?: number;
   producers?: string[];
+  /** Measured visibility: the definition's own signature says `pub`.
+   *  Absent on graphs recorded before the metric existed. */
+  public?: boolean;
 }
 
 /** Edge kinds that mean "depends on", as the overview defines them. */
