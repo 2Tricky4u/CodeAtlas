@@ -127,6 +127,8 @@ async function mockApi(
   await page.route(`**/api/runs/${RUN_ID_2}/publications`, (route) =>
     route.fulfill({ json: [] }),
   );
+  await page.route(`**/api/runs/${RUN_ID}/answers`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/runs/${RUN_ID_2}/answers`, (route) => route.fulfill({ json: [] }));
 }
 
 /** A narrative past the collapse threshold, built from the fixture's one section. */
@@ -1101,6 +1103,52 @@ test.describe("ask, continued", () => {
     await page.getByTestId("ask-input").fill("why?");
     await page.getByTestId("ask-submit").click();
     await expect(page.getByTestId("ask-error")).toContainText("could not reach the server");
+  });
+
+  test("questions answered before are listed for this module, and reopen free", async ({
+    page,
+  }) => {
+    // The cache is content-addressed by question; without this list, asking
+    // twice is only free if you retype the question verbatim from memory.
+    await page.route(`**/api/runs/${RUN_ID}/answers`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            question: "what does eviction remove?",
+            scope: "kvstore/src/cache.rs",
+            answer: "One more than asked for.",
+            claims: [
+              {
+                text: "The loop is 0..=n.",
+                citations: [{ kind: "source", path: "kvstore/src/cache.rs", startLine: 41 }],
+              },
+            ],
+            refused: null,
+          },
+          {
+            question: "who parses requests?",
+            scope: "kvstore/src/api.rs",
+            answer: "parse.",
+            claims: [],
+            refused: null,
+          },
+        ],
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    const history = page.getByTestId("ask-history");
+    // Scoped to this module: the api.rs question must not appear here.
+    await expect(history).toContainText("what does eviction remove?");
+    await expect(history).not.toContainText("who parses requests?");
+    await page.getByTestId("ask-history-item").click();
+    await expect(page.getByTestId("ask-answer")).toContainText("cached");
+    await expect(page.getByTestId("ask-claims")).toContainText("0..=n");
+  });
+
+  test("a module with no prior questions shows no history", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await expect(page.getByTestId("ask-input")).toBeVisible();
+    await expect(page.getByTestId("ask-history")).toHaveCount(0);
   });
 });
 

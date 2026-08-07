@@ -566,6 +566,8 @@ export const api = {
     getOptional<ReviewPayload>(`/api/runs/${id}/artifact/review-payload-dry-run`),
   approvals: (id: string) => getJson<Approval[]>(`/api/runs/${id}/approval`),
   publications: (id: string) => getJson<Publication[]>(`/api/runs/${id}/publications`),
+  /** Every question this run has answered — the cache, made enumerable. */
+  answers: (id: string) => getJson<CodeAnswer[]>(`/api/runs/${id}/answers`),
   /** POST — ADR-0014's one local-analysis endpoint. Throws with the server's
    *  reason when asking is disabled, so the panel can say why. */
   ask: async (id: string, scope: string, question: string): Promise<CodeAnswer> => {

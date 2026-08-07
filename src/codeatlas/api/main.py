@@ -208,6 +208,29 @@ def create_app(
             for r in rows
         ]
 
+    @app.get("/api/runs/{run_id}/answers")
+    def run_answers(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        """Every question this run has answered, with the cached answer.
+
+        Answers are stored under `code-answer-<hash>` roles — content-addressed
+        by question, which makes re-asking free and enumeration impossible for
+        a client. This is the enumeration: without it, "asked before" is
+        invisible unless you retype the question verbatim.
+        """
+        from codeatlas.db.tables import RunArtifactRow
+
+        if s.get(RunRow, run_id) is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(
+            select(RunArtifactRow)
+            .where(
+                RunArtifactRow.run_id == run_id,
+                RunArtifactRow.role.like("code-answer-%"),
+            )
+            .order_by(RunArtifactRow.id)
+        ).all()
+        return [json.loads(cas.get(r.sha256)) for r in rows]
+
     @app.get("/api/runs/{run_id}/publications")
     def run_publications(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
         """What actually left the machine for this run — usually nothing.

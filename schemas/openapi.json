@@ -165,6 +165,51 @@
         "summary": "Run Detail"
       }
     },
+    "/api/runs/{run_id}/answers": {
+      "get": {
+        "description": "Every question this run has answered, with the cached answer.\n\nAnswers are stored under `code-answer-<hash>` roles \u2014 content-addressed\nby question, which makes re-asking free and enumeration impossible for\na client. This is the enumeration: without it, \"asked before\" is\ninvisible unless you retype the question verbatim.",
+        "operationId": "run_answers_api_runs__run_id__answers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Run Answers Api Runs  Run Id  Answers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Answers"
+      }
+    },
     "/api/runs/{run_id}/approval": {
       "get": {
         "description": "Publication approvals for this run, decided or not.\n\nThe gate is what stands between an analysis and a comment on someone's\npull request, and it was invisible here: a reader could see findings and\na payload but not whether anyone had agreed to send it. `decision` being\nnull is the important state, not an incomplete one.",

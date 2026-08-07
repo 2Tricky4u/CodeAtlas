@@ -380,6 +380,17 @@ class TestAskAnswers:
         for claim in body["claims"]:
             assert claim["citations"], claim["text"]
 
+    def test_previous_answers_are_listable(self, asking) -> None:  # type: ignore[no-untyped-def]
+        """The missing half of H6: answers are cached under hash-of-question
+        roles, which no client can enumerate — so "asked before" was invisible
+        without retyping the question verbatim. This route lists them."""
+        client, run_id, _ = asking
+        response = client.get(f"/api/runs/{run_id}/answers")
+        assert response.status_code == 200
+        answers = response.json()
+        assert any(a["question"] == self.QUESTION for a in answers)
+        assert all(a["scope"] for a in answers)
+
     def test_a_run_without_a_graph_is_a_typed_conflict(self, asking, stack) -> None:  # type: ignore[no-untyped-def]
         """No project-graph artifact → 409 with a reason, not a bare 500."""
         from sqlalchemy.orm import Session

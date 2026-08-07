@@ -22,6 +22,7 @@ export function AskPanel({
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<CodeAnswer | null>(null);
+  const [history, setHistory] = useState<CodeAnswer[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // The panel survives navigation as a component. An answer about cache.rs
@@ -30,6 +31,12 @@ export function AskPanel({
     setQuestion("");
     setAnswer(null);
     setError(null);
+    // Asking twice is free — but only if you can see what was asked. The
+    // cache used to be enumerable by nobody; this is the "asked before" list.
+    api
+      .answers(runId)
+      .then((all) => setHistory(all.filter((previous) => previous.scope === scope)))
+      .catch((e: Error) => setError(e.message));
   }, [runId, scope]);
 
   const submit = () => {
@@ -40,7 +47,14 @@ export function AskPanel({
     setAnswer(null);
     api
       .ask(runId, scope, trimmed)
-      .then(setAnswer)
+      .then((fresh) => {
+        setAnswer(fresh);
+        setHistory((known) =>
+          known.some((previous) => previous.question === fresh.question)
+            ? known
+            : [...known, fresh],
+        );
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
@@ -84,6 +98,27 @@ export function AskPanel({
       {error && (
         <div className="caveat" style={{ marginTop: 8 }} data-testid="ask-error">
           {error}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div style={{ marginTop: 8 }} data-testid="ask-history">
+          <div className="microlabel" style={{ marginBottom: 4 }}>
+            answered before at this revision — free to reopen
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {history.map((previous) => (
+              <button
+                key={previous.question}
+                className="badge"
+                style={{ cursor: "pointer" }}
+                data-testid="ask-history-item"
+                onClick={() => setAnswer({ ...previous, cached: true })}
+              >
+                {previous.question}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

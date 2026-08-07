@@ -5,7 +5,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type CodeAnswer } from "../api";
 import { AskPanel } from "./AskPanel";
 
@@ -29,6 +29,10 @@ const ANSWER: CodeAnswer = {
 } as CodeAnswer;
 
 const noop = () => undefined;
+
+beforeEach(() => {
+  vi.spyOn(api, "answers").mockResolvedValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -105,5 +109,32 @@ describe("AskPanel", () => {
     expect(screen.getByText("cached")).toBeTruthy();
     // The module citation renders its key — the only non-source kind.
     expect(screen.getByText("kvstore/src/cache.rs")).toBeTruthy();
+  });
+
+  it("lists prior questions for this scope only, and reopens them as cached", async () => {
+    const other: CodeAnswer = {
+      ...ANSWER,
+      scope: "kvstore/src/api.rs",
+      question: "who parses requests?",
+    };
+    vi.spyOn(api, "answers").mockResolvedValue([ANSWER, other]);
+    const user = userEvent.setup();
+    render(<AskPanel runId="r1" scope="kvstore/src/cache.rs" onOpenSource={noop} />);
+    const history = await screen.findByTestId("ask-history");
+    expect(history.textContent).toContain(ANSWER.question);
+    expect(history.textContent).not.toContain(other.question);
+    await user.click(screen.getByTestId("ask-history-item"));
+    await screen.findByTestId("ask-answer");
+    expect(screen.getByText("cached")).toBeTruthy();
+  });
+
+  it("a freshly asked question joins the history", async () => {
+    vi.spyOn(api, "ask").mockResolvedValue(ANSWER);
+    const user = userEvent.setup();
+    render(<AskPanel runId="r1" scope="kvstore/src/cache.rs" onOpenSource={noop} />);
+    expect(screen.queryByTestId("ask-history")).toBeNull();
+    await user.type(screen.getByTestId("ask-input"), "why?{Enter}");
+    await screen.findByTestId("ask-answer");
+    expect(screen.getByTestId("ask-history").textContent).toContain(ANSWER.question);
   });
 });
