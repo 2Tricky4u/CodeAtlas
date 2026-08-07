@@ -41,9 +41,11 @@ node, and the panel says so rather than implying full coverage.
 
 Click any module named anywhere in the app — a citation, a matrix row, a cycle member, a
 finding's location — and land on its page: what it defines (types first, ranked by fan-in,
-large groups collapsed), who uses each definition, what it imports, the flows passing
-through it, its place in the suggested reading order, and, on a pull-request run, exactly
-what the change did *here*.
+large groups collapsed, `pub` items marked), who uses each definition, what it imports,
+the flows passing through it, its place in the suggested reading order, and, on a
+pull-request run, exactly what the change did *here*. The header's `interface m/n` badge
+is the measured module depth — how much of the module is surface versus implementation,
+read from the signatures rust-analyzer rendered (`pub(crate)` counts as internal).
 
 ![ripgrep's walk.rs: 176 definitions ranked and collapsed, cycle membership, usage](docs/screenshots/module.png)
 
@@ -99,8 +101,14 @@ and the bounded impact set with its precision caveat attached to the artifact it
 Reviewers propose; a validator that never saw the proposal re-examines each finding in a
 fresh context, with the real build/test toolchain at hand. The review tab shows the whole
 funnel — including what did **not** survive, because a table of survivors looks identical
-whether the check rejected eleven candidates or none. Each finding can show exactly how it
-was checked.
+whether the check rejected eleven candidates or none. Every verdict carries a written
+rationale and a confidence, both visible in the funnel.
+
+Rejections are also **remembered across runs** (ADR-0016): a finding that recurs at
+byte-identical code is suppressed instead of re-validated, shown with the original run
+and reason — so re-running on the same repository gets cheaper and quieter, and
+`codeatlas compare` still calls the two runs reproducible. Any edit to the file re-opens
+its questions.
 
 ![The validation funnel: 12 proposed, what each verdict was, and why](docs/screenshots/review.png)
 
