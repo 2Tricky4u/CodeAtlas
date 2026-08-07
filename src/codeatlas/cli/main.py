@@ -375,11 +375,7 @@ def approve(
     configure_logging()
     from sqlalchemy.orm import Session
 
-    from codeatlas.publication.gate import (
-        PublicationBlocked,
-        decide_approval,
-        publish_approved,
-    )
+    from codeatlas.publication.gate import decide_approval
 
     deps = _deps(workdir, test_db)
     with Session(deps.engine) as session:
@@ -397,6 +393,20 @@ def approve(
         typer.echo("not published (pass --publish, or run `codeatlas publish`)")
         return
 
+    _publish(deps, approval_id)
+
+
+def _publish(deps: PipelineDeps, approval_id: int) -> None:
+    """The one production path to GitHub. The gate re-checks everything —
+    including the config flag, which comes from the environment here, never
+    from a literal: a flag hard-coded open is a flag that cannot say no."""
+    from sqlalchemy.orm import Session
+
+    from codeatlas.publication.gate import (
+        PublicationBlocked,
+        publication_enabled,
+        publish_approved,
+    )
     from codeatlas.vcs.github.client import GitHubWriter, token_from_keyring
 
     with Session(deps.engine) as session:
@@ -406,13 +416,27 @@ def approve(
                 approval_id=approval_id,
                 github=GitHubWriter(token_from_keyring()),
                 cas=deps.cas,
-                enabled=True,
+                enabled=publication_enabled(),
             )
             session.commit()
         except PublicationBlocked as exc:
             typer.echo(f"publication blocked: {exc}", err=True)
             raise typer.Exit(1) from exc
     typer.echo(f"published: {record.external_ref}")
+
+
+@app.command()
+def publish(
+    approval_id: int,
+    workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
+    test_db: Annotated[bool, typer.Option(hidden=True)] = False,
+) -> None:
+    """Publish an already-approved payload — the second half of the two-step
+    flow `approve` suggests. Requires CODEATLAS_PUBLISH_ENABLED=1 and an
+    unset kill switch; both are re-checked at post time."""
+    configure_logging()
+    deps = _deps(workdir, test_db)
+    _publish(deps, approval_id)
 
 
 @app.command()

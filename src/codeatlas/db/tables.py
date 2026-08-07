@@ -19,11 +19,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -315,6 +317,16 @@ class ApprovalRow(Base):
 
 class PublicationRow(Base):
     __tablename__ = "publication"
+    # The database-level half of exactly-once: at most one `published` row per
+    # approval, even if a caller ever skips the gate's row lock.
+    __table_args__ = (
+        Index(
+            "uq_publication_approval_published",
+            "approval_id",
+            unique=True,
+            postgresql_where=text("status = 'published'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     approval_id: Mapped[int] = mapped_column(ForeignKey("approval.id"))

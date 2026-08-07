@@ -2,13 +2,17 @@
 
 Every check is re-evaluated at publish time against the database and the
 environment, never inherited from whatever control flow led here. A caller that
-reaches `publish_approved` by any path still has to satisfy all of them:
+reaches `publish_approved` by any path still has to satisfy all of them, in
+this order:
 
-1. the approval exists and its recorded decision is `approved`;
-2. publication is enabled in configuration;
-3. the kill switch is not set;
-4. the approved payload contains no secrets;
-5. this approval has not already been published (posting is exactly-once).
+1. the approval exists (its row is locked, serialising racing publishers);
+2. the kill switch is not set — checked before everything, including the
+   idempotent already-published return: the switch means stop, full stop;
+3. this approval has not already been published (posting is exactly-once,
+   enforced twice: the check under the row lock, and a partial unique index);
+4. the recorded decision is `approved`;
+5. publication is enabled in configuration (CODEATLAS_PUBLISH_ENABLED=1);
+6. the approved payload contains no secrets.
 """
 
 from __future__ import annotations
@@ -30,6 +34,17 @@ from codeatlas.publication.payload import ReviewPayload, scan_payload
 log = get_logger("codeatlas.publication")
 
 KILL_SWITCH_ENV = "CODEATLAS_KILL_SWITCH"
+PUBLISH_ENABLED_ENV = "CODEATLAS_PUBLISH_ENABLED"
+
+
+def publication_enabled(env: dict[str, str] | None = None) -> bool:
+    """The configuration gate: off unless the environment says exactly "1".
+
+    Fail closed and unambiguous — "true" or "yes" silently enabling
+    publication is how a copy-pasted env block posts to GitHub by accident.
+    """
+    environ = env if env is not None else dict(os.environ)
+    return environ.get(PUBLISH_ENABLED_ENV) == "1"
 
 
 class PublicationBlocked(RuntimeError):
@@ -155,9 +170,19 @@ def publish_approved(
 ) -> PublicationRecord:
     environ = env if env is not None else dict(os.environ)
 
-    approval = session.get(ApprovalRow, approval_id)
+    # The row lock serialises racing publishers: the second caller blocks here
+    # until the first commits, and then sees its publication in the
+    # exactly-once check below. Without it that check is a check-then-act.
+    approval = session.scalar(
+        select(ApprovalRow).where(ApprovalRow.id == approval_id).with_for_update()
+    )
     if approval is None:
         raise PublicationBlocked(f"unknown approval {approval_id}")
+
+    # Kill switch before everything — even the idempotent already-published
+    # return. While the switch is set, this function has exactly one answer.
+    if environ.get(KILL_SWITCH_ENV):
+        raise PublicationBlocked(f"kill switch is engaged ({KILL_SWITCH_ENV} is set)")
 
     # Exactly-once: an approval that already produced a publication never posts again.
     existing = session.scalar(
@@ -177,8 +202,6 @@ def publish_approved(
         )
     if not enabled:
         raise PublicationBlocked("publication is disabled in configuration")
-    if environ.get(KILL_SWITCH_ENV):
-        raise PublicationBlocked(f"kill switch is engaged ({KILL_SWITCH_ENV} is set)")
 
     payload = ReviewPayload.model_validate(json.loads(cas.get(approval.payload_sha256)))
     secrets = scan_payload(payload)

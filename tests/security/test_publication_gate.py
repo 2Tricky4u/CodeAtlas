@@ -201,6 +201,30 @@ class TestIdempotency:
             assert row.external_ref is None
 
 
+class TestGateOrder:
+    def test_kill_switch_outranks_the_already_published_short_circuit(
+        self, context, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        """The kill switch means stop — even the idempotent "already published"
+        return is answered with a refusal while it is set. Fail closed: no path
+        through this function ignores the switch."""
+        db_engine, _, cas, _ = context
+        approval_id = _request(context)
+        github = FakeGitHub()
+        with Session(db_engine) as s:
+            decide_approval(s, approval_id=approval_id, decision="approved", decided_by="me")
+            s.commit()
+        with Session(db_engine) as s:
+            publish_approved(s, approval_id=approval_id, github=github, cas=cas, enabled=True)
+            s.commit()
+        assert len(github.posted) == 1
+
+        monkeypatch.setenv("CODEATLAS_KILL_SWITCH", "1")
+        with Session(db_engine) as s, pytest.raises(PublicationBlocked, match="kill switch"):
+            publish_approved(s, approval_id=approval_id, github=github, cas=cas, enabled=True)
+        assert len(github.posted) == 1
+
+
 class TestSecretScanning:
     def test_payload_containing_a_token_is_refused(self, context) -> None:  # type: ignore[no-untyped-def]
         db_engine, run_id, cas, _ = context

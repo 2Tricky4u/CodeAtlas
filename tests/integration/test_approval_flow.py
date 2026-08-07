@@ -147,3 +147,73 @@ class TestRunStatus:
             run = s.get(RunRow, run_id)
             assert run is not None
             assert run.status == "paused_for_approval"
+
+
+class FakeWriter:
+    """Stands in for GitHubWriter; records what the CLI would have posted."""
+
+    def __init__(self, posted: list[ReviewPayload]) -> None:
+        self.posted = posted
+
+    def create_review(self, payload: ReviewPayload) -> str:
+        self.posted.append(payload)
+        return f"https://github.com/o/r/pull/{payload.pr_number}#pullrequestreview-9"
+
+
+class TestPublishing:
+    """The CLI publication path — the only production caller of the gate.
+
+    These run the real commands, not the gate function: the audit found the
+    call site hard-coding `enabled=True`, which every gate-level test missed
+    because they all passed `enabled=` by hand.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _github(self, monkeypatch):  # type: ignore[no-untyped-def]
+        self.posted: list[ReviewPayload] = []
+        posted = self.posted
+        monkeypatch.setattr(
+            "codeatlas.vcs.github.client.GitHubWriter", lambda token: FakeWriter(posted)
+        )
+        monkeypatch.setattr("codeatlas.vcs.github.client.token_from_keyring", lambda: "test-token")
+        monkeypatch.delenv("CODEATLAS_PUBLISH_ENABLED", raising=False)
+        monkeypatch.delenv("CODEATLAS_KILL_SWITCH", raising=False)
+
+    def test_publish_without_the_config_flag_is_blocked(self, pending) -> None:  # type: ignore[no-untyped-def]
+        approval_id, workdir, _ = pending
+        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        assert result.exit_code == 1, result.output  # type: ignore[union-attr]
+        assert self.posted == [], "the config flag must be able to say no at the CLI"
+
+    def test_kill_switch_blocks_even_with_the_flag_set(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        approval_id, workdir, _ = pending
+        monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
+        monkeypatch.setenv("CODEATLAS_KILL_SWITCH", "1")
+        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        assert result.exit_code == 1  # type: ignore[union-attr]
+        assert self.posted == []
+
+    def test_flag_plus_approval_posts_through_the_gate(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        approval_id, workdir, _ = pending
+        monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
+        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        assert result.exit_code == 0, result.output  # type: ignore[union-attr]
+        assert "published:" in result.output  # type: ignore[union-attr]
+        assert len(self.posted) == 1
+
+    def test_publish_command_posts_an_already_approved_payload(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        # The two-step flow the approve hint promises: approve now, publish later.
+        approval_id, workdir, _ = pending
+        monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
+        assert _run(["approve", str(approval_id), "--by", "xaga"], workdir).exit_code == 0  # type: ignore[union-attr]
+        assert self.posted == []
+        result = _run(["publish", str(approval_id)], workdir)
+        assert result.exit_code == 0, result.output  # type: ignore[union-attr]
+        assert len(self.posted) == 1
+
+    def test_the_not_published_hint_names_a_command_that_exists(self, pending) -> None:  # type: ignore[no-untyped-def]
+        approval_id, workdir, _ = pending
+        result = _run(["approve", str(approval_id), "--by", "xaga"], workdir)
+        assert "codeatlas publish" in result.output  # type: ignore[union-attr]
+        helped = CliRunner().invoke(app, ["publish", "--help"])
+        assert helped.exit_code == 0, "the hint points at a command that does not exist"
