@@ -244,6 +244,26 @@ def create_app(
             for r in rows
         ]
 
+    @app.get("/api/runs/{run_id}/files")
+    def run_files(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
+        """Every file at the head revision — the explorer's tree.
+
+        Measured from the git tree at source-lock time (the same rows the
+        /source allowlist reads), so the tree can browse files the graph has
+        no node for — a README is explorable even though nothing defines
+        symbols in it.
+        """
+        run = s.get(RunRow, run_id)
+        if run is None:
+            raise HTTPException(404, "unknown run")
+        rows = s.scalars(select(FileRow).where(FileRow.revision_id == run.head_revision_id)).all()
+        # Sorted in Python, not by the database: DB collation is locale-aware
+        # and varies; codepoint order is the deterministic contract.
+        return [
+            {"path": r.path, "language": r.language, "isGenerated": r.is_generated}
+            for r in sorted(rows, key=lambda r: r.path)
+        ]
+
     @app.get("/api/runs/{run_id}/answers")
     def run_answers(run_id: str, s: Session = Depends(session)) -> list[dict[str, object]]:  # noqa: B008
         """Every question this run has answered, with the cached answer.

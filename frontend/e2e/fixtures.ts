@@ -136,7 +136,7 @@ export const GRAPH = {
     nodes: [
       { data: { id: "pkg:kvstore", label: "kvstore 0.1.0", kind: "package", producers: ["cargo"] } },
       { data: { id: "file:kvstore/src/cache.rs", label: "kvstore/src/cache.rs", kind: "file", path: "kvstore/src/cache.rs", producers: ["rust-analyzer"] } },
-      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, producers: ["rust-analyzer"] } },
+      { data: { id: "sym:evict", label: "evict_oldest", kind: "function", path: "kvstore/src/cache.rs", startLine: 41, endLine: 48, producers: ["rust-analyzer"] } },
       { data: { id: "sym:put", label: "put", kind: "function", path: "kvstore/src/cache.rs", startLine: 23, producers: ["rust-analyzer"] } },
       // A second connected component, so "no path" stays expressible: handle
       // calls parse, and neither touches the cache symbols.
@@ -414,6 +414,19 @@ export const APPROVALS_DECIDED = [
     decision: "approved",
     decisionNote: "matches what I read in the diff",
   },
+];
+
+// The git tree at the revision — including files the graph has no node for,
+// which is what makes the explorer more than a list of modules.
+export const FILES = [
+  { path: "Cargo.toml", language: null, isGenerated: false },
+  { path: "README.md", language: null, isGenerated: false },
+  { path: "kvstore/Cargo.toml", language: null, isGenerated: false },
+  { path: "kvstore/src/api.rs", language: "rust", isGenerated: false },
+  { path: "kvstore/src/cache.rs", language: "rust", isGenerated: false },
+  { path: "kvstore/src/fmt.rs", language: "rust", isGenerated: false },
+  { path: "kvstore/src/gen.rs", language: "rust", isGenerated: true },
+  { path: "kvstore/src/lib.rs", language: "rust", isGenerated: false },
 ];
 
 export const MANIFEST = {

@@ -475,6 +475,26 @@ class TestAbsenceAndBrokenness:
         assert response.status_code == 400
 
 
+class TestFiles:
+    """The explorer's tree: every file at the revision, graph node or not."""
+
+    def test_lists_every_file_at_the_revision_sorted(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = seeded
+        response = client.get(f"/api/runs/{run_id}/files")
+        assert response.status_code == 200
+        files = response.json()
+        paths = [f["path"] for f in files]
+        assert "kvstore/src/cache.rs" in paths
+        # Not just the graph's modules — the git tree, so non-code files browse too.
+        assert any(not p.endswith(".rs") for p in paths)
+        assert paths == sorted(paths)
+        assert all("isGenerated" in f and "language" in f for f in files)
+
+    def test_unknown_run_404s(self, seeded) -> None:  # type: ignore[no-untyped-def]
+        client, _, _ = seeded
+        assert client.get("/api/runs/01AAAAAAAAAAAAAAAAAAAAAAAA/files").status_code == 404
+
+
 class TestPublications:
     """The dashboard must not hard-code "nothing was sent" — this route is the
     row that decides, and it did not exist."""

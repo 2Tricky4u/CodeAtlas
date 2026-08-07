@@ -14,6 +14,7 @@ import { AdrView } from "./views/AdrView";
 import { ArchitectureView } from "./views/ArchitectureView";
 import { ChangeView } from "./views/ChangeView";
 import { DetailView } from "./views/DetailView";
+import { FilesView } from "./views/FilesView";
 import { FindingsView } from "./views/FindingsView";
 import { MapView } from "./views/MapView";
 import { ModuleView } from "./views/ModuleView";
@@ -31,6 +32,7 @@ export function App() {
           <Route path="runs/:runId" element={<RunLayout />}>
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<OverviewView />} />
+            <Route path="files" element={<FilesView />} />
             <Route path="map" element={<MapView />} />
             <Route path="architecture" element={<ArchitectureView />} />
             <Route path="adr" element={<AdrView />} />
@@ -139,6 +141,7 @@ function Landing() {
 // what a change did to it, what is wrong with it, how the run itself went.
 const TABS = [
   { path: "overview", label: "overview" },
+  { path: "files", label: "files" },
   { path: "map", label: "map" },
   { path: "architecture", label: "architecture" },
   { path: "adr", label: "decisions" },

@@ -360,6 +360,13 @@ export interface Approval {
   decisionNote: string | null;
 }
 
+/** One file at the head revision, from the git tree — graph node or not. */
+export interface RepoFile {
+  path: string;
+  language: string | null;
+  isGenerated: boolean;
+}
+
 /** api-surface.v1 — the full public API of one revision, as measured. */
 export interface ApiSurface {
   revision: string;
@@ -619,6 +626,7 @@ export const api = {
   /** Every question this run has answered — the cache, made enumerable. */
   answers: (id: string) => getJson<CodeAnswer[]>(`/api/runs/${id}/answers`),
   invocations: (id: string) => getJson<AgentInvocation[]>(`/api/runs/${id}/invocations`),
+  files: (id: string) => getJson<RepoFile[]>(`/api/runs/${id}/files`),
   runManifest: (id: string) => getOptional<RunManifest>(`/api/runs/${id}/artifact/run-manifest`),
   apiSurfaceHead: (id: string) =>
     getOptional<ApiSurface>(`/api/runs/${id}/artifact/api-surface-head`),

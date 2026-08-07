@@ -13,6 +13,7 @@ import {
   CANDIDATE_FINDINGS,
   DETAIL,
   DETAIL2,
+  FILES,
   INTENT,
   REVIEW_MARKDOWN,
   REVIEW_PAYLOAD,
@@ -132,6 +133,8 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/answers`, (route) => route.fulfill({ json: [] }));
   await page.route(`**/api/runs/${RUN_ID_2}/answers`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/runs/${RUN_ID}/files`, (route) => route.fulfill({ json: FILES }));
+  await page.route(`**/api/runs/${RUN_ID_2}/files`, (route) => route.fulfill({ json: [] }));
   await page.route(`**/api/runs/${RUN_ID}/invocations`, (route) =>
     route.fulfill({ json: INVOCATIONS }),
   );
@@ -1363,6 +1366,70 @@ test.describe("evidence surfaced", () => {
     await expect(
       page.getByTestId("path-endpoints").getByTestId("module-link").first(),
     ).toBeVisible();
+  });
+});
+
+test.describe("the code explorer", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("the tree shows every file, and a measured one opens its module page", async ({
+    page,
+  }) => {
+    await page.goto(`/#/runs/${RUN_ID}/files`);
+    const tree = page.getByTestId("file-tree");
+    await expect(tree).toContainText("kvstore/");
+    await expect(tree).toContainText("README.md");
+    await expect(tree).toContainText("generated");
+    // cache.rs has graph symbols → its module page, not a bare source popup.
+    await page.getByTestId("tree-file").filter({ hasText: "cache.rs" }).click();
+    await expect(page.getByTestId("module-view")).toBeVisible();
+  });
+
+  test("a file the graph has no node for still opens as pinned source", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/files`);
+    await page.getByTestId("tree-file").filter({ hasText: "README.md" }).click();
+    await expect(page.getByTestId("source-panel")).toBeVisible();
+    await expect(page.getByTestId("module-view")).toHaveCount(0);
+  });
+
+  test("measured definition spans are coloured across their whole extent", async ({
+    page,
+  }) => {
+    // evict_oldest spans lines 41-48 in the fixture; every covered line gets
+    // the kind colour — and only measured spans do, per the H3 rule.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByRole("button", { name: "open source" }).click();
+    const spans = page.getByTestId("source-span");
+    await expect(spans.first()).toBeVisible();
+    expect(await spans.count()).toBeGreaterThan(1);
+    await expect(page.getByTestId("source-link-note")).toContainText("coloured spans");
+  });
+
+  test("explain on a definition asks the cited question for the reader", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/ask`, (route) =>
+      route.fulfill({
+        json: {
+          question: "What does `evict_oldest` do?",
+          scope: "kvstore/src/cache.rs",
+          answer: "Removes the oldest entries beyond capacity.",
+          claims: [
+            {
+              text: "It pops from the front of the insertion order queue.",
+              citations: [{ kind: "source", path: "kvstore/src/cache.rs", startLine: 41 }],
+            },
+          ],
+          refused: null,
+          droppedClaims: [],
+          cached: false,
+        },
+      }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    // evict_oldest ranks first (fan-in 1 vs put's 0), so the first explain
+    // button is its row.
+    await page.getByTestId("explain-symbol").first().click();
+    await expect(page.getByTestId("ask-answer")).toContainText("What does `evict_oldest` do?");
+    await expect(page.getByTestId("ask-claims")).toContainText("insertion order");
   });
 });
 

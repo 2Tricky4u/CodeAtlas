@@ -14,10 +14,16 @@ export function AskPanel({
   runId,
   scope,
   onOpenSource,
+  queuedQuestion,
+  onQueuedConsumed,
 }: {
   runId: string;
   scope: string;
   onOpenSource: (path: string, startLine?: number) => void;
+  /** A question another control asked on the reader's behalf (an "explain"
+   *  click). Submitted immediately — the click was the consent. */
+  queuedQuestion?: string | null;
+  onQueuedConsumed?: () => void;
 }) {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,8 +45,8 @@ export function AskPanel({
       .catch((e: Error) => setError(e.message));
   }, [runId, scope]);
 
-  const submit = () => {
-    const trimmed = question.trim();
+  const submitText = (text: string) => {
+    const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
     setError(null);
@@ -58,6 +64,19 @@ export function AskPanel({
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
+
+  const submit = () => submitText(question);
+
+  // An "explain <symbol>" click elsewhere on the page lands here: the fixed
+  // question wording keeps the cache warm — the same symbol asked twice is
+  // the same artifact.
+  useEffect(() => {
+    if (!queuedQuestion) return;
+    setQuestion(queuedQuestion);
+    submitText(queuedQuestion);
+    onQueuedConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queuedQuestion]);
 
   return (
     <Panel title="ask about this module">

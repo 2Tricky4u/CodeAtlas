@@ -37,6 +37,7 @@ export function ModuleView() {
   const [run, setRun] = useState<RunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SourceRequest | null>(null);
+  const [explainQuestion, setExplainQuestion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -119,6 +120,7 @@ export function ModuleView() {
             index={index}
             anchorSymbol={anchorSymbol}
             onOpen={open}
+            onExplain={(label) => setExplainQuestion(`What does \`${label}\` do?`)}
           />
         )}
       </Panel>
@@ -180,6 +182,8 @@ export function ModuleView() {
           onOpenSource={(citedPath, startLine) =>
             setSource({ revision: index.revision, path: citedPath, startLine })
           }
+          queuedQuestion={explainQuestion}
+          onQueuedConsumed={() => setExplainQuestion(null)}
         />
       )}
 
@@ -236,11 +240,13 @@ function DefinitionList({
   index,
   anchorSymbol,
   onOpen,
+  onExplain,
 }: {
   definitions: GraphNode[];
   index: GraphIndex;
   anchorSymbol: string | null;
   onOpen: (startLine?: number) => void;
+  onExplain: (label: string) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(anchorSymbol);
   const [showAll, setShowAll] = useState<Set<string>>(new Set());
@@ -292,6 +298,15 @@ function DefinitionList({
                       :{definition.startLine}
                     </button>
                   )}
+                  <button
+                    className="note"
+                    style={{ cursor: "pointer", marginLeft: 6 }}
+                    data-testid="explain-symbol"
+                    title="ask the agent, cited and cached (spends quota once per symbol)"
+                    onClick={() => onExplain(definition.label)}
+                  >
+                    explain?
+                  </button>
                   {isOpen && <Callers callers={callers} index={index} />}
                 </li>
               );

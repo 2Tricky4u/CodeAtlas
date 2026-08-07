@@ -12,7 +12,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type SourceSlice } from "../api";
 import { graphIndex, type GraphIndex, type GraphNode } from "../graph";
-import { Panel } from "../ui";
+import { KindDot, Panel } from "../ui";
+import { kindColor } from "./layout";
 import { SymbolLink } from "./links";
 
 export interface SourceRequest {
@@ -56,15 +57,24 @@ export function SourcePanel({
   const highlightTo = request.endLine ?? request.startLine ?? -1;
 
   const definedAt = new Map<number, GraphNode>();
+  // Which measured definition covers each line — its whole span, not just the
+  // first line, so the reader sees where a function begins and ends. Later
+  // (inner) definitions overwrite outer ones, so a method colours as itself
+  // rather than as the impl block around it. Only measured spans get colour:
+  // a highlighter colours text it guessed at.
+  const spanAt = new Map<number, GraphNode>();
   if (slice && index) {
-    for (const symbol of index.definitionsInRange(
-      request.path,
-      slice.startLine,
-      slice.startLine + slice.lines.length - 1,
-    )) {
-      if (symbol.startLine !== undefined) definedAt.set(symbol.startLine, symbol);
+    const sliceEnd = slice.startLine + slice.lines.length - 1;
+    for (const symbol of index.definitionsInRange(request.path, slice.startLine, sliceEnd)) {
+      if (symbol.startLine === undefined) continue;
+      definedAt.set(symbol.startLine, symbol);
+      const spanEnd = Math.min(symbol.endLine ?? symbol.startLine, sliceEnd);
+      for (let line = symbol.startLine; line <= spanEnd; line += 1) {
+        spanAt.set(line, symbol);
+      }
     }
   }
+  const spanKinds = [...new Set([...spanAt.values()].map((symbol) => symbol.kind))].sort();
 
   return (
     <Panel
@@ -86,8 +96,19 @@ export function SourcePanel({
               const number = slice.startLine + lineIndex;
               const highlighted = number >= highlightFrom && number <= highlightTo;
               const symbol = definedAt.get(number);
+              const covering = spanAt.get(number);
               return (
-                <div key={number} className={`line ${highlighted ? "hl" : ""}`}>
+                <div
+                  key={number}
+                  className={`line ${highlighted ? "hl" : ""} ${covering ? "defspan" : ""}`}
+                  data-testid={covering ? "source-span" : undefined}
+                  title={covering ? `${covering.kind} ${covering.label}` : undefined}
+                  style={
+                    covering
+                      ? { borderLeft: `2px solid ${kindColor(covering.kind)}` }
+                      : { borderLeft: "2px solid transparent" }
+                  }
+                >
                   <span className="ln mono-num">{number}</span>
                   <span>{line || " "}</span>
                   {symbol && (
@@ -110,9 +131,14 @@ export function SourcePanel({
           </div>
           {definedAt.size > 0 && (
             <p className="note" style={{ marginBottom: 0 }} data-testid="source-link-note">
-              marked lines define a symbol the graph measured; its count is how many
-              symbols use it. Everything else is plain text, not unlinked on purpose —
-              the graph simply has no node for it.
+              coloured spans are measured definitions —{" "}
+              {spanKinds.map((kind) => (
+                <span key={kind} style={{ marginRight: 8 }}>
+                  <KindDot kind={kind} /> {kind}
+                </span>
+              ))}
+              — and the badge's count is how many symbols use it. Everything else is
+              plain text, not unlinked on purpose — the graph simply has no node for it.
             </p>
           )}
         </>

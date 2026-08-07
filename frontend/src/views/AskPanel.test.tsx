@@ -128,6 +128,24 @@ describe("AskPanel", () => {
     expect(screen.getByText("cached")).toBeTruthy();
   });
 
+  it("a queued explain question submits itself once", async () => {
+    const spy = vi.spyOn(api, "ask").mockResolvedValue(ANSWER);
+    const consumed = vi.fn();
+    render(
+      <AskPanel
+        runId="r1"
+        scope="kvstore/src/cache.rs"
+        onOpenSource={noop}
+        queuedQuestion="What does `evict_oldest` do?"
+        onQueuedConsumed={consumed}
+      />,
+    );
+    await screen.findByTestId("ask-answer");
+    expect(spy).toHaveBeenCalledWith("r1", "kvstore/src/cache.rs", "What does `evict_oldest` do?");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(consumed).toHaveBeenCalled();
+  });
+
   it("a freshly asked question joins the history", async () => {
     vi.spyOn(api, "ask").mockResolvedValue(ANSWER);
     const user = userEvent.setup();
