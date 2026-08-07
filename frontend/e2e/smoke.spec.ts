@@ -455,7 +455,9 @@ test.describe("linked source", () => {
     const marker = page.getByTestId("source-symbol").first();
     await expect(marker).toBeVisible();
     await expect(marker).toContainText("←");
-    await expect(page.getByTestId("source-link-note")).toContainText("plain text");
+    // Syntax colour exists now, so the honesty note distinguishes channels:
+    // text colour is grammar; only the border and badge mean "measured".
+    await expect(page.getByTestId("source-link-note")).toContainText("no graph node");
   });
 });
 
@@ -1402,7 +1404,17 @@ test.describe("the code explorer", () => {
     const spans = page.getByTestId("source-span");
     await expect(spans.first()).toBeVisible();
     expect(await spans.count()).toBeGreaterThan(1);
-    await expect(page.getByTestId("source-link-note")).toContainText("coloured spans");
+    await expect(page.getByTestId("source-link-note")).toContainText("coloured left border");
+  });
+
+  test("source text carries the grammar of its extension", async ({ page }) => {
+    // Lexical colour, not evidence: `pub fn` renders as a keyword because
+    // the file is .rs, and the note says text colour is only the grammar.
+    await page.goto(`/#/runs/${RUN_ID}/module/kvstore/src/cache.rs`);
+    await page.getByRole("button", { name: "open source" }).click();
+    await expect(
+      page.locator('[data-testid="source-panel"] .hljs-keyword').first(),
+    ).toBeVisible();
   });
 
   test("explain on a definition asks the cited question for the reader", async ({ page }) => {

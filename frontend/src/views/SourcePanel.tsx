@@ -8,11 +8,12 @@
 // no node for stays plain text, and the panel says so once rather than
 // implying full coverage. A link here means something was measured.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type SourceSlice } from "../api";
 import { graphIndex, type GraphIndex, type GraphNode } from "../graph";
 import { KindDot, Panel } from "../ui";
+import { highlightToLines, languageFor } from "./highlight";
 import { kindColor } from "./layout";
 import { SymbolLink } from "./links";
 
@@ -50,6 +51,16 @@ export function SourcePanel({
     // Same memoised index every other view shares — no extra fetch after the first.
     if (runId) graphIndex(runId).then(setIndex).catch(() => setIndex(null));
   }, [request, runId]);
+
+  // Syntax colour: deterministic tokenization by the extension's grammar —
+  // presentation only. The measured channel stays the border and the badge.
+  const syntax = useMemo(
+    () =>
+      slice && request
+        ? highlightToLines(slice.lines.join("\n"), languageFor(request.path))
+        : null,
+    [slice, request],
+  );
 
   if (!request) return null;
 
@@ -110,7 +121,13 @@ export function SourcePanel({
                   }
                 >
                   <span className="ln mono-num">{number}</span>
-                  <span>{line || " "}</span>
+                  {syntax?.[lineIndex] ? (
+                    // hljs entity-escapes the source and emits only its own
+                    // span tags; the splitter keeps each line balanced.
+                    <span dangerouslySetInnerHTML={{ __html: syntax[lineIndex]! }} />
+                  ) : (
+                    <span>{line || " "}</span>
+                  )}
                   {symbol && (
                     <SymbolLink
                       id={symbol.id}
@@ -131,14 +148,15 @@ export function SourcePanel({
           </div>
           {definedAt.size > 0 && (
             <p className="note" style={{ marginBottom: 0 }} data-testid="source-link-note">
-              coloured spans are measured definitions —{" "}
+              the coloured left border marks a measured definition span —{" "}
               {spanKinds.map((kind) => (
                 <span key={kind} style={{ marginRight: 8 }}>
                   <KindDot kind={kind} /> {kind}
                 </span>
               ))}
-              — and the badge's count is how many symbols use it. Everything else is
-              plain text, not unlinked on purpose — the graph simply has no node for it.
+              — and the badge's count is how many symbols use it. Text colour is only
+              the grammar of the file's extension; an unmarked identifier has no graph
+              node, not an unlinked one.
             </p>
           )}
         </>
