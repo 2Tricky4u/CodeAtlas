@@ -6,8 +6,9 @@
 // made 25 of memchr's 35 modules collapse into a single false cycle
 // (graph/symbols.py documents the mechanism).
 
-import { describe, expect, it } from "vitest";
-import { buildIndex, shortestPath } from "./graph";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { api } from "./api";
+import { buildIndex, graphIndex, graphPayload, shortestPath } from "./graph";
 
 const N = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
   data: { id, label: id.split("/").pop() ?? id, kind, producers: ["rust-analyzer"], ...extra },
@@ -146,6 +147,150 @@ describe("edgeKind", () => {
   it("answers for a dependency edge and not for contains", () => {
     expect(index.edgeKind("sym:put().", "sym:evict().")).toBe("calls");
     expect(index.edgeKind("file:src/cache.rs", "sym:put().")).toBeUndefined();
+  });
+});
+
+describe("hostile payloads", () => {
+  it("a duplicate edge pair counts its neighbour once", () => {
+    // SCIP routinely emits both a `calls` and a `reads` edge between the same
+    // pair. Double-counting inflates every fan-in badge, the flow scoring and
+    // the path pickers' role filters.
+    const dup = buildIndex({
+      revision: "c".repeat(40),
+      repository: "local/kv",
+      elements: {
+        nodes: [
+          N("file:a.rs", "file", { path: "a.rs" }),
+          N("file:b.rs", "file", { path: "b.rs" }),
+          N("sym:caller", "function", { path: "a.rs" }),
+          N("sym:callee", "function", { path: "b.rs" }),
+        ],
+        edges: [
+          E("file:a.rs", "sym:caller", "contains"),
+          E("file:b.rs", "sym:callee", "contains"),
+          E("sym:caller", "sym:callee", "reads"),
+          E("sym:caller", "sym:callee", "calls"),
+        ],
+      },
+    });
+    expect(dup.usedBy("sym:callee").map((n) => n.id)).toEqual(["sym:caller"]);
+    expect(dup.uses("sym:caller").map((n) => n.id)).toEqual(["sym:callee"]);
+    expect(dup.moduleUsers("file:b.rs").map(([, symbols]) => symbols.length)).toEqual([1]);
+  });
+
+  it("edgeKind prefers the strongest measured kind, not payload order", () => {
+    // calls > implements > extends > reads > imports. Whichever edge the
+    // payload happens to list last must not decide what a path hop is called.
+    const build = (kinds: string[]) =>
+      buildIndex({
+        revision: "c".repeat(40),
+        repository: "local/kv",
+        elements: {
+          nodes: [
+            N("file:a.rs", "file", { path: "a.rs" }),
+            N("sym:x", "function", { path: "a.rs" }),
+            N("sym:y", "function", { path: "a.rs" }),
+          ],
+          edges: [
+            E("file:a.rs", "sym:x", "contains"),
+            E("file:a.rs", "sym:y", "contains"),
+            ...kinds.map((kind) => E("sym:x", "sym:y", kind)),
+          ],
+        },
+      });
+    expect(build(["reads", "calls"]).edgeKind("sym:x", "sym:y")).toBe("calls");
+    expect(build(["calls", "reads"]).edgeKind("sym:x", "sym:y")).toBe("calls");
+    expect(build(["imports", "reads"]).edgeKind("sym:x", "sym:y")).toBe("reads");
+  });
+
+  it("an edge referencing a missing node is skipped, not thrown on", () => {
+    const dangling = buildIndex({
+      revision: "c".repeat(40),
+      repository: "local/kv",
+      elements: {
+        nodes: [N("sym:real", "function", {})],
+        edges: [E("sym:real", "sym:ghost", "calls"), E("sym:ghost", "sym:real", "calls")],
+      },
+    });
+    expect(dangling.uses("sym:real")).toEqual([]);
+    expect(dangling.usedBy("sym:real")).toEqual([]);
+  });
+
+  it("an empty payload yields an empty index, not a crash", () => {
+    const empty = buildIndex({
+      revision: "c".repeat(40),
+      repository: "local/kv",
+      elements: { nodes: [], edges: [] },
+    });
+    expect(empty.nodes).toEqual([]);
+    expect(empty.fileByPath("anything")).toBeUndefined();
+    expect(shortestPath(empty, "a", "b")).toBeNull();
+  });
+
+  it("a cyclic graph terminates and still finds the path", () => {
+    const cyclic = buildIndex({
+      revision: "c".repeat(40),
+      repository: "local/kv",
+      elements: {
+        nodes: [
+          N("file:a.rs", "file", { path: "a.rs" }),
+          N("sym:a", "function", { path: "a.rs" }),
+          N("sym:b", "function", { path: "a.rs" }),
+          N("sym:c", "function", { path: "a.rs" }),
+          N("sym:island", "function", { path: "a.rs" }),
+        ],
+        edges: [
+          E("file:a.rs", "sym:a", "contains"),
+          E("file:a.rs", "sym:b", "contains"),
+          E("file:a.rs", "sym:c", "contains"),
+          E("file:a.rs", "sym:island", "contains"),
+          E("sym:a", "sym:b", "calls"),
+          E("sym:b", "sym:c", "calls"),
+          E("sym:c", "sym:a", "calls"),
+          E("sym:a", "sym:a", "calls"),
+        ],
+      },
+    });
+    const path = shortestPath(cyclic, "sym:a", "sym:c");
+    expect(path?.map((s) => s.node.id)).toEqual(["sym:a", "sym:b", "sym:c"]);
+    // And absence inside a cycle is still an answer, not an infinite loop.
+    expect(shortestPath(cyclic, "sym:a", "sym:island")).toBeNull();
+  });
+});
+
+describe("the memoised fetch", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const payloadFor = (revision: string) => ({
+    revision,
+    repository: "local/kv",
+    elements: { nodes: [], edges: [] },
+  });
+
+  it("fetches once per run and shares the payload with the index", async () => {
+    const spy = vi
+      .spyOn(api, "runGraph")
+      .mockResolvedValue(payloadFor("d".repeat(40)));
+    const first = graphIndex("run-memo-1");
+    const second = graphIndex("run-memo-1");
+    expect(second).toBe(first);
+    await first;
+    // The raw payload consumer (focus mode) rides the same fetch.
+    await graphPayload("run-memo-1");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed fetch is retried on the next call, not cached forever", async () => {
+    // One transient /graph failure must not poison the run for the whole page
+    // session — that turns a blip into a permanently broken module page.
+    const spy = vi
+      .spyOn(api, "runGraph")
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue(payloadFor("e".repeat(40)));
+    await expect(graphIndex("run-memo-2")).rejects.toThrow("connection reset");
+    const index = await graphIndex("run-memo-2");
+    expect(index.revision).toBe("e".repeat(40));
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 

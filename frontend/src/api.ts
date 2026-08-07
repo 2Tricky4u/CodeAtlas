@@ -505,10 +505,15 @@ async function getJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** Text artifacts — the Structurizr DSL, the rendered review — are documents. */
+/** Text artifacts — the Structurizr DSL, the rendered review — are documents.
+ *  Same policy as getOptional: only a 404 means "this run has none"; any other
+ *  failure is an error, or a broken server renders as a missing artifact. */
 async function getOptionalText(url: string): Promise<string | null> {
   const response = await fetch(url);
-  if (!response.ok) return null;
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`${url}: ${response.status} ${response.statusText}`);
+  }
   return await response.text();
 }
 
@@ -552,11 +557,17 @@ export const api = {
   /** POST — ADR-0014's one local-analysis endpoint. Throws with the server's
    *  reason when asking is disabled, so the panel can say why. */
   ask: async (id: string, scope: string, question: string): Promise<CodeAnswer> => {
-    const response = await fetch(`/api/runs/${id}/ask`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ scope, question }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/runs/${id}/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scope, question }),
+      });
+    } catch {
+      // fetch rejects with "Failed to fetch", which tells the reader nothing.
+      throw new Error("could not reach the server — is `codeatlas serve` still running?");
+    }
     if (!response.ok) {
       const detail = ((await response.json().catch(() => null)) as { detail?: string } | null)
         ?.detail;

@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { buildIndex } from "../graph";
-import { deriveFlows, flowToMermaid } from "./flows";
+import { deriveFlows, flowToMermaid, type Flow } from "./flows";
 
 const N = (id: string, kind: string, path?: string) => ({
   data: { id, label: id.split(":").pop() ?? id, kind, path },
@@ -97,6 +97,51 @@ describe("deriveFlows", () => {
     const twice = deriveFlows(index, ENTRY);
     expect(once).toEqual(twice);
   });
+
+  it("the default bar is exactly three modules", () => {
+    // entry + 2 hops = 3 distinct modules: drawable. One hop fewer is not —
+    // the constant itself is under test here, not a caller's override.
+    const chainOf = (length: number) => {
+      const nodes = [];
+      const edges = [];
+      for (let i = 0; i < length; i += 1) {
+        nodes.push(N(`f:m${i}`, "file", `m${i}.rs`), N(`s:fn${i}`, "function", `m${i}.rs`));
+        edges.push(E(`f:m${i}`, `s:fn${i}`, "contains"));
+        if (i > 0) edges.push(E(`s:fn${i - 1}`, `s:fn${i}`, "calls"));
+      }
+      return buildIndex({
+        revision: "c".repeat(40),
+        repository: "local/chain",
+        elements: { nodes, edges },
+      });
+    };
+    const entry = [{ path: "m0.rs", reason: "root" }];
+    expect(deriveFlows(chainOf(3), entry)).toHaveLength(1);
+    expect(deriveFlows(chainOf(2), entry)).toEqual([]);
+  });
+
+  it("a long walk is truncated at the cap and says so", () => {
+    // The comment above MAX_STEPS promises "a stated remainder"; a silent cut
+    // is a disclosure the code advertises and does not make.
+    const nodes = [];
+    const edges = [];
+    for (let i = 0; i < 20; i += 1) {
+      nodes.push(N(`f:m${i}`, "file", `m${i}.rs`), N(`s:fn${i}`, "function", `m${i}.rs`));
+      edges.push(E(`f:m${i}`, `s:fn${i}`, "contains"));
+      if (i > 0) edges.push(E(`s:fn${i - 1}`, `s:fn${i}`, "calls"));
+    }
+    const long = buildIndex({
+      revision: "c".repeat(40),
+      repository: "local/long",
+      elements: { nodes, edges },
+    });
+    const [flow] = deriveFlows(long, [{ path: "m0.rs", reason: "root" }]);
+    expect(flow!.steps).toHaveLength(14);
+    expect(flow!.truncated).toBe(true);
+    // A walk that ends because it has nowhere left to go is not truncated.
+    const [short] = deriveFlows(index, ENTRY);
+    expect(short!.truncated).toBe(false);
+  });
 });
 
 describe("flowToMermaid", () => {
@@ -117,5 +162,73 @@ describe("flowToMermaid", () => {
       .split("\n")
       .filter((line) => line.trim().startsWith("participant"));
     expect(participants).toHaveLength(4);
+  });
+
+  const participantIds = (source: string) =>
+    source
+      .split("\n")
+      .filter((line) => line.trim().startsWith("participant"))
+      .map((line) => line.trim().split(" ")[1]!);
+
+  it("modules that clean to the same string still get distinct participants", () => {
+    // crates/foo-bar vs crates/foo_bar is routine in Rust (hyphenated crate
+    // dir, underscored module). If both alias to one id, Mermaid merges the
+    // boxes and every arrow between them becomes a self-loop — a diagram of
+    // something that does not exist.
+    const flow: Flow = {
+      entry: "crates/foo-bar/lib.rs",
+      reason: "root",
+      moduleCount: 2,
+      truncated: false,
+      steps: [
+        {
+          fromModule: "crates/foo-bar/lib.rs",
+          toModule: "crates/foo_bar/lib.rs",
+          viaLabel: "run",
+          viaKind: "calls",
+        },
+      ],
+    };
+    const ids = participantIds(flowToMermaid(flow));
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("participant ids never start with a digit", () => {
+    // Mermaid rejects `2fars` as a participant id; the module is real, the
+    // diagram must still render.
+    const flow: Flow = {
+      entry: "2fa.rs",
+      reason: "root",
+      moduleCount: 2,
+      truncated: false,
+      steps: [
+        { fromModule: "2fa.rs", toModule: "auth.rs", viaLabel: "verify", viaKind: "calls" },
+      ],
+    };
+    for (const id of participantIds(flowToMermaid(flow))) {
+      expect(id).toMatch(/^[A-Za-z]/);
+    }
+  });
+
+  it("hostile symbol labels cannot corrupt the diagram", () => {
+    // A viaLabel with a newline or semicolon would inject Mermaid syntax —
+    // extra lines mean extra arrows, and every arrow claims to be measured.
+    const flow: Flow = {
+      entry: "a.rs",
+      reason: "root",
+      moduleCount: 2,
+      truncated: false,
+      steps: [
+        { fromModule: "a.rs", toModule: "b.rs", viaLabel: "bad\nname;x", viaKind: "calls" },
+      ],
+    };
+    const source = flowToMermaid(flow);
+    expect(source.match(/->>/g)).toHaveLength(1);
+    // Every line must belong to the grammar we emit — header, participant, or
+    // arrow. A label fragment floating on its own line is an injection.
+    for (const line of source.split("\n")) {
+      if (line.trim() === "") continue;
+      expect(line).toMatch(/^(sequenceDiagram$|\s+participant \S+ as \S|\s+\S+->>\S+: \S)/);
+    }
   });
 });

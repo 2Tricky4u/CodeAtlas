@@ -27,6 +27,17 @@ export interface GraphNode {
 /** Edge kinds that mean "depends on", as the overview defines them. */
 const DEPENDENCY_KINDS = new Set(["calls", "reads", "imports", "implements", "extends"]);
 
+/** When one pair carries several dependency edges (SCIP often emits `calls`
+ *  and `reads` together), the strongest interaction names the relationship —
+ *  not whichever edge the payload happened to list last. */
+const EDGE_KIND_RANK = new Map([
+  ["calls", 0],
+  ["implements", 1],
+  ["extends", 2],
+  ["reads", 3],
+  ["imports", 4],
+]);
+
 const ANCHOR_DESCRIPTORS = new Set(["crate/", "super/", "self/"]);
 
 /** Mirrors graph/symbols.py::is_namespace_root plus the module-kind rule. */
@@ -88,18 +99,29 @@ export function buildIndex(payload: GraphPayload): GraphIndex {
     if (anchors.has(source.id) || anchors.has(target.id)) continue;
     usedByMap.set(target.id, [...(usedByMap.get(target.id) ?? []), source]);
     usesMap.set(source.id, [...(usesMap.get(source.id) ?? []), target]);
-    edgeKinds.set(JSON.stringify([source.id, target.id]), edge.kind);
+    const pair = JSON.stringify([source.id, target.id]);
+    const held = edgeKinds.get(pair);
+    if (
+      held === undefined ||
+      (EDGE_KIND_RANK.get(edge.kind) ?? 99) < (EDGE_KIND_RANK.get(held) ?? 99)
+    ) {
+      edgeKinds.set(pair, edge.kind);
+    }
   }
 
-  for (const list of [...definitions.values(), ...usedByMap.values(), ...usesMap.values()]) {
-    list.sort(byLabel);
+  const dedupe = (list: GraphNode[]) => [...new Map(list.map((n) => [n.id, n])).values()];
+
+  // Deduped here, once, so every fan-in count downstream (badges, flow scores,
+  // the path pickers' role filters) counts neighbours rather than edges.
+  for (const map of [definitions, usedByMap, usesMap]) {
+    for (const [key, list] of map) {
+      map.set(key, dedupe(list).sort(byLabel));
+    }
   }
 
   const files = new Map(
     nodes.filter((n) => n.kind === "file" && n.path).map((n) => [n.path!, n]),
   );
-
-  const dedupe = (list: GraphNode[]) => [...new Map(list.map((n) => [n.id, n])).values()];
 
   const groupByFile = (symbols: GraphNode[]): [GraphNode, GraphNode[]][] => {
     const grouped = new Map<string, GraphNode[]>();
@@ -215,14 +237,28 @@ function reconstruct(
 
 // --- the shared, memoised fetch ----------------------------------------------
 
-const cache = new Map<string, Promise<GraphIndex>>();
+// A rejected fetch is evicted rather than cached: memoising a transient
+// failure would turn one network blip into a permanently broken run for the
+// rest of the page session.
+function memoised<T>(cache: Map<string, Promise<T>>, key: string, make: () => Promise<T>) {
+  let promise = cache.get(key);
+  if (!promise) {
+    promise = make();
+    promise.catch(() => cache.delete(key));
+    cache.set(key, promise);
+  }
+  return promise;
+}
+
+const payloadCache = new Map<string, Promise<GraphPayload>>();
+const indexCache = new Map<string, Promise<GraphIndex>>();
+
+/** The raw payload for a run — what cytoscape renders. Same fetch as the index. */
+export function graphPayload(runId: string): Promise<GraphPayload> {
+  return memoised(payloadCache, runId, () => api.runGraph(runId));
+}
 
 /** The index for a run. Fetched once; every later call is the same promise. */
 export function graphIndex(runId: string): Promise<GraphIndex> {
-  let promise = cache.get(runId);
-  if (!promise) {
-    promise = api.runGraph(runId).then(buildIndex);
-    cache.set(runId, promise);
-  }
-  return promise;
+  return memoised(indexCache, runId, () => graphPayload(runId).then(buildIndex));
 }

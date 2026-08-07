@@ -26,6 +26,9 @@ export interface Flow {
   reason: string;
   steps: FlowStep[];
   moduleCount: number;
+  /** True when the walk hit MAX_STEPS with somewhere left to go — the caller
+   *  must state the remainder, not imply the story ended here. */
+  truncated: boolean;
 }
 
 const MIN_MODULES = 3;
@@ -66,6 +69,13 @@ export function deriveFlows(
       frontier = [hop.target];
     }
 
+    // Truncated means the cap stopped the walk, not that it ran out of road:
+    // probe for one more hop and record what we declined to draw.
+    const truncated =
+      steps.length === MAX_STEPS &&
+      bestCrossModuleHop(index, frontier, steps[steps.length - 1]!.toModule, visitedModules) !==
+        null;
+
     const modules = new Set([entry.path, ...steps.map((s) => s.toModule)]);
     if (modules.size >= minModules && steps.length > 0) {
       flows.push({
@@ -73,6 +83,7 @@ export function deriveFlows(
         reason: entry.reason,
         steps,
         moduleCount: modules.size,
+        truncated,
       });
     }
   }
@@ -127,9 +138,12 @@ function bestCrossModuleHop(
 
 // --- rendering ---------------------------------------------------------------
 
-function alias(module: string, index: number): string {
-  const cleaned = module.replace(/[^0-9a-zA-Z]/g, "");
-  return cleaned || `M${index}`;
+/** Mermaid text position: strip anything that could read as diagram syntax.
+ *  A label with a newline in it would put a floating line into the diagram —
+ *  an extra arrow's worth of fiction in a figure whose whole claim is that
+ *  every mark was measured. */
+function mermaidText(text: string): string {
+  return text.replace(/[;\r\n]+/g, " ").trim();
 }
 
 /** One Mermaid sequenceDiagram per flow: participants are modules, every arrow
@@ -140,7 +154,11 @@ export function flowToMermaid(flow: Flow): string {
     if (!modules.includes(step.fromModule)) modules.push(step.fromModule);
     if (!modules.includes(step.toModule)) modules.push(step.toModule);
   }
-  const aliases = new Map(modules.map((module, i) => [module, alias(module, i)]));
+  // Positional ids: cleaning the path looked nicer but collided (foo-bar and
+  // foo_bar both clean to foobar, and Mermaid silently merges the boxes) and
+  // could start with a digit, which Mermaid rejects. The display name comes
+  // from the `as` clause; the id only has to be unique and boring.
+  const aliases = new Map(modules.map((module, i) => [module, `m${i}`]));
   // Disambiguated the same way the map's labels are: ripgrep's pipeline passes
   // through two different mod.rs files, and two boxes with one name is a
   // diagram of something that does not exist.
@@ -148,11 +166,14 @@ export function flowToMermaid(flow: Flow): string {
 
   const lines = ["sequenceDiagram"];
   for (const module of modules) {
-    lines.push(`    participant ${aliases.get(module)} as ${short.get(module) ?? module}`);
+    lines.push(
+      `    participant ${aliases.get(module)} as ${mermaidText(short.get(module) ?? module)}`,
+    );
   }
   for (const step of flow.steps) {
     lines.push(
-      `    ${aliases.get(step.fromModule)}->>${aliases.get(step.toModule)}: ${step.viaLabel}`,
+      `    ${aliases.get(step.fromModule)}->>${aliases.get(step.toModule)}: ` +
+        mermaidText(step.viaLabel),
     );
   }
   return lines.join("\n") + "\n";
