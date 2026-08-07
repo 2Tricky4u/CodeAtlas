@@ -259,6 +259,60 @@
         "summary": "Run Artifact"
       }
     },
+    "/api/runs/{run_id}/ask": {
+      "post": {
+        "description": "Ask one question about one module; get a cited answer or a refusal.\n\nThe single local-analysis endpoint ADR-0014 permits. It spends agent\nquota and stores an artifact; it has no path to publication or\napproval. Answers are cached by (revision, scope, question), so asking\ntwice costs once.",
+        "operationId": "ask_api_runs__run_id__ask_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Ask Api Runs  Run Id  Ask Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask"
+      }
+    },
     "/api/runs/{run_id}/findings": {
       "get": {
         "operationId": "run_findings_api_runs__run_id__findings_get",
