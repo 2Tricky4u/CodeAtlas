@@ -214,6 +214,26 @@ class TestTheReviewLeftItsEvidence:
         assert {"cargo-metadata", "rust-analyzer-scip"} <= {r.extractor for r in receipts}
 
 
+class TestReplayProvenance:
+    def test_cassette_ids_name_real_cassettes(self, reviewed, db_engine) -> None:  # type: ignore[no-untyped-def]
+        """ADR-0012's promise made checkable: a replayed run's manifest names
+        the cassettes it answered from, and each one exists on disk."""
+        import json
+
+        from codeatlas.db.tables import RunRow
+
+        run_id, deps = reviewed
+        with Session(db_engine) as session:
+            row = session.get(RunRow, run_id)
+            assert row is not None and row.manifest_sha256 is not None
+            manifest = json.loads(deps.cas.get(row.manifest_sha256))
+
+        assert manifest["cassetteIds"], "a replayed run must name its cassettes"
+        for cassette_id in manifest["cassetteIds"]:
+            assert (CASSETTES / f"{cassette_id}.json").is_file(), cassette_id
+        assert manifest["modelIds"], "replayed results carry the recorded model id"
+
+
 class TestNothingWasPublished:
     def test_a_run_with_no_pull_request_prepares_nothing(self, reviewed, db_engine) -> None:  # type: ignore[no-untyped-def]
         """Shadow by default, and with no PR target there is not even a payload.

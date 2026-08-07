@@ -79,6 +79,10 @@ def dispatch(
         budget.consume(result)
 
     result_sha = cas.put_json(result.contract_dump())
+    # The cassette key is a pure function of the task; recording it under
+    # replay is what lets the manifest name the cassettes a run answered from.
+    from codeatlas.agents.replay_engine import cassette_key
+
     with Session(db_engine) as session:
         session.add(
             AgentInvocationRow(
@@ -94,6 +98,8 @@ def dispatch(
                 duration_ms=result.usage.wall_ms,
                 transcript_sha256=result.transcript_ref,
                 result_sha256=result_sha,
+                model_id=result.usage.model_id,
+                cassette_key=cassette_key(task) if engine.name == "replay" else None,
             )
         )
         session.commit()

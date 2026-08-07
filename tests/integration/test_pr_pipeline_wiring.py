@@ -218,6 +218,56 @@ def gapped(db_engine, tmp_path_factory: pytest.TempPathFactory):  # type: ignore
     return _pr_run(db_engine, root, "local/kvstore-gaps", script)
 
 
+def _manifest(db_engine, deps, run_id: str) -> dict:  # type: ignore[no-untyped-def]
+    import json
+
+    from codeatlas.db.tables import RunRow
+
+    with Session(db_engine) as session:
+        row = session.get(RunRow, run_id)
+        assert row is not None and row.manifest_sha256 is not None
+        return json.loads(deps.cas.get(row.manifest_sha256))  # type: ignore[no-any-return]
+
+
+class TestTheManifestTellsTheTruth:
+    """The provenance fields were hard-coded constants: the sha of an empty
+    skill list, empty model ids, zero cost — while the real numbers sat unread
+    in the invocation ledger and the registry loader."""
+
+    def test_provenance_is_measured_not_hardcoded(self, pr_reviewed, db_engine) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.agents.registry import SkillRegistry
+
+        run_id, deps, _ = pr_reviewed
+        manifest = _manifest(db_engine, deps, run_id)
+        expected = SkillRegistry.load(REPO_ROOT / ".agents" / "skills").registry_sha256
+        assert manifest["skillRegistrySha256"] == expected
+        assert manifest["modelIds"] == ["scripted"]
+        assert manifest["cost"]["totalPromptTokens"] > 0
+        assert manifest["cost"]["totalCompletionTokens"] > 0
+
+    def test_the_run_row_records_the_registry_for_drift_checks(
+        self, pr_reviewed, db_engine
+    ) -> None:  # type: ignore[no-untyped-def]
+        """compare_runs' "skill registry differs" check read a column nothing
+        wrote — None != None, a drift gate that could never fire."""
+        from codeatlas.agents.registry import SkillRegistry
+        from codeatlas.db.tables import RunRow
+
+        run_id, _, _ = pr_reviewed
+        expected = SkillRegistry.load(REPO_ROOT / ".agents" / "skills").registry_sha256
+        with Session(db_engine) as session:
+            row = session.get(RunRow, run_id)
+            assert row is not None
+            assert row.skill_registry_sha256 == expected
+
+    def test_a_degraded_run_says_so_in_its_manifest(self, gapped, db_engine) -> None:  # type: ignore[no-untyped-def]
+        """The review notes ("reviewers that did not complete: …") used to die
+        with the LangGraph checkpoint — the report never carried them."""
+        run_id, deps, _ = gapped
+        notes = _manifest(db_engine, deps, run_id).get("notes", [])
+        assert any("reviewer-security" in note for note in notes), notes
+
+
 class TestAFailedReviewerDegradesTheStatus:
     def test_status_is_exactly_succeeded_with_gaps(self, gapped) -> None:  # type: ignore[no-untyped-def]
         """The one assertion no test made: `succeeded_with_gaps` specifically.

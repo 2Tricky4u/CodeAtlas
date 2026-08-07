@@ -20,48 +20,147 @@
     "cost"
   ],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "1.0.0" },
-    "runId": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
-    "kind": { "enum": ["repository", "pr"] },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "kind": {
+      "enum": [
+        "repository",
+        "pr"
+      ]
+    },
     "sourceLock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repositoryId", "headSha", "changedPaths", "generatedPaths"],
+      "required": [
+        "repositoryId",
+        "headSha",
+        "changedPaths",
+        "generatedPaths"
+      ],
       "properties": {
-        "repositoryId": { "type": "string", "minLength": 1 },
-        "remoteUrl": { "type": ["string", "null"] },
-        "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-        "baseSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
-        "mergeBaseSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
-        "changedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "generatedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "repositoryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remoteUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "baseSha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "mergeBaseSha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "changedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "generatedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
     "toolchain": {
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
-    "skillRegistrySha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "configSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "modelIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "cassetteIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "skillRegistrySha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "configSha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "modelIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "cassetteIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
     "inputs": {
       "type": "object",
-      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      }
     },
     "outputs": {
       "type": "object",
-      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      }
     },
     "cost": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["totalPromptTokens", "totalCompletionTokens"],
+      "required": [
+        "totalPromptTokens",
+        "totalCompletionTokens"
+      ],
       "properties": {
-        "totalPromptTokens": { "type": "integer", "minimum": 0 },
-        "totalCompletionTokens": { "type": "integer", "minimum": 0 },
-        "totalCostUsd": { "type": ["number", "null"], "minimum": 0 }
+        "totalPromptTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalCompletionTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalCostUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
       }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Degradations and skips, in the run's own words: a degraded run says so in its report."
     }
   }
 }

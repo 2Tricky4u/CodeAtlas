@@ -16,6 +16,7 @@ from typing import Any
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from codeatlas.artifacts.cytoscape import to_cytoscape
@@ -957,18 +958,37 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
         }
 
     def finalize(state: PipelineState) -> dict[str, Any]:
+        from codeatlas.db.tables import AgentInvocationRow
+
         with Session(deps.engine) as session:
             run_row = repo.get_run(session, state["run_id"])
             if run_row is None:
                 raise StageFailure("finalize", "run row disappeared")
             toolchain = {r.extractor: r.extractor_version for r in run_row.receipts}
             lock = SourceLock.model_validate(json.loads(deps.cas.get(state["source_lock_sha256"])))
+
+            # Provenance is measured, not asserted: the invocation ledger says
+            # which models (and, under replay, which cassettes) answered and
+            # what they cost; the registry loader says which instructions ran.
+            # The empty-list sentinel remains only for runs with no engine at
+            # all — where "no skills were loaded" is the true statement.
+            invocations = session.scalars(
+                select(AgentInvocationRow).where(AgentInvocationRow.run_id == state["run_id"])
+            ).all()
+            registry_sha = (
+                deps.registry().registry_sha256
+                if deps.agent_engine is not None
+                else canonical_sha256({"skills": []})
+            )
+            run_row.skill_registry_sha256 = registry_sha
+            costs = [r.cost_usd for r in invocations if r.cost_usd is not None]
+
             manifest = RunManifest(
                 run_id=state["run_id"],
                 kind="pr" if run_row.kind == "pr" else "repository",
                 source_lock=lock,
                 toolchain=toolchain,
-                skill_registry_sha256=canonical_sha256({"skills": []}),
+                skill_registry_sha256=registry_sha,
                 # Configuration that changes what a run produces — not where it
                 # was produced. This hashed the workdir name, so the same
                 # analysis in a different directory reported different
@@ -980,8 +1000,8 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                         "reviewEnabled": deps.reviews_enabled,
                     }
                 ),
-                model_ids=[],
-                cassette_ids=[],
+                model_ids=sorted({r.model_id for r in invocations if r.model_id}),
+                cassette_ids=sorted({r.cassette_key for r in invocations if r.cassette_key}),
                 inputs={"sourceLock": state["source_lock_sha256"]},
                 outputs={
                     "projectGraph": state["graph_sha256"],
@@ -1017,7 +1037,15 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                     # what `/api/runs/{id}/artifact/{role}` will serve.
                     **state.get("review_artifacts", {}),
                 },
-                cost=RunCost(total_prompt_tokens=0, total_completion_tokens=0),
+                cost=RunCost(
+                    total_prompt_tokens=sum(r.prompt_tokens or 0 for r in invocations),
+                    total_completion_tokens=sum(r.completion_tokens or 0 for r in invocations),
+                    total_cost_usd=sum(costs) if costs else None,
+                ),
+                # The run's own account of what it skipped or degraded — the
+                # notes used to die with the checkpoint, which violated "a
+                # degraded run says so in its report".
+                notes=list(state.get("review_notes", [])),
             )
             manifest_bytes = canonical_json(manifest.contract_dump())
             manifest_sha = deps.cas.put(manifest_bytes)

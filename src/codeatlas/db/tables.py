@@ -296,6 +296,10 @@ class AgentInvocationRow(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     transcript_sha256: Mapped[str | None] = mapped_column(String(71))
     result_sha256: Mapped[str | None] = mapped_column(String(71))
+    # Provenance the manifest reports: which model answered, and — under
+    # replay — which cassette it answered from.
+    model_id: Mapped[str | None] = mapped_column(String(100))
+    cassette_key: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

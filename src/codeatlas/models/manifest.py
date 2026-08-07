@@ -43,3 +43,6 @@ class RunManifest(ContractModel):
     inputs: dict[str, str]
     outputs: dict[str, str]
     cost: RunCost
+    # Degradations and skips, in the run's own words. The manifest is the
+    # report, and a degraded run says so in its report.
+    notes: list[str] = Field(default_factory=list)
