@@ -7,7 +7,9 @@ a server started without `--ask` cannot even reach this module.
 from __future__ import annotations
 
 import json
+import threading
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,19 @@ from codeatlas.project.answers import (
 
 log = get_logger("codeatlas.api.ask")
 
+# One lock per (run, question-role): the cache below is a check-then-act, and
+# two identical questions arriving together must spend agent quota once, not
+# twice. FastAPI runs sync routes in a threadpool, so this is a real race.
+# The table grows with distinct questions per process — bounded in practice by
+# the answer cache making repeats free.
+_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(run_id: str, role: str) -> threading.Lock:
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault((run_id, role), threading.Lock())
+
 
 def answer_or_cached(
     deps: PipelineDeps,
@@ -39,6 +54,30 @@ def answer_or_cached(
     """Serve the cached answer if this exact question was asked before."""
     role = answer_role(revision_sha, scope, question)
 
+    with _lock_for(run_id, role):
+        return _answer_or_cached_locked(
+            deps,
+            run_id=run_id,
+            revision_sha=revision_sha,
+            revision_db_id=revision_db_id,
+            repository_id=repository_id,
+            scope=scope,
+            question=question,
+            role=role,
+        )
+
+
+def _answer_or_cached_locked(
+    deps: PipelineDeps,
+    *,
+    run_id: str,
+    revision_sha: str,
+    revision_db_id: int,
+    repository_id: str,
+    scope: str,
+    question: str,
+    role: str,
+) -> dict[str, object]:
     with Session(deps.engine) as session:
         cached = repo.artifact_for_run(session, run_id, role)
     if cached is not None:
@@ -96,5 +135,7 @@ def _graph_sha(deps: PipelineDeps, run_id: str) -> str:
     with Session(deps.engine) as session:
         sha = repo.artifact_for_run(session, run_id, "project-graph")
     if sha is None:
-        raise RuntimeError(f"run {run_id} has no project graph to answer against")
+        # Typed, not a bare RuntimeError: a run that failed before build_graph
+        # is a state the client can be told about, not a server crash.
+        raise HTTPException(409, f"run {run_id} has no project graph to answer against")
     return sha

@@ -27,11 +27,12 @@ sys.path.insert(0, str(REPO_ROOT / "fixtures"))
 
 
 @pytest.fixture(scope="module")
-def seeded():  # type: ignore[no-untyped-def]
-    """(client, run_id, head_sha) — one succeeded run served by the API."""
+def stack():  # type: ignore[no-untyped-def]
+    """One succeeded pipeline run plus everything needed to serve it."""
+    from types import SimpleNamespace
+
     from make_fixture_repos import build_fixture_repo
 
-    from codeatlas.api.main import create_app
     from codeatlas.db.migrate import downgrade_base, upgrade_head
     from codeatlas.db.session import app_engine, migrator_engine, test_db_available
 
@@ -57,10 +58,50 @@ def seeded():  # type: ignore[no-untyped-def]
     )
     run_id = start_run(deps, repo_path=repo_dir, repository_id="local/kvstore")
 
-    application = create_app(engine=engine, cas=deps.cas, mirrors=deps.mirrors)
-    client = TestClient(application)
-    yield client, run_id, head_sha
+    yield SimpleNamespace(engine=engine, deps=deps, run_id=run_id, head_sha=head_sha)
     engine.dispose()
+
+
+@pytest.fixture(scope="module")
+def seeded(stack):  # type: ignore[no-untyped-def]
+    """(client, run_id, head_sha) — the run served by the default (no-ask) app."""
+    from codeatlas.api.main import create_app
+
+    application = create_app(engine=stack.engine, cas=stack.deps.cas, mirrors=stack.deps.mirrors)
+    return TestClient(application), stack.run_id, stack.head_sha
+
+
+class CountingEngine:
+    """Wraps the replay engine; counts what actually got dispatched."""
+
+    def __init__(self, inner) -> None:  # type: ignore[no-untyped-def]
+        self.inner = inner
+        self.name = inner.name
+        self.calls = 0
+
+    def run(self, task, instructions):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        return self.inner.run(task, instructions)
+
+
+@pytest.fixture(scope="module")
+def asking(stack):  # type: ignore[no-untyped-def]
+    """(client, run_id, counter) — the same run, served with --ask enabled."""
+    from codeatlas.agents.replay_engine import ReplayEngine
+    from codeatlas.api.main import create_app
+
+    counter = CountingEngine(ReplayEngine(REPO_ROOT / "tests" / "cassettes"))
+    ask_deps = PipelineDeps(
+        engine=stack.engine,
+        workdir=stack.deps.workdir,
+        cas=stack.deps.cas,
+        checkpoint_path=stack.deps.workdir / "checkpoints" / "ask.sqlite",
+        agent_engine=counter,
+    )
+    application = create_app(
+        engine=stack.engine, cas=stack.deps.cas, mirrors=stack.deps.mirrors, ask_deps=ask_deps
+    )
+    return TestClient(application), stack.run_id, counter
 
 
 class TestRuns:
@@ -276,6 +317,93 @@ class TestAsk:
     def test_missing_fields_are_rejected(self, seeded) -> None:  # type: ignore[no-untyped-def]
         client, run_id, _ = seeded
         assert client.post(f"/api/runs/{run_id}/ask", json={"scope": "x"}).status_code in (403, 422)
+
+
+class TestAskAnswers:
+    """The 200 path: the endpoint's entire purpose, previously never executed.
+
+    Replays the recorded code-answerer cassette (same fixture revision, same
+    scope, same question), so the answer is real and the citations are
+    checkable — and the dispatch counter tells us what the cache actually did.
+    """
+
+    SCOPE = "kvstore/src/cache.rs"
+    QUESTION = "what does eviction actually remove?"
+
+    def _ask(self, client, run_id):  # type: ignore[no-untyped-def]
+        return client.post(
+            f"/api/runs/{run_id}/ask", json={"scope": self.SCOPE, "question": self.QUESTION}
+        )
+
+    def test_concurrent_identical_asks_dispatch_once(self, asking) -> None:  # type: ignore[no-untyped-def]
+        """The cache is a check-then-act; two simultaneous identical questions
+        must not both spend agent quota. Runs first so the cache is cold."""
+        import threading
+
+        client, run_id, counter = asking
+        barrier = threading.Barrier(2, timeout=30)
+        responses: list[object] = []
+
+        def ask() -> None:
+            barrier.wait()
+            responses.append(self._ask(client, run_id))
+
+        threads = [threading.Thread(target=ask) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=120)
+
+        assert counter.calls == 1, "identical concurrent questions must dispatch once"
+        bodies = [r.json() for r in responses]  # type: ignore[attr-defined]
+        assert [r.status_code for r in responses] == [200, 200]  # type: ignore[attr-defined]
+        assert sorted(body["cached"] for body in bodies) == [False, True]
+        for body in bodies:
+            assert body["claims"], "the replayed answer has claims"
+
+    def test_asking_again_is_served_from_the_cache(self, asking) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, counter = asking
+        before = counter.calls
+        response = self._ask(client, run_id)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cached"] is True
+        assert counter.calls == before, "a cached answer must not re-dispatch"
+
+    def test_every_served_claim_carries_citations(self, asking) -> None:  # type: ignore[no-untyped-def]
+        client, run_id, _ = asking
+        body = self._ask(client, run_id).json()
+        # contract_dump omits nullable fields (exclude_none): an absent
+        # `refused` is the schema's way of saying "not refused".
+        assert body.get("refused") is None
+        assert body["claims"]
+        for claim in body["claims"]:
+            assert claim["citations"], claim["text"]
+
+    def test_a_run_without_a_graph_is_a_typed_conflict(self, asking, stack) -> None:  # type: ignore[no-untyped-def]
+        """No project-graph artifact → 409 with a reason, not a bare 500."""
+        from sqlalchemy.orm import Session
+
+        from codeatlas.db import repositories as repo
+        from codeatlas.db.tables import RunRow
+
+        client, run_id, counter = asking
+        with Session(stack.engine) as s:
+            seeded_run = s.get(RunRow, run_id)
+            assert seeded_run is not None
+            bare = repo.create_run(
+                s,
+                repository_id=seeded_run.repository_id,
+                kind="repository",
+                head_revision_id=seeded_run.head_revision_id,
+            )
+            s.commit()
+            bare_id = bare.id
+        before = counter.calls
+        response = self._ask(client, bare_id)
+        assert response.status_code == 409
+        assert "no project graph" in response.json()["detail"]
+        assert counter.calls == before
 
 
 class TestWriteMethods:
