@@ -71,6 +71,59 @@ class TestArgumentValidation:
         assert result.exit_code == 1  # type: ignore[union-attr]
 
 
+class TestPrGating:
+    """A draft or closed PR is not ready for a review that costs agent budget.
+    Refusing is the default; --force is the explicit override."""
+
+    def _fake_github(self, monkeypatch, draft: bool = False, state: str = "open") -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.vcs.github import client
+
+        pr = client.PullRequestRef(
+            owner="o",
+            repo="r",
+            number=5,
+            base_sha="a" * 40,
+            head_sha="b" * 40,
+            title="t",
+            body="",
+            changed_paths=(),
+            draft=draft,
+            state=state,
+        )
+
+        class FakeReader:
+            def __init__(self, token: str) -> None: ...
+            def pull_request(self, *args: object) -> client.PullRequestRef:
+                return pr
+
+            def review_comments(self, *args: object) -> list[dict]:  # type: ignore[type-arg]
+                return []
+
+        monkeypatch.setattr(client, "GitHubReader", FakeReader)
+        monkeypatch.setattr(client, "token_from_keyring", lambda: "t")
+
+    def test_a_draft_pr_is_refused_with_the_reason(self, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        self._fake_github(monkeypatch, draft=True)
+        result = _invoke(["review-pr", "o/r", "5"], tmp_path)
+        assert result.exit_code == 2  # type: ignore[union-attr]
+        assert "draft" in result.output  # type: ignore[union-attr]
+
+    def test_a_closed_pr_is_refused(self, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        self._fake_github(monkeypatch, state="closed")
+        result = _invoke(["review-pr", "o/r", "5"], tmp_path)
+        assert result.exit_code == 2  # type: ignore[union-attr]
+        assert "closed" in result.output  # type: ignore[union-attr]
+
+    def test_force_reviews_anyway(self, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.pipeline import runner
+
+        self._fake_github(monkeypatch, draft=True)
+        monkeypatch.setattr(runner, "start_run", lambda *a, **k: "01" + "C" * 24)
+        monkeypatch.setattr(runner, "run_status", lambda *a, **k: "succeeded")
+        result = _invoke(["review-pr", "o/r", "5", "--force"], tmp_path)
+        assert result.exit_code == 0  # type: ignore[union-attr]
+
+
 class TestBudgetFlag:
     def test_the_token_budget_is_configurable_from_the_cli(self) -> None:
         """`_deps(max_tokens=...)` existed with no caller ever passing it —

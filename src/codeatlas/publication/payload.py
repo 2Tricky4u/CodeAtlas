@@ -11,11 +11,17 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import Field
-
-from codeatlas.models.base import ContractModel
-from codeatlas.models.graph import GIT_SHA_PATTERN
+from codeatlas.models.payload import ReviewComment, ReviewPayload
 from codeatlas.review.synthesis import ReviewReport, render_markdown
+
+__all__ = [
+    "PROVENANCE",
+    "ReviewComment",
+    "ReviewPayload",
+    "build_payload",
+    "scan_for_secrets",
+    "scan_payload",
+]
 
 # Secret shapes that must never leave the machine inside a review comment. Kept
 # in step with .gitleaks.toml; the review path is a second, independent gate
@@ -35,48 +41,6 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 # control flow can post without it (mutating at post time would post something
 # nobody approved — the gate checks, never edits).
 PROVENANCE = "_Posted by CodeAtlas — an automated, human-approved review._"
-
-
-class ReviewComment(ContractModel):
-    path: str = Field(min_length=1)
-    # The anchor line on the head revision — always a line the diff added,
-    # or GitHub rejects the whole review with a 422.
-    line: int = Field(ge=1)
-    # Present only when the finding's whole span consists of added lines: the
-    # comment then attaches to the range start_line..line.
-    start_line: int | None = Field(default=None, ge=1)
-    body: str = Field(min_length=1)
-
-
-class ReviewPayload(ContractModel):
-    owner: str = Field(min_length=1)
-    repo: str = Field(min_length=1)
-    pr_number: int = Field(ge=1)
-    commit_sha: str = Field(pattern=GIT_SHA_PATTERN)
-    body: str = Field(min_length=1)
-    comments: list[ReviewComment]
-    event: str = "COMMENT"  # never REQUEST_CHANGES/APPROVE: a human decides that
-
-    def to_github(self) -> dict[str, Any]:
-        """The literal GitHub review API request body."""
-        comments: list[dict[str, Any]] = []
-        for c in self.comments:
-            entry: dict[str, Any] = {
-                "path": c.path,
-                "line": c.line,
-                "side": "RIGHT",
-                "body": c.body,
-            }
-            if c.start_line is not None:
-                entry["start_line"] = c.start_line
-                entry["start_side"] = "RIGHT"
-            comments.append(entry)
-        return {
-            "commit_id": self.commit_sha,
-            "body": self.body,
-            "event": self.event,
-            "comments": comments,
-        }
 
 
 def scan_for_secrets(text: str) -> list[str]:
@@ -100,6 +64,7 @@ def build_payload(
     changed_paths: set[str] | None = None,
     explanation_markdown: str | None = None,
     added_lines: Mapping[str, set[int]] | None = None,
+    existing: list[dict[str, Any]] | None = None,
 ) -> ReviewPayload:
     """Render a report into a PR review payload.
 
@@ -114,8 +79,17 @@ def build_payload(
     The change explanation leads the body when there is one: a reviewer needs to
     know what the change does before being told what might be wrong with it.
     """
+    # Comments we posted on an earlier run, recognizable by the provenance
+    # marker: same path + line → the finding folds into a note, not a repost.
+    ours_already = {
+        (str(c.get("path", "")), c.get("line"))
+        for c in (existing or [])
+        if PROVENANCE in str(c.get("body", ""))
+    }
+
     comments: list[ReviewComment] = []
     outside_diff: list[str] = []
+    previously_posted: list[str] = []
     for entry in report.publishable:
         location = entry.validation.location
         if changed_paths is not None and location.path not in changed_paths:
@@ -140,6 +114,12 @@ def build_payload(
             # the anchor and the permalink in the body carries the rest.
             anchor_start = hit[0] if span <= added else None
             anchor_line = hit[-1] if span <= added else hit[0]
+            if (location.path, anchor_line) in ours_already:
+                previously_posted.append(
+                    f"- `{entry.finding_id}` at `{location.path}:{anchor_line}` — "
+                    "already posted by an earlier run"
+                )
+                continue
             comments.append(
                 ReviewComment(
                     path=location.path,
@@ -149,6 +129,12 @@ def build_payload(
                 )
             )
         else:
+            if (location.path, start) in ours_already:
+                previously_posted.append(
+                    f"- `{entry.finding_id}` at `{location.path}:{start}` — "
+                    "already posted by an earlier run"
+                )
+                continue
             comments.append(
                 ReviewComment(
                     path=location.path,
@@ -158,6 +144,14 @@ def build_payload(
             )
 
     body = render_markdown(report)
+    if previously_posted:
+        body += (
+            "\n### Previously posted\n\n"
+            "These findings already carry our comment at the same location on "
+            "this pull request; they are not posted twice.\n\n"
+            + "\n".join(previously_posted)
+            + "\n"
+        )
     if outside_diff:
         body += (
             "\n### Findings outside the diff\n\n"

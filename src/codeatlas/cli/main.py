@@ -212,6 +212,7 @@ def review_pr(
     ] = True,
     replay: Annotated[bool, typer.Option(help="Use recorded cassettes")] = False,
     max_tokens: Annotated[int, typer.Option(help="Run-wide agent token budget")] = 2_000_000,
+    force: Annotated[bool, typer.Option(help="Review even a draft or closed pull request")] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
     """Review a GitHub pull request in shadow mode — analyze and post NOTHING.
@@ -221,8 +222,8 @@ def review_pr(
     (`codeatlas approve --publish`), so this command can never surprise anyone.
     """
     configure_logging()
-    from codeatlas.pipeline.runner import run_status, start_run
-    from codeatlas.vcs.github.client import GitHubError, GitHubReader, token_from_keyring
+    from codeatlas.pipeline import runner
+    from codeatlas.vcs.github import client as github
 
     if "/" not in slug:
         typer.echo(f"expected owner/repo, got {slug!r}", err=True)
@@ -230,11 +231,23 @@ def review_pr(
     owner, repo_name = slug.split("/", 1)
 
     try:
-        reader = GitHubReader(token_from_keyring())
+        reader = github.GitHubReader(github.token_from_keyring())
         pr = reader.pull_request(owner, repo_name, pr_number)
-    except GitHubError as exc:
+    except github.GitHubError as exc:
         typer.echo(f"GitHub error: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    # A draft is not asking for review yet, and a closed PR cannot use one —
+    # either way the agent budget would be spent on something not ready for it.
+    not_reviewable = "draft" if pr.draft else (pr.state if pr.state != "open" else None)
+    if not_reviewable and not force:
+        typer.echo(
+            f"PR #{pr_number} is {not_reviewable}; re-run with --force to review anyway",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if not_reviewable:
+        typer.echo(f"PR is {not_reviewable} — reviewing anyway (--force)")
 
     typer.echo(f"PR #{pr.number}: {pr.title}")
     typer.echo(f"  base {pr.base_sha[:12]} -> head {pr.head_sha[:12]}")
@@ -248,10 +261,18 @@ def review_pr(
     deps.pr_number = pr_number
     # Private repositories need an authenticated clone. The token is injected
     # through git's environment config, never written to .git/config.
-    deps.git.github_token = token_from_keyring()
+    deps.git.github_token = github.token_from_keyring()
+
+    # Existing inline comments, so a re-run folds already-posted findings into
+    # a note instead of posting them twice. Failing to fetch them degrades the
+    # dedup, not the review.
+    try:
+        deps.existing_review_comments = reader.review_comments(owner, repo_name, pr_number)
+    except github.GitHubError as exc:
+        typer.echo(f"could not fetch existing comments (dedup disabled): {exc}", err=True)
 
     clone_url = f"https://github.com/{owner}/{repo_name}.git"
-    run_id = start_run(
+    run_id = runner.start_run(
         deps,
         repo_path=clone_url,
         repository_id=slug,
@@ -259,7 +280,7 @@ def review_pr(
         base_ref=pr.base_sha,
         pr_number=pr_number,
     )
-    status = run_status(deps, run_id)
+    status = runner.run_status(deps, run_id)
     typer.echo(f"run {run_id} {status}")
     typer.echo("nothing was published; review the payload with `codeatlas show-approval`")
     raise typer.Exit(0 if status.startswith("succeeded") else 1)
@@ -373,6 +394,8 @@ def show_approval(
             # --note used to be accepted, stored, and displayed nowhere.
             typer.echo(f"note:     {approval.decision_note}")
         typer.echo(f"payload:  {approval.payload_sha256}")
+        prefix = approval.payload_sha256.removeprefix("sha256:")[:12]
+        typer.echo(f"approve with: codeatlas approve {approval_id} --by <you> --payload {prefix}")
         typer.echo("")
         typer.echo(f"target: {payload['owner']}/{payload['repo']} PR #{payload['prNumber']}")
         typer.echo(f"commit: {payload['commitSha']}")
@@ -387,6 +410,13 @@ def show_approval(
 def approve(
     approval_id: int,
     by: Annotated[str, typer.Option(help="Who is approving (recorded in the audit trail)")],
+    payload: Annotated[
+        str | None,
+        typer.Option(
+            help="Proof of reading: the first 12 characters of the payload sha, "
+            "as printed by `codeatlas show-approval` or the dashboard"
+        ),
+    ] = None,
     note: Annotated[str | None, typer.Option()] = None,
     publish: Annotated[bool, typer.Option(help="Publish immediately after approving")] = False,
     workdir: Annotated[Path, typer.Option()] = _DEFAULT_WORKDIR,
@@ -396,10 +426,27 @@ def approve(
     configure_logging()
     from sqlalchemy.orm import Session
 
+    from codeatlas.db.tables import ApprovalRow
     from codeatlas.publication.gate import decide_approval
 
     deps = _deps(workdir, test_db)
     with Session(deps.engine) as session:
+        # Proof of reading: the prefix only exists in `show-approval` output or
+        # the dashboard, so passing it proves the payload was at least fetched.
+        # You cannot approve bytes you have not looked at.
+        row = session.get(ApprovalRow, approval_id)
+        if row is None:
+            typer.echo(f"unknown approval {approval_id}", err=True)
+            raise typer.Exit(1)
+        expected = row.payload_sha256.removeprefix("sha256:")[:12]
+        if payload is None or payload != expected:
+            typer.echo(
+                "approval requires proof of reading: pass --payload with the "
+                "12-character payload sha shown by `codeatlas show-approval "
+                f"{approval_id}`",
+                err=True,
+            )
+            raise typer.Exit(1)
         try:
             decide_approval(
                 session, approval_id=approval_id, decision="approved", decided_by=by, note=note

@@ -13,6 +13,7 @@ behaved sensibly.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -51,6 +52,7 @@ def run_shadow(
     pr_number: int,
     commit_sha: str,
     explanation_markdown: str | None = None,
+    existing_comments: list[dict[str, Any]] | None = None,
 ) -> ShadowResult:
     by_id = {f.finding_id: f for f in findings}
     blocking: list[str] = []
@@ -79,6 +81,7 @@ def run_shadow(
         # Line-level truth, not just file-level: a comment outside the diff's
         # added lines voids the whole review with a 422.
         added_lines=scope.added_lines if scope else None,
+        existing=existing_comments,
     )
     result = dry_run(session, run_id=run_id, report=report, payload=payload, cas=cas)
 

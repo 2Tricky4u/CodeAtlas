@@ -42,6 +42,10 @@ class PullRequestRef:
     title: str
     body: str
     changed_paths: tuple[str, ...]
+    # Kept from the API so review-pr can refuse drafts and closed PRs before
+    # spending a review on them. Defaults describe an open, reviewable PR.
+    draft: bool = False
+    state: str = "open"
 
 
 def token_from_keyring() -> str:
@@ -97,12 +101,39 @@ class GitHubReader:
             title=data.get("title", ""),
             body=data.get("body") or "",
             changed_paths=tuple(sorted(f["filename"] for f in files)),
+            draft=bool(data.get("draft", False)),
+            state=str(data.get("state", "open")),
         )
 
     def diff(self, owner: str, repo: str, number: int) -> str:
         return self._get(
             f"/repos/{owner}/{repo}/pulls/{number}", accept="application/vnd.github.diff"
         ).text
+
+    def review_comments(self, owner: str, repo: str, number: int) -> list[dict[str, Any]]:
+        """Existing inline review comments, all pages.
+
+        Each entry keeps only what dedup needs: path, line, body. Fetched so a
+        re-run can fold already-posted findings into a note instead of posting
+        them twice.
+        """
+        comments: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            batch = self._get(
+                f"/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100&page={page}"
+            ).json()
+            for entry in batch:
+                comments.append(
+                    {
+                        "path": str(entry.get("path", "")),
+                        "line": entry.get("line"),
+                        "body": str(entry.get("body", "")),
+                    }
+                )
+            if len(batch) < 100:
+                return comments
+            page += 1
 
 
 class GitHubWriter:

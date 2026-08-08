@@ -192,6 +192,45 @@ def test_the_provenance_marker_is_on_the_body_and_every_comment() -> None:
     assert all(c.body.rstrip().endswith(PROVENANCE) for c in payload.comments)
 
 
+class TestPriorDiscussionDedup:
+    """A re-run must not post the same finding twice. Only comments carrying
+    our provenance marker count as ours — a human's comment at the same line
+    never suppresses anything."""
+
+    def test_our_existing_comment_folds_the_finding_into_the_body(self) -> None:
+        from codeatlas.publication.payload import PROVENANCE
+
+        pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]
+        payload = build_payload(
+            _report(pairs),
+            owner="o",
+            repo="r",
+            pr_number=3,
+            commit_sha=SHA,
+            changed_paths=None,
+            existing=[
+                {"path": "kvstore/src/api.rs", "line": 28, "body": f"older text\n{PROVENANCE}"}
+            ],
+        )
+        assert payload.comments == []
+        assert "Previously posted" in payload.body
+        assert "F-0001" in payload.body
+
+    def test_a_human_comment_at_the_same_line_does_not_suppress(self) -> None:
+        pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]
+        payload = build_payload(
+            _report(pairs),
+            owner="o",
+            repo="r",
+            pr_number=3,
+            commit_sha=SHA,
+            changed_paths=None,
+            existing=[{"path": "kvstore/src/api.rs", "line": 28, "body": "I wondered about this"}],
+        )
+        assert len(payload.comments) == 1
+        assert "Previously posted" not in payload.body
+
+
 def test_payload_is_deterministic() -> None:
     pairs = [_pair("F-0001", "a.rs", 1), _pair("F-0002", "b.rs", 2)]
     first = build_payload(

@@ -530,10 +530,11 @@ def stage_payload(
             scope=scope,
             cas=deps.cas,
             owner=deps.github_owner,
-            repo=deps.github_repo or "",
+            repo=deps.github_repo,
             pr_number=deps.pr_number,
             commit_sha=ctx.revision_sha,
             explanation_markdown=(condensed_markdown(ctx.explanation) if ctx.explanation else None),
+            existing_comments=deps.existing_review_comments,
         )
         session.commit()
     ctx.adopt(deps, "review-payload-dry-run", result.dry_run.payload_sha256)

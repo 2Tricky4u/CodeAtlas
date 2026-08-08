@@ -81,6 +81,38 @@ class TestReader:
         """Read and write are separate types so analysis cannot post by accident."""
         assert not hasattr(GitHubReader("t"), "create_review")
 
+    def test_pull_request_keeps_draft_and_state(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/files"):
+                return httpx.Response(200, json=FILES_JSON)
+            return httpx.Response(200, json={**PR_JSON, "draft": True, "state": "open"})
+
+        pr = GitHubReader("t", client=_client(handler)).pull_request("o", "r", 7)
+        assert pr.draft is True
+        assert pr.state == "open"
+
+    def test_review_comments_walks_every_page(self) -> None:
+        pages: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            page = int(request.url.params.get("page", "1"))
+            pages.append(page)
+            if page == 1:
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"path": "a.rs", "line": 3, "body": "x", "extra": "dropped"}
+                        for _ in range(100)
+                    ],
+                )
+            return httpx.Response(200, json=[{"path": "b.rs", "line": None, "body": "y"}])
+
+        comments = GitHubReader("t", client=_client(handler)).review_comments("o", "r", 7)
+        assert pages == [1, 2]
+        assert len(comments) == 101
+        assert comments[0] == {"path": "a.rs", "line": 3, "body": "x"}
+        assert comments[100] == {"path": "b.rs", "line": None, "body": "y"}
+
 
 class TestWriter:
     def test_review_body_matches_the_github_contract(self) -> None:

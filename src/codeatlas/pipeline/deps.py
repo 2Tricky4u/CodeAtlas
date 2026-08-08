@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine
 
@@ -48,6 +49,10 @@ class PipelineDeps:
     github_owner: str | None = None
     github_repo: str | None = None
     pr_number: int | None = None
+    # Inline comments already on the PR ({path, line, body} each), fetched by
+    # review-pr so the payload can fold already-posted findings into a note
+    # instead of posting them twice. None = not fetched; dedup is off.
+    existing_review_comments: list[dict[str, Any]] | None = None
 
     @property
     def mirrors(self) -> Path:
