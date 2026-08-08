@@ -41,6 +41,8 @@ import {
   RUN_ID_2,
   SOURCE,
   STRUCTURIZR_DSL,
+  THREAT_MODEL,
+  THREAT_MODEL_NONE,
   VIEWS,
   VIEWS2,
 } from "./fixtures";
@@ -109,6 +111,13 @@ async function mockApi(
   );
   await page.route(`**/api/runs/${RUN_ID}/artifact/protocol-state`, (route) =>
     route.fulfill({ status: 404, json: { detail: "stateless" } }),
+  );
+  // The threat model: cached per repository, so it is present on any reviewed
+  // run. Gated on `withReview` — a deterministic run models no threats.
+  await page.route(`**/api/runs/${RUN_ID}/artifact/threat-model`, (route) =>
+    withReview
+      ? route.fulfill({ json: THREAT_MODEL })
+      : route.fulfill({ status: 404, json: { detail: "none" } }),
   );
 
   // The review's own artifacts. Gated on `withReview` because a deterministic
@@ -694,6 +703,70 @@ test.describe("protocol view", () => {
     await page.goto(`/#/runs/${RUN_ID}/protocol`);
     await expect(page.getByTestId("protocol-notes")).toContainText("stateless");
   });
+});
+
+test.describe("threats view", () => {
+  test.beforeEach(({ page }) => mockApi(page));
+
+  test("boundaries, assets and abuse paths are laid out", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("threat-boundaries")).toContainText("wire-to-store");
+    await expect(page.getByTestId("threat-assets")).toContainText("host filesystem");
+    await expect(page.getByTestId("threats")).toContainText("Path traversal");
+  });
+
+  test("what the attacker cannot do is given equal space", async ({ page }) => {
+    // The non-capabilities are what keep severity honest, so they are not a
+    // footnote to the capabilities.
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("threat-non-capabilities")).toContainText(
+      "cannot execute code",
+    );
+  });
+
+  test("an existing control shows whether its evidence was verified", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("threats")).toContainText("verified");
+  });
+
+  test("focus paths link to the module they aim at", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    const link = page.getByTestId("threat-focus-paths").getByTestId("module-link").first();
+    await link.click();
+    await expect(page).toHaveURL(/module\/kvstore/);
+  });
+
+  test("a reused model says which revision it was modeled at", async ({ page }) => {
+    // The cache serves this repo's model even on a run at a later revision.
+    await page.route(`**/api/runs/${RUN_ID}/artifact/threat-model`, (route) =>
+      route.fulfill({ json: { ...THREAT_MODEL, modeledAtRevision: "a".repeat(40) } }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("threat-reused")).toContainText("reused from an earlier run");
+  });
+
+  test("a repository with no attack surface says so", async ({ page }) => {
+    await page.route(`**/api/runs/${RUN_ID}/artifact/threat-model`, (route) =>
+      route.fulfill({ json: THREAT_MODEL_NONE }),
+    );
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("no-threats")).toContainText("no meaningful attack surface");
+  });
+
+  test("a run without a threat model says so, not an error", async ({ page }) => {
+    await mockApi(page, { withReview: false });
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("empty-state")).toContainText("carried no threat model");
+  });
+
+  test("elements removed by validation are disclosed", async ({ page }) => {
+    await page.goto(`/#/runs/${RUN_ID}/threats`);
+    await expect(page.getByTestId("threat-dropped")).toContainText("admin-socket");
+  });
+});
+
+test.describe("protocol diagrams", () => {
+  test.beforeEach(({ page }) => mockApi(page));
 
   test("a diagram that will not parse shows its source, not a broken image", async ({ page }) => {
     // Mermaid's own error output is a red box with a stack trace, which reads
@@ -1370,6 +1443,18 @@ test.describe("evidence surfaced", () => {
     const detail = page.getByTestId("validation-detail");
     await expect(detail).toContainText("counter-evidence checked");
     await expect(detail).toContainText("existing eviction tests");
+  });
+
+  test("a validated security finding shows its attack path", async ({ page }) => {
+    // The receipt behind the verdict: how an attacker reaches the flaw and what
+    // it costs them — source to sink, and the gaps the analysis admits.
+    await page.goto(`/#/runs/${RUN_ID}/findings`);
+    const row = page.locator("tr", { hasText: "FileStore::read joins an untrusted key" });
+    await row.getByTestId("validation-toggle").click();
+    const attack = page.getByTestId("attack-path");
+    await expect(attack).toContainText("resolves outside the store root");
+    await expect(attack).toContainText("impact high");
+    await expect(attack).toContainText("not established");
   });
 
   test("the change view walks into module pages and states its own limits", async ({

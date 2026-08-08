@@ -3,7 +3,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, type Finding, type RunSummary } from "../api";
+import { api, type AttackPath, type Finding, type RunSummary } from "../api";
 import { Badge, Empty, ErrorBox, Loading, Panel, SEVERITY_TONE, type Tone } from "../ui";
 import { ModuleLink } from "./links";
 import { SourcePanel, type SourceRequest } from "./SourcePanel";
@@ -150,6 +150,9 @@ export function FindingsView() {
                             duplicate of {finding.validation.duplicateOf}
                           </p>
                         )}
+                        {isAttackPath(finding.validation.attackPath) && (
+                          <AttackPathBlock path={finding.validation.attackPath} />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -160,6 +163,50 @@ export function FindingsView() {
         </table>
       </Panel>
       <SourcePanel request={source} onClose={() => setSource(null)} />
+    </div>
+  );
+}
+
+// The validation bag is an untyped JSONB column, so the attack path arrives as
+// `unknown`; narrow it before rendering rather than trusting its shape.
+function isAttackPath(value: unknown): value is AttackPath {
+  if (typeof value !== "object" || value === null) return false;
+  const path = value as Record<string, unknown>;
+  return (
+    typeof path.dataflow === "object" &&
+    path.dataflow !== null &&
+    typeof path.reachability === "object" &&
+    path.reachability !== null
+  );
+}
+
+function AttackPathBlock({ path }: { path: AttackPath }) {
+  return (
+    <div
+      data-testid="attack-path"
+      style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 6 }}
+    >
+      <div className="microlabel">attack path</div>
+      <p style={{ margin: "2px 0" }}>
+        <strong>{path.dataflow.source}</strong> → {path.dataflow.sink} → {path.dataflow.outcome}
+      </p>
+      <p style={{ margin: "2px 0" }}>
+        reachable by {path.reachability.attacker} via {path.reachability.entrypoint}
+        {(path.reachability.preconditions?.length ?? 0) > 0 &&
+          ` (needs: ${path.reachability.preconditions!.join("; ")})`}
+      </p>
+      <p style={{ margin: "2px 0" }}>
+        <Badge tone={SEVERITY_TONE[path.impact.level] ?? "plain"}>
+          impact {path.impact.level}
+        </Badge>{" "}
+        {path.impact.why} · <Badge tone="info">likelihood {path.likelihood.level}</Badge>{" "}
+        {path.likelihood.why}
+      </p>
+      {(path.limitations?.length ?? 0) > 0 && (
+        <p className="note" style={{ margin: "2px 0" }}>
+          not established: {path.limitations!.join("; ")}
+        </p>
+      )}
     </div>
   );
 }

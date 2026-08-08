@@ -483,6 +483,90 @@ export interface ProtocolModel {
   notes?: string[];
 }
 
+// --- threat model -----------------------------------------------------------
+
+export interface ThreatEvidence {
+  path: string;
+  symbol?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface ThreatComponent {
+  name: string;
+  description?: string;
+  evidence: ThreatEvidence;
+}
+
+export interface ThreatBoundary {
+  name: string;
+  between: string[];
+  dataCrossing: {
+    types: string[];
+    channel: string;
+    guarantees: string;
+    validation: string;
+  };
+  evidence: ThreatEvidence[];
+}
+
+export interface ThreatAsset {
+  name: string;
+  whyItMatters: string;
+  cia: ("confidentiality" | "integrity" | "availability")[];
+}
+
+export interface ThreatControl {
+  description: string;
+  evidence?: ThreatEvidence;
+  verified?: boolean;
+}
+
+export interface Threat {
+  id: string;
+  title: string;
+  source: string;
+  prerequisites?: string[];
+  action: string;
+  impact: string;
+  impactedAssets?: string[];
+  existingControls?: ThreatControl[];
+  gaps?: string[];
+  mitigations?: string[];
+  likelihood: "low" | "medium" | "high";
+  severity: "low" | "medium" | "high" | "critical";
+}
+
+export interface FocusPath {
+  path: string;
+  reason: string;
+  threatIds?: string[];
+}
+
+export interface ThreatModel {
+  modeledAtRevision: string;
+  summary: string;
+  components?: ThreatComponent[];
+  boundaries?: ThreatBoundary[];
+  assets?: ThreatAsset[];
+  attacker?: { capabilities: string[]; nonCapabilities: string[] };
+  threats?: Threat[];
+  criticality?: { critical: string; high: string; medium: string; low: string };
+  focusPaths?: FocusPath[];
+  droppedElements?: { kind: string; name: string; reason: string }[];
+  notes?: string[];
+}
+
+/** Rides in a finding's validation bag; see FindingsView. */
+export interface AttackPath {
+  findingId: string;
+  dataflow: { source: string; sink: string; outcome: string };
+  reachability: { attacker: string; entrypoint: string; preconditions?: string[] };
+  impact: { level: string; why: string };
+  likelihood: { level: string; why: string };
+  limitations?: string[];
+}
+
 // --- asked answers ----------------------------------------------------------
 
 export interface CodeAnswer {
@@ -640,6 +724,8 @@ export const api = {
   adrAudit: (id: string) => getOptional<AdrAudit>(`/api/runs/${id}/artifact/adr-audit`),
   protocolModel: (id: string) =>
     getOptional<ProtocolModel>(`/api/runs/${id}/artifact/protocol-model`),
+  threatModel: (id: string) =>
+    getOptional<ThreatModel>(`/api/runs/${id}/artifact/threat-model`),
   intent: (id: string) => getOptional<IntentPackage>(`/api/runs/${id}/artifact/intent`),
   candidateFindings: (id: string) =>
     getOptional<CandidateFindings>(`/api/runs/${id}/artifact/candidate-findings`),

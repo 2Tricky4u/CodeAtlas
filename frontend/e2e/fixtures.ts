@@ -604,6 +604,89 @@ export const PROTOCOL_NONE = {
   ],
 };
 
+// Modeled at HEAD (this run's own revision) so the reused-from note stays off
+// by default; the reuse test overrides modeledAtRevision.
+export const THREAT_MODEL = {
+  modeledAtRevision: HEAD,
+  summary:
+    "A key-value store fed untrusted keys through its public API. The host filesystem reachable through the key→path mapping is the asset worth attacking.",
+  components: [
+    { name: "listener", description: "reads requests", evidence: { path: "kvstore/src/api.rs" } },
+    { name: "store", description: "owns the on-disk state", evidence: { path: "kvstore/src/storage.rs" } },
+  ],
+  boundaries: [
+    {
+      name: "wire-to-store",
+      between: ["listener", "store"],
+      dataCrossing: {
+        types: ["colon-separated commands"],
+        channel: "in-process call from an embedder",
+        guarantees: "none: keys arrive from the wire, untrusted",
+        validation: "none at this revision",
+      },
+      evidence: [{ path: "kvstore/src/storage.rs", startLine: 28, endLine: 32 }],
+    },
+  ],
+  assets: [
+    {
+      name: "host filesystem",
+      whyItMatters: "reachable through the key→path mapping; the reason a traversal matters",
+      cia: ["confidentiality", "integrity"],
+    },
+  ],
+  attacker: {
+    capabilities: ["supplies arbitrary keys through an embedder that calls the API"],
+    nonCapabilities: [
+      "cannot execute code on the host directly",
+      "cannot choose the store root — it is fixed by the embedder",
+    ],
+  },
+  threats: [
+    {
+      id: "TM-001",
+      title: "Path traversal through an unsanitised key",
+      source: "any party whose requests reach handle_request",
+      prerequisites: ["an embedder wires the store to wire keys"],
+      action: "send a key of '../../secret'",
+      impact: "reads a file outside the store root",
+      impactedAssets: ["host filesystem"],
+      existingControls: [
+        {
+          description: "the store root is fixed at construction",
+          evidence: { path: "kvstore/src/storage.rs", startLine: 14, endLine: 17 },
+          verified: true,
+        },
+      ],
+      gaps: ["no canonicalisation of the joined path"],
+      mitigations: ["reject keys containing path separators before the join"],
+      likelihood: "medium",
+      severity: "high",
+    },
+  ],
+  criticality: {
+    critical: "remote code execution or arbitrary file write on the host",
+    high: "arbitrary file read outside the store root",
+    medium: "denial of service to other clients",
+    low: "resource waste bounded by one request",
+  },
+  focusPaths: [
+    { path: "kvstore/src/storage.rs", reason: "every untrusted key becomes a path here", threatIds: ["TM-001"] },
+    { path: "kvstore/src/api.rs", reason: "the entry point that hands keys to the store" },
+  ],
+  droppedElements: [
+    { kind: "boundary", name: "admin-socket", reason: "kvstore/src/admin.rs does not exist at this revision" },
+  ],
+  notes: [],
+};
+
+/** A repository with no meaningful attack surface — the honest-empty case. */
+export const THREAT_MODEL_NONE = {
+  modeledAtRevision: HEAD,
+  summary: "A pure formatting library run by developers on their own code; no trust changes hands.",
+  threats: [],
+  notes: ["No listener, no IPC, and no file formats parsed from untrusted sources."],
+};
+
 export const PROTOCOL_SEQUENCE = `sequenceDiagram
     autonumber
     participant client as client
@@ -742,6 +825,47 @@ export const FINDINGS = [
       counterEvidenceChecked: ["callers of put", "existing eviction tests"],
       evidence: [{ kind: "call-path", command: "put -> evict" }],
       duplicateOf: null,
+    },
+  },
+  // A validated security finding carries its attack-path receipt in the same
+  // validation bag — how an attacker reaches it, and what it costs them.
+  {
+    findingId: "F-0002",
+    category: "security",
+    severity: "high",
+    confidence: 0.9,
+    claim: "FileStore::read joins an untrusted key onto the store root without sanitisation.",
+    path: "kvstore/src/storage.rs",
+    startLine: 28,
+    endLine: 32,
+    status: "validated",
+    // Validated but not publishable: the attack path is reasoning, and nothing
+    // deterministic (a failing test, a diagnostic) backs it — which is exactly
+    // the funnel's distinction. Keeps the publishable count at one.
+    publicationEligible: false,
+    introducedByChange: false,
+    discoveredBySkill: "reviewer-security",
+    validation: {
+      reason: "the traversal reaches the join with no canonicalisation on the path",
+      counterEvidenceChecked: ["callers", "existing tests"],
+      evidence: [{ kind: "call-path", command: "handle_request -> FileStore::read" }],
+      duplicateOf: null,
+      attackPath: {
+        findingId: "F-0002",
+        dataflow: {
+          source: "the key field of a wire request (api.rs:12)",
+          sink: "FileStore::read joins the key onto the root (storage.rs:28)",
+          outcome: "a key of '../../secret' resolves outside the store root",
+        },
+        reachability: {
+          attacker: "any party whose requests reach handle_request",
+          entrypoint: "handle_request (api.rs:12)",
+          preconditions: ["an embedder wires FileStore to wire keys"],
+        },
+        impact: { level: "high", why: "arbitrary file read on the host outside the store root" },
+        likelihood: { level: "medium", why: "no auth once reachable" },
+        limitations: ["no shipping listener was found in the repository"],
+      },
     },
   },
   // Persisted like every candidate, with the verdict it received. `unresolved`

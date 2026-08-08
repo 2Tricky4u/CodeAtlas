@@ -22,6 +22,7 @@ import { CommandPalette } from "./CommandPalette";
 import { OverviewView } from "./views/OverviewView";
 import { ProtocolView } from "./views/ProtocolView";
 import { ReviewView } from "./views/ReviewView";
+import { ThreatsView } from "./views/ThreatsView";
 
 export function App() {
   return (
@@ -36,6 +37,7 @@ export function App() {
             <Route path="map" element={<MapView />} />
             <Route path="architecture" element={<ArchitectureView />} />
             <Route path="adr" element={<AdrView />} />
+            <Route path="threats" element={<ThreatsView />} />
             <Route path="protocol" element={<ProtocolView />} />
             <Route path="change" element={<ChangeView />} />
             <Route path="findings" element={<FindingsView />} />
@@ -145,6 +147,7 @@ const TABS = [
   { path: "map", label: "map" },
   { path: "architecture", label: "architecture" },
   { path: "adr", label: "decisions" },
+  { path: "threats", label: "threats" },
   { path: "protocol", label: "protocol" },
   { path: "change", label: "change" },
   { path: "findings", label: "findings" },
