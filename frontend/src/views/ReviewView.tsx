@@ -394,6 +394,12 @@ function ApprovalPanel({
                 </td>
                 <td className="note" title={approval.payloadSha256}>
                   {shortSha(approval.payloadSha256.replace("sha256:", ""))}
+                  {approval.decision === null && (
+                    <div className="note" data-testid="approve-hint">
+                      approve with: codeatlas approve {approval.id} --by &lt;you&gt; --payload{" "}
+                      {approval.payloadSha256.replace("sha256:", "").slice(0, 12)}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

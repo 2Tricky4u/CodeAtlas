@@ -48,3 +48,11 @@ clean secret scan, and no prior publication — each re-checked at post time.
   which is the point: the test then exercises the same gate production uses.
 - CLI-level tests drive `approve --publish` and `publish` with a recording
   writer, so the shipped path — not just the gate function — is pinned.
+
+Amendment (Y phase): `approve` additionally requires `--payload` carrying the
+first 12 characters of the payload sha — a value that only exists in
+`show-approval` output or the dashboard, so approving proves the payload was
+at least fetched. The gate also verifies the AI-provenance marker the payload
+builder always adds; a markerless (hand-built or tampered) payload is blocked
+after the secret scan. Both checks are verifications of the approved bytes,
+never edits — what was approved is byte-for-byte what posts.

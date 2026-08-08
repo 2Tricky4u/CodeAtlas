@@ -26,7 +26,9 @@
 - **All external writes are approval-gated.** Publication code paths must re-check the approval
   row, the config flag (`CODEATLAS_PUBLISH_ENABLED=1`, default off — ADR-0015), and
   `CODEATLAS_KILL_SWITCH` — never rely on control flow alone. `codeatlas publish <id>` or
-  `approve --publish` are the only paths out, and both go through the gate.
+  `approve --publish` are the only paths out, both go through the gate, and `approve`
+  requires `--payload <12-char sha prefix>` as proof the payload was actually read.
+  The gate also refuses payloads without the AI-provenance marker (`payload.PROVENANCE`).
 - **TDD.** Failing test first, minimal implementation, green, refactor. No placeholders.
 
 ## Style

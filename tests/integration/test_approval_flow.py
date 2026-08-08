@@ -84,6 +84,16 @@ def _run(args: list[str], workdir) -> object:  # type: ignore[no-untyped-def]
     return CliRunner().invoke(app, [*args, "--workdir", str(workdir), "--test-db"])
 
 
+def _prefix(db_engine, approval_id: int) -> str:  # type: ignore[no-untyped-def]
+    """The proof-of-reading string: first 12 chars of the payload sha."""
+    from codeatlas.db.tables import ApprovalRow
+
+    with Session(db_engine) as s:
+        approval = s.get(ApprovalRow, approval_id)
+        assert approval is not None
+        return approval.payload_sha256.removeprefix("sha256:")[:12]
+
+
 class TestInspection:
     def test_show_approval_prints_the_exact_payload(self, pending) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
@@ -100,12 +110,54 @@ class TestInspection:
         assert result.exit_code == 1
 
 
+class TestProofOfReading:
+    """You cannot approve a payload you have not at least fetched: the flag
+    value only exists in `show-approval` output or the dashboard."""
+
+    def test_approve_without_the_payload_prefix_is_refused(self, pending, db_engine) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.db.tables import ApprovalRow
+
+        approval_id, workdir, _ = pending
+        result = _run(["approve", str(approval_id), "--by", "xaga"], workdir)
+        assert result.exit_code == 1, result.output
+        assert "show-approval" in result.output
+        with Session(db_engine) as s:
+            approval = s.get(ApprovalRow, approval_id)
+            assert approval is not None and approval.decision is None
+
+    def test_a_wrong_prefix_is_refused_without_leaking_the_right_one(
+        self, pending, db_engine
+    ) -> None:  # type: ignore[no-untyped-def]
+        from codeatlas.db.tables import ApprovalRow
+
+        approval_id, workdir, _ = pending
+        right = _prefix(db_engine, approval_id)
+        result = _run(
+            ["approve", str(approval_id), "--by", "xaga", "--payload", "000000000000"], workdir
+        )
+        assert result.exit_code == 1, result.output
+        assert right not in result.output
+        with Session(db_engine) as s:
+            approval = s.get(ApprovalRow, approval_id)
+            assert approval is not None and approval.decision is None
+
+
 class TestDecisions:
     def test_approve_records_who_and_does_not_publish_by_default(self, pending, db_engine) -> None:  # type: ignore[no-untyped-def]
         from codeatlas.db.tables import ApprovalRow, PublicationRow
 
         approval_id, workdir, _ = pending
-        result = _run(["approve", str(approval_id), "--by", "xaga"], workdir)
+        result = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+            ],
+            workdir,
+        )
         assert result.exit_code == 0, result.output
         assert "not published" in result.output
 
@@ -130,17 +182,31 @@ class TestDecisions:
             approval = s.get(ApprovalRow, approval_id)
             assert approval is not None and approval.decision == "rejected"
 
-        # A decided approval cannot be flipped afterwards.
-        second = _run(["approve", str(approval_id), "--by", "someone-else"], workdir)
+        # A decided approval cannot be flipped afterwards — even with the
+        # correct proof-of-reading prefix.
+        second = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "someone-else",
+                "--payload",
+                _prefix(db_engine, approval_id),
+            ],
+            workdir,
+        )
         assert second.exit_code == 1  # type: ignore[union-attr]
         with Session(db_engine) as s:
             approval = s.get(ApprovalRow, approval_id)
             assert approval is not None and approval.decision == "rejected"
 
-    def test_double_approval_is_refused(self, pending) -> None:  # type: ignore[no-untyped-def]
+    def test_double_approval_is_refused(self, pending, db_engine) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
-        assert _run(["approve", str(approval_id), "--by", "a"], workdir).exit_code == 0  # type: ignore[union-attr]
-        assert _run(["approve", str(approval_id), "--by", "b"], workdir).exit_code == 1  # type: ignore[union-attr]
+        prefix = _prefix(db_engine, approval_id)
+        first = _run(["approve", str(approval_id), "--by", "a", "--payload", prefix], workdir)
+        assert first.exit_code == 0  # type: ignore[union-attr]
+        second = _run(["approve", str(approval_id), "--by", "b", "--payload", prefix], workdir)
+        assert second.exit_code == 1  # type: ignore[union-attr]
 
 
 class TestRunStatus:
@@ -184,41 +250,101 @@ class TestPublishing:
         monkeypatch.delenv("CODEATLAS_PUBLISH_ENABLED", raising=False)
         monkeypatch.delenv("CODEATLAS_KILL_SWITCH", raising=False)
 
-    def test_publish_without_the_config_flag_is_blocked(self, pending) -> None:  # type: ignore[no-untyped-def]
+    def test_publish_without_the_config_flag_is_blocked(self, pending, db_engine) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
-        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        result = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+                "--publish",
+            ],
+            workdir,
+        )
         assert result.exit_code == 1, result.output  # type: ignore[union-attr]
         assert self.posted == [], "the config flag must be able to say no at the CLI"
 
-    def test_kill_switch_blocks_even_with_the_flag_set(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_kill_switch_blocks_even_with_the_flag_set(
+        self, pending, db_engine, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
         monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
         monkeypatch.setenv("CODEATLAS_KILL_SWITCH", "1")
-        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        result = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+                "--publish",
+            ],
+            workdir,
+        )
         assert result.exit_code == 1  # type: ignore[union-attr]
         assert self.posted == []
 
-    def test_flag_plus_approval_posts_through_the_gate(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_flag_plus_approval_posts_through_the_gate(
+        self, pending, db_engine, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
         monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
-        result = _run(["approve", str(approval_id), "--by", "xaga", "--publish"], workdir)
+        result = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+                "--publish",
+            ],
+            workdir,
+        )
         assert result.exit_code == 0, result.output  # type: ignore[union-attr]
         assert "published:" in result.output  # type: ignore[union-attr]
         assert len(self.posted) == 1
 
-    def test_publish_command_posts_an_already_approved_payload(self, pending, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_publish_command_posts_an_already_approved_payload(
+        self, pending, db_engine, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
         # The two-step flow the approve hint promises: approve now, publish later.
         approval_id, workdir, _ = pending
         monkeypatch.setenv("CODEATLAS_PUBLISH_ENABLED", "1")
-        assert _run(["approve", str(approval_id), "--by", "xaga"], workdir).exit_code == 0  # type: ignore[union-attr]
+        approve = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+            ],
+            workdir,
+        )
+        assert approve.exit_code == 0  # type: ignore[union-attr]
         assert self.posted == []
         result = _run(["publish", str(approval_id)], workdir)
         assert result.exit_code == 0, result.output  # type: ignore[union-attr]
         assert len(self.posted) == 1
 
-    def test_the_not_published_hint_names_a_command_that_exists(self, pending) -> None:  # type: ignore[no-untyped-def]
+    def test_the_not_published_hint_names_a_command_that_exists(self, pending, db_engine) -> None:  # type: ignore[no-untyped-def]
         approval_id, workdir, _ = pending
-        result = _run(["approve", str(approval_id), "--by", "xaga"], workdir)
+        result = _run(
+            [
+                "approve",
+                str(approval_id),
+                "--by",
+                "xaga",
+                "--payload",
+                _prefix(db_engine, approval_id),
+            ],
+            workdir,
+        )
         assert "codeatlas publish" in result.output  # type: ignore[union-attr]
         helped = CliRunner().invoke(app, ["publish", "--help"])
         assert helped.exit_code == 0, "the hint points at a command that does not exist"
