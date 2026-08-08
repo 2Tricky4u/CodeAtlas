@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from codeatlas.artifacts.store import ArtifactStore
 from codeatlas.core.logging import get_logger
 from codeatlas.db.tables import ApprovalRow, PublicationRow, RunRow
-from codeatlas.publication.payload import ReviewPayload, scan_payload
+from codeatlas.publication.payload import PROVENANCE, ReviewPayload, scan_payload
 
 log = get_logger("codeatlas.publication")
 
@@ -209,6 +209,17 @@ def publish_approved(
         log.error("publication.secret_detected", approval_id=approval_id, patterns=secrets)
         raise PublicationBlocked(
             f"approved payload contains what looks like a secret ({', '.join(secrets)})"
+        )
+
+    # Every outward-facing byte names its author. The builder adds the marker;
+    # this gate refuses to post without it — a verification, never an edit,
+    # because the posted bytes must stay identical to the approved sha.
+    unmarked = [c.path for c in payload.comments if PROVENANCE not in c.body]
+    if PROVENANCE not in payload.body or unmarked:
+        log.error("publication.provenance_missing", approval_id=approval_id, comments=unmarked)
+        raise PublicationBlocked(
+            "approved payload lacks the AI-provenance marker on the body or a comment; "
+            "payloads are built by build_payload, which always includes it"
         )
 
     publication = PublicationRow(

@@ -420,8 +420,14 @@ export const REVIEW_PAYLOAD = {
   repo: "kvstore",
   prNumber: 7,
   commitSha: HEAD,
-  body: "CodeAtlas found 1 issue introduced by this change.",
-  comments: [{ path: "kvstore/src/cache.rs", line: 23, body: "off-by-one in eviction" }],
+  body: "CodeAtlas found 1 issue introduced by this change.\n\n_Posted by CodeAtlas — an automated, human-approved review._",
+  comments: [
+    {
+      path: "kvstore/src/cache.rs",
+      line: 23,
+      body: "off-by-one in eviction\n\n_Posted by CodeAtlas — an automated, human-approved review._",
+    },
+  ],
   event: "COMMENT",
 };
 

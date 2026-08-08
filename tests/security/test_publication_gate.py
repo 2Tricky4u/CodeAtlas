@@ -71,14 +71,22 @@ def context(db_engine, tmp_path):  # type: ignore[no-untyped-def]
         )
         s.commit()
         run_id = run.id
+    # Marker included: these tests exercise the gate's order, not provenance —
+    # the builder always adds it, and only the dedicated test omits it.
+    from codeatlas.publication.payload import PROVENANCE
+
     payload = ReviewPayload(
         owner="o",
         repo="r",
         pr_number=7,
         commit_sha="c" * 40,
-        body="CodeAtlas review",
+        body=f"CodeAtlas review\n\n{PROVENANCE}",
         comments=[
-            ReviewComment(path="src/a.rs", line=10, body="finding F-0001: something is wrong")
+            ReviewComment(
+                path="src/a.rs",
+                line=10,
+                body=f"finding F-0001: something is wrong\n\n{PROVENANCE}",
+            )
         ],
     )
     return db_engine, run_id, cas, payload
@@ -251,6 +259,28 @@ class TestSecretScanning:
             s.commit()
             approval_id = approval.id
         with Session(db_engine) as s, pytest.raises(PublicationBlocked, match="secret"):
+            publish_approved(s, approval_id=approval_id, github=github, cas=cas, enabled=True)
+        assert github.posted == []
+
+    def test_a_payload_without_the_provenance_marker_is_refused(self, context) -> None:  # type: ignore[no-untyped-def]
+        """The builder always adds the marker; only a hand-built or tampered
+        payload lacks it — and the gate is exactly where tampering must die."""
+        db_engine, run_id, cas, _ = context
+        unmarked = ReviewPayload(
+            owner="o",
+            repo="r",
+            pr_number=7,
+            commit_sha="c" * 40,
+            body="review with no provenance",
+            comments=[ReviewComment(path="src/a.rs", line=1, body="a bare comment")],
+        )
+        github = FakeGitHub()
+        with Session(db_engine) as s:
+            approval = request_approval(s, run_id=run_id, payload=unmarked, cas=cas)
+            decide_approval(s, approval_id=approval.id, decision="approved", decided_by="me")
+            s.commit()
+            approval_id = approval.id
+        with Session(db_engine) as s, pytest.raises(PublicationBlocked, match="provenance"):
             publish_approved(s, approval_id=approval_id, github=github, cas=cas, enabled=True)
         assert github.posted == []
 

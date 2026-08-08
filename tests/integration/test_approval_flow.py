@@ -54,17 +54,22 @@ def pending(db_engine, tmp_path):  # type: ignore[no-untyped-def]
         )
         s.commit()
         run_id = run.id
+    from codeatlas.publication.payload import PROVENANCE
+
     payload = ReviewPayload(
         owner="o",
         repo="r",
         pr_number=12,
         commit_sha="e" * 40,
-        body="## CodeAtlas review\n\n1 finding with deterministic evidence",
+        body=f"## CodeAtlas review\n\n1 finding with deterministic evidence\n\n{PROVENANCE}",
         comments=[
             ReviewComment(
                 path="kvstore/src/api.rs",
                 line=28,
-                body="**HIGH · correctness** (`F-0001`)\n\nPanics on malformed input.",
+                body=(
+                    "**HIGH · correctness** (`F-0001`)\n\n"
+                    f"Panics on malformed input.\n\n{PROVENANCE}"
+                ),
             )
         ],
     )

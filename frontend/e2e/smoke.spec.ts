@@ -956,6 +956,16 @@ test.describe("review view", () => {
     await expect(page.getByTestId("payload-body")).toContainText("found 1 issue");
   });
 
+  test("the provenance marker is visible in what the human approves", async ({ page }) => {
+    // Builder adds it, gate enforces it — and the preview must show it, so
+    // the approved bytes and the posted bytes carry the same authorship line.
+    await page.goto(`/#/runs/${RUN_ID}/review`);
+    await expect(page.getByTestId("payload-body")).toContainText("Posted by CodeAtlas");
+    await expect(page.getByTestId("payload-comment").first()).toContainText(
+      "Posted by CodeAtlas",
+    );
+  });
+
   test("the review event is never a verdict", async ({ page }) => {
     // REQUEST_CHANGES or APPROVE would be the tool deciding; it may not.
     await page.goto(`/#/runs/${RUN_ID}/review`);

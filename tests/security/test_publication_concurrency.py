@@ -72,13 +72,15 @@ def test_two_racing_publishers_post_exactly_once(db_engine, tmp_path) -> None:  
         )
         s.commit()
         run_id = run.id
+    from codeatlas.publication.payload import PROVENANCE
+
     payload = ReviewPayload(
         owner="o",
         repo="r",
         pr_number=9,
         commit_sha="d" * 40,
-        body="review",
-        comments=[ReviewComment(path="src/a.rs", line=3, body="F-0001")],
+        body=f"review\n\n{PROVENANCE}",
+        comments=[ReviewComment(path="src/a.rs", line=3, body=f"F-0001\n\n{PROVENANCE}")],
     )
     with Session(db_engine) as s:
         approval = request_approval(s, run_id=run_id, payload=payload, cas=cas)
