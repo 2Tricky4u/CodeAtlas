@@ -46,9 +46,15 @@ def dry_run(
     markdown_bytes = render_markdown(report).encode("utf-8")
     markdown_sha = cas.put(markdown_bytes)
 
-    for sha, kind, media, blob in (
-        (payload_sha, "review-payload-dry-run", "application/json", payload_bytes),
-        (markdown_sha, "review-markdown", "text/markdown", markdown_bytes),
+    for sha, kind, media, blob, schema_id in (
+        (
+            payload_sha,
+            "review-payload-dry-run",
+            "application/json",
+            payload_bytes,
+            "review-payload.v1",
+        ),
+        (markdown_sha, "review-markdown", "text/markdown", markdown_bytes, None),
     ):
         index_artifact(
             session,
@@ -58,6 +64,7 @@ def dry_run(
             size_bytes=len(blob),
             producer="pipeline",
             produced_by_run_id=run_id,
+            schema_id=schema_id,
         )
 
     secrets = scan_payload(payload)

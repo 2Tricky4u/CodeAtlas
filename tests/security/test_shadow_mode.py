@@ -139,8 +139,11 @@ class TestShadowProducesTheRealPayload:
     def test_inline_comments_are_limited_to_changed_files(
         self, db_engine, run_id, tmp_path
     ) -> None:  # type: ignore[no-untyped-def]
+        # F-0001's whole span (26-27) consists of added lines, so it posts as
+        # a range comment — GitHub anchors a range at its END line. F-0002's
+        # file is untouched and appears in the body only.
         result = _shadow(db_engine, run_id, tmp_path)
-        assert result.dry_run.would_comment_on == ["kvstore/src/api.rs:26"]
+        assert result.dry_run.would_comment_on == ["kvstore/src/api.rs:27"]
 
     def test_scope_split_is_reported(self, db_engine, run_id, tmp_path) -> None:  # type: ignore[no-untyped-def]
         result = _shadow(db_engine, run_id, tmp_path)

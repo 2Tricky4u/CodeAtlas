@@ -513,6 +513,11 @@ def stage_payload(
     """Build the review payload without publishing it (shadow by default)."""
     if ctx.report is None or deps.github_owner is None or deps.pr_number is None:
         return None
+    if not deps.github_repo:
+        # A payload with an empty repo fails its own validation; say why
+        # instead of exploding inside the model.
+        ctx.notes.append("review payload skipped: no GitHub repository name configured")
+        return None
     from codeatlas.publication.shadow import run_shadow
     from codeatlas.review.explainer import condensed_markdown
 

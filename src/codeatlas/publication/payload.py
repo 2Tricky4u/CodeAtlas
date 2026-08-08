@@ -8,6 +8,7 @@ goes out. Nothing is regenerated between approval and publication.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import Field
@@ -29,9 +30,21 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+# Every outward-facing byte names its author. Added here so the human approves
+# text that already carries it; verified again in `gate.publish_approved` so no
+# control flow can post without it (mutating at post time would post something
+# nobody approved — the gate checks, never edits).
+PROVENANCE = "_Posted by CodeAtlas — an automated, human-approved review._"
+
+
 class ReviewComment(ContractModel):
     path: str = Field(min_length=1)
+    # The anchor line on the head revision — always a line the diff added,
+    # or GitHub rejects the whole review with a 422.
     line: int = Field(ge=1)
+    # Present only when the finding's whole span consists of added lines: the
+    # comment then attaches to the range start_line..line.
+    start_line: int | None = Field(default=None, ge=1)
     body: str = Field(min_length=1)
 
 
@@ -46,14 +59,23 @@ class ReviewPayload(ContractModel):
 
     def to_github(self) -> dict[str, Any]:
         """The literal GitHub review API request body."""
+        comments: list[dict[str, Any]] = []
+        for c in self.comments:
+            entry: dict[str, Any] = {
+                "path": c.path,
+                "line": c.line,
+                "side": "RIGHT",
+                "body": c.body,
+            }
+            if c.start_line is not None:
+                entry["start_line"] = c.start_line
+                entry["start_side"] = "RIGHT"
+            comments.append(entry)
         return {
             "commit_id": self.commit_sha,
             "body": self.body,
             "event": self.event,
-            "comments": [
-                {"path": c.path, "line": c.line, "side": "RIGHT", "body": c.body}
-                for c in self.comments
-            ],
+            "comments": comments,
         }
 
 
@@ -77,34 +99,76 @@ def build_payload(
     commit_sha: str,
     changed_paths: set[str] | None = None,
     explanation_markdown: str | None = None,
+    added_lines: Mapping[str, set[int]] | None = None,
 ) -> ReviewPayload:
     """Render a report into a PR review payload.
 
-    Inline comments are only produced for findings inside changed files — GitHub
-    rejects comments outside the diff, and commenting on untouched code in a PR
-    is noise regardless. Everything else stays in the summary body.
+    Inline comments are only produced for findings whose span touches lines the
+    diff actually added — GitHub rejects comments outside the diff with a 422
+    that voids the whole review. A publishable finding on an unchanged line of
+    a changed file is not dropped: it folds into the summary body under its own
+    heading, with a full-SHA permalink, so the honest fallback is visible text
+    rather than a doomed API call. Without diff information (`added_lines`
+    None) the file-level filter governs alone, as it always did.
 
     The change explanation leads the body when there is one: a reviewer needs to
     know what the change does before being told what might be wrong with it.
     """
     comments: list[ReviewComment] = []
+    outside_diff: list[str] = []
     for entry in report.publishable:
         location = entry.validation.location
         if changed_paths is not None and location.path not in changed_paths:
             continue
         if location.start_line is None:
             continue
-        comments.append(
-            ReviewComment(
-                path=location.path,
-                line=location.start_line,
-                body=_comment_body(entry),
+        start = location.start_line
+        end = location.end_line or start
+        if added_lines is not None:
+            added = added_lines.get(location.path, set())
+            span = set(range(start, end + 1))
+            hit = sorted(span & added)
+            if not hit:
+                outside_diff.append(
+                    f"- `{entry.finding_id}` **{entry.validation.severity.upper()}** · "
+                    f"{entry.validation.claim[:160]} — "
+                    f"{_permalink(owner, repo, commit_sha, location.path, start, end)}"
+                )
+                continue
+            # Anchor on added lines only. The full span becomes a range when
+            # every line of it was added; otherwise the first added line is
+            # the anchor and the permalink in the body carries the rest.
+            anchor_start = hit[0] if span <= added else None
+            anchor_line = hit[-1] if span <= added else hit[0]
+            comments.append(
+                ReviewComment(
+                    path=location.path,
+                    line=anchor_line,
+                    start_line=anchor_start if anchor_start != anchor_line else None,
+                    body=_comment_body(entry, owner, repo, commit_sha),
+                )
             )
-        )
+        else:
+            comments.append(
+                ReviewComment(
+                    path=location.path,
+                    line=start,
+                    body=_comment_body(entry, owner, repo, commit_sha),
+                )
+            )
 
     body = render_markdown(report)
+    if outside_diff:
+        body += (
+            "\n### Findings outside the diff\n\n"
+            "Validated on the head revision, but not on lines this change added — "
+            "posted here because an inline comment outside the diff is rejected.\n\n"
+            + "\n".join(outside_diff)
+            + "\n"
+        )
     if explanation_markdown:
         body = f"## What this change does\n\n{explanation_markdown}\n\n---\n\n{body}"
+    body = f"{body.rstrip()}\n\n{PROVENANCE}"
 
     return ReviewPayload(
         owner=owner,
@@ -116,8 +180,17 @@ def build_payload(
     )
 
 
-def _comment_body(entry: Any) -> str:
+def _permalink(owner: str, repo: str, sha: str, path: str, start: int, end: int) -> str:
+    """A full-SHA blob URL — stable forever, renders as a code preview on GitHub."""
+    suffix = f"#L{start}-L{end}" if end != start else f"#L{start}"
+    return f"https://github.com/{owner}/{repo}/blob/{sha}/{path}{suffix}"
+
+
+def _comment_body(entry: Any, owner: str, repo: str, commit_sha: str) -> str:
     validation = entry.validation
+    location = validation.location
+    start = location.start_line or 1
+    end = location.end_line or start
     lines = [
         f"**{validation.severity.upper()} · {entry.finding.category}** (`{entry.finding_id}`)",
         "",
@@ -130,5 +203,9 @@ def _comment_body(entry: Any) -> str:
             + (f" (exit {e.exit_code})" if e.exit_code is not None else "")
             for e in validation.evidence
         ),
+        "",
+        _permalink(owner, repo, commit_sha, location.path, start, end),
+        "",
+        PROVENANCE,
     ]
     return "\n".join(lines)

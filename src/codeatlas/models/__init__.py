@@ -22,6 +22,7 @@ from codeatlas.models.protocol import ProtocolModel
 from codeatlas.models.receipts import ExtractorReceipt
 from codeatlas.models.validation import ValidationResult
 from codeatlas.models.views import GraphViews
+from codeatlas.publication.payload import ReviewPayload
 
 # Schema file -> top-level contract model. The drift test iterates this mapping.
 CONTRACT_MODELS: dict[str, type[ContractModel]] = {
@@ -46,6 +47,9 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "project-overview.v1.json": ProjectOverview,
     "graph-view.v1.json": GraphViews,
     "review-coverage.v1.json": ReviewCoverage,
+    # Lives in publication/, not models/: the payload is the posting contract,
+    # and its builder belongs beside the gate that enforces it.
+    "review-payload.v1.json": ReviewPayload,
 }
 
 __all__ = [

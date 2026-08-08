@@ -42,6 +42,7 @@ EXPECTED_SCHEMAS = {
     "code-answer.v1.json",
     "graph-view.v1.json",
     "review-coverage.v1.json",
+    "review-payload.v1.json",
 }
 
 
@@ -249,6 +250,28 @@ REVIEW_COVERAGE_EXAMPLE: dict[str, Any] = {
             "notRead": [],
         },
     ],
+}
+
+REVIEW_PAYLOAD_EXAMPLE: dict[str, Any] = {
+    "owner": "local",
+    "repo": "kvstore",
+    "prNumber": 7,
+    "commitSha": "f" * 40,
+    "body": "## CodeAtlas review\n\n1 finding.\n\n_Posted by CodeAtlas._",
+    "comments": [
+        {
+            "path": "kvstore/src/api.rs",
+            "line": 30,
+            "startLine": 28,
+            "body": "**HIGH · correctness** (`F-0001`)\n\nclaim text",
+        },
+        {
+            "path": "kvstore/src/cache.rs",
+            "line": 12,
+            "body": "single-line comment, no range",
+        },
+    ],
+    "event": "COMMENT",
 }
 
 MANIFEST_EXAMPLE: dict[str, Any] = {
@@ -750,6 +773,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "code-answer.v1.json": CODE_ANSWER_EXAMPLE,
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
     "review-coverage.v1.json": REVIEW_COVERAGE_EXAMPLE,
+    "review-payload.v1.json": REVIEW_PAYLOAD_EXAMPLE,
 }
 
 

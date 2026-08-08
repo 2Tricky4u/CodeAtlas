@@ -76,6 +76,9 @@ def run_shadow(
         commit_sha=commit_sha,
         changed_paths=scope.changed_paths if scope else None,
         explanation_markdown=explanation_markdown,
+        # Line-level truth, not just file-level: a comment outside the diff's
+        # added lines voids the whole review with a 422.
+        added_lines=scope.added_lines if scope else None,
     )
     result = dry_run(session, run_id=run_id, report=report, payload=payload, cas=cas)
 

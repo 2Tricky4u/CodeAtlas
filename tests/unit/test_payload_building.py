@@ -99,6 +99,99 @@ def test_event_is_always_comment() -> None:
     assert payload.to_github()["event"] == "COMMENT"
 
 
+class TestLineInDiffAnchoring:
+    """GitHub 422s a comment outside the diff. A finding on an unchanged line
+    of a changed file must fold into the body — never a doomed comment, never
+    silence."""
+
+    def test_a_finding_on_added_lines_anchors_at_the_first_added_line(self) -> None:
+        pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]  # span 28-30
+        payload = build_payload(
+            _report(pairs),
+            owner="o",
+            repo="r",
+            pr_number=3,
+            commit_sha=SHA,
+            changed_paths={"kvstore/src/api.rs"},
+            added_lines={"kvstore/src/api.rs": {29, 30, 31}},
+        )
+        assert len(payload.comments) == 1
+        assert payload.comments[0].line == 29
+
+    def test_a_finding_outside_the_diff_folds_into_the_body(self) -> None:
+        pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]  # span 28-30
+        payload = build_payload(
+            _report(pairs),
+            owner="o",
+            repo="r",
+            pr_number=3,
+            commit_sha=SHA,
+            changed_paths={"kvstore/src/api.rs"},
+            added_lines={"kvstore/src/api.rs": {90, 91}},
+        )
+        assert payload.comments == []
+        assert "Findings outside the diff" in payload.body
+        assert f"https://github.com/o/r/blob/{SHA}/kvstore/src/api.rs#L28-L30" in payload.body
+
+    def test_without_added_lines_the_file_filter_still_governs(self) -> None:
+        """No diff information → previous behavior, unchanged."""
+        pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]
+        payload = build_payload(
+            _report(pairs),
+            owner="o",
+            repo="r",
+            pr_number=3,
+            commit_sha=SHA,
+            changed_paths={"kvstore/src/api.rs"},
+        )
+        assert len(payload.comments) == 1
+        assert payload.comments[0].line == 28
+
+
+def test_a_fully_added_span_becomes_a_range_comment() -> None:
+    pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]  # span 28-30
+    payload = build_payload(
+        _report(pairs),
+        owner="o",
+        repo="r",
+        pr_number=3,
+        commit_sha=SHA,
+        changed_paths={"kvstore/src/api.rs"},
+        added_lines={"kvstore/src/api.rs": {28, 29, 30}},
+    )
+    comment = payload.comments[0]
+    assert comment.start_line == 28
+    assert comment.line == 30
+    github = payload.to_github()["comments"][0]
+    assert github["start_line"] == 28
+    assert github["start_side"] == "RIGHT"
+    assert github["line"] == 30
+
+
+def test_comment_bodies_carry_a_full_sha_permalink() -> None:
+    pairs = [_pair("F-0001", "kvstore/src/api.rs", 28)]
+    payload = build_payload(
+        _report(pairs), owner="o", repo="r", pr_number=3, commit_sha=SHA, changed_paths=None
+    )
+    assert (
+        f"https://github.com/o/r/blob/{SHA}/kvstore/src/api.rs#L28-L30" in payload.comments[0].body
+    )
+
+
+def test_the_provenance_marker_is_on_the_body_and_every_comment() -> None:
+    """Added by the builder so the human approves it; enforced by the gate so
+    control flow cannot skip it. The posted bytes stay byte-identical to the
+    approved sha."""
+    from codeatlas.publication.payload import PROVENANCE
+
+    pairs = [_pair("F-0001", "a.rs", 1), _pair("F-0002", "b.rs", 2)]
+    payload = build_payload(
+        _report(pairs), owner="o", repo="r", pr_number=3, commit_sha=SHA, changed_paths=None
+    )
+    assert payload.body.rstrip().endswith(PROVENANCE)
+    assert all(c.body.rstrip().endswith(PROVENANCE) for c in payload.comments)
+
+
 def test_payload_is_deterministic() -> None:
     pairs = [_pair("F-0001", "a.rs", 1), _pair("F-0002", "b.rs", 2)]
     first = build_payload(

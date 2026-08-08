@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/review-payload.v1.json",
+  "title": "Review Payload",
+  "description": "The exact GitHub PR review that would be posted: built once, stored content-addressed, approved as a specific artifact, posted verbatim. What a human approves is byte-for-byte what goes out.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["owner", "repo", "prNumber", "commitSha", "body", "comments", "event"],
+  "properties": {
+    "owner": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "minLength": 1 },
+    "prNumber": { "type": "integer", "minimum": 1 },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "body": { "type": "string", "minLength": 1 },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "body"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "line": {
+            "description": "The anchor line on the head revision — always a line the diff added, or GitHub rejects the comment.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "startLine": {
+            "description": "Present only when the finding's whole span consists of added lines: the comment then attaches to the range startLine..line.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "event": {
+      "description": "Always COMMENT — approving or requesting changes is a human decision this tool never makes.",
+      "const": "COMMENT"
+    }
+  }
+}
