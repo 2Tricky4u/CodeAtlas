@@ -25,6 +25,7 @@ def _deps(
     narrate: bool | None = None,
     replay: bool = False,
     max_tokens: int = 2_000_000,
+    refresh_threat_model: bool = False,
 ) -> PipelineDeps:
     """Build the dependency container.
 
@@ -66,6 +67,7 @@ def _deps(
         budget=budget,
         review_enabled=review,
         narration_enabled=narration,
+        refresh_threat_model=refresh_threat_model,
     )
 
 
@@ -90,6 +92,9 @@ def run(
     max_tokens: Annotated[
         int, typer.Option(help="Run-wide agent token budget (only spent with --review/--narrate)")
     ] = 2_000_000,
+    refresh_threat_model: Annotated[
+        bool, typer.Option(help="Rebuild the repository's cached threat model")
+    ] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
     """Analyze a repository at a pinned revision.
@@ -116,7 +121,13 @@ def run(
         repo = str(local.resolve())
 
     deps = _deps(
-        workdir, test_db, review=review, narrate=narrate, replay=replay, max_tokens=max_tokens
+        workdir,
+        test_db,
+        review=review,
+        narrate=narrate,
+        replay=replay,
+        max_tokens=max_tokens,
+        refresh_threat_model=refresh_threat_model,
     )
     run_id = start_run(deps, repo_path=repo, repository_id=repository_id, ref=ref)
     status = run_status(deps, run_id)
@@ -212,6 +223,9 @@ def review_pr(
     ] = True,
     replay: Annotated[bool, typer.Option(help="Use recorded cassettes")] = False,
     max_tokens: Annotated[int, typer.Option(help="Run-wide agent token budget")] = 2_000_000,
+    refresh_threat_model: Annotated[
+        bool, typer.Option(help="Rebuild the repository's cached threat model")
+    ] = False,
     force: Annotated[bool, typer.Option(help="Review even a draft or closed pull request")] = False,
     test_db: Annotated[bool, typer.Option(hidden=True)] = False,
 ) -> None:
@@ -254,7 +268,13 @@ def review_pr(
     typer.echo(f"  {len(pr.changed_paths)} changed file(s)")
 
     deps = _deps(
-        workdir, test_db, review=True, narrate=narrate, replay=replay, max_tokens=max_tokens
+        workdir,
+        test_db,
+        review=True,
+        narrate=narrate,
+        replay=replay,
+        max_tokens=max_tokens,
+        refresh_threat_model=refresh_threat_model,
     )
     deps.github_owner = owner
     deps.github_repo = repo_name

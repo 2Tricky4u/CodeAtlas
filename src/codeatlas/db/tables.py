@@ -217,6 +217,29 @@ class GraphCacheRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ThreatModelCacheRow(Base):
+    """The current threat model for a repository, reusable across runs.
+
+    One row per repository, replaceable by design — the opposite trade from
+    `graph_cache`. A graph is a deterministic function of its named producers,
+    so same-key rows are append-only and never overwritten. A threat model is
+    the current understanding of what a system *is*; a refresh legitimately
+    replaces it, and the supersession is recorded as a run event carrying the
+    old sha rather than as a second row. `produced_by_run_id` keeps a reused
+    model traceable to the run that actually paid for it.
+    """
+
+    __tablename__ = "threat_model_cache"
+    __table_args__ = (UniqueConstraint("repository_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repository.id"))
+    artifact_sha256: Mapped[str] = mapped_column(ForeignKey("artifact.sha256"))
+    modeled_at_revision: Mapped[str] = mapped_column(String(40))
+    produced_by_run_id: Mapped[str] = mapped_column(ForeignKey("run.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class FindingMemoryRow(Base):
     """An agent-produced rejection, remembered across runs (ADR-0016).
 

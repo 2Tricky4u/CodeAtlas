@@ -69,6 +69,15 @@ PROJECT_EXPLANATION_OUT = {
     ],
 }
 PROTOCOL_REFUSAL = {"schemaVersion": "1.0.0", "protocol": None, "droppedElements": [], "notes": []}
+# The honest-empty threat model; the pipeline overwrites modeledAtRevision
+# with the measured head, so the scripted value never survives.
+THREAT_EMPTY = {
+    "schemaVersion": "1.0.0",
+    "modeledAtRevision": "0" * 40,
+    "summary": "wiring test: no meaningful attack surface modeled",
+    "threats": [],
+    "notes": ["scripted"],
+}
 
 
 def _script() -> dict[str, object]:
@@ -80,6 +89,7 @@ def _script() -> dict[str, object]:
         "change-explainer": CHANGE_EXPLANATION_OUT,
         "project-explainer": PROJECT_EXPLANATION_OUT,
         "protocol-modeler": PROTOCOL_REFUSAL,
+        "threat-modeler": THREAT_EMPTY,
     }
 
 

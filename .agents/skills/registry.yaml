@@ -135,3 +135,16 @@ skills:
     trust: trusted
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
+  - id: threat-modeler
+    version: "1.0.0"
+    path: threat-modeler/
+    content_sha256: "sha256:39e19290154627b04c964d00db3e0bcce7295fa3228e3b4694aa7e2696163dc5"
+    purpose: "Model a repository's trust boundaries and abuse paths, or say it has none"
+    output_schema: threat-model.v1
+    permissions:
+      commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"

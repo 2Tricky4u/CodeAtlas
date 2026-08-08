@@ -140,6 +140,7 @@ class TestEveryHalfProducedItsArtifacts:
             "review-markdown",
             "project-explanation",
             "protocol-model",
+            "threat-model",
         } <= _roles(db_engine, run_id)
 
 
@@ -201,7 +202,12 @@ class TestTheReviewLeftItsEvidence:
                     select(AgentInvocationRow.skill_id).where(AgentInvocationRow.run_id == run_id)
                 )
             )
-        assert {"intent-reconstructor", "project-explainer", "protocol-modeler"} <= skills
+        assert {
+            "intent-reconstructor",
+            "project-explainer",
+            "protocol-modeler",
+            "threat-modeler",
+        } <= skills
 
     def test_extractor_receipts_back_the_graph(self, reviewed, db_engine) -> None:  # type: ignore[no-untyped-def]
         """Every extractor invocation emits a receipt — the rule that makes a

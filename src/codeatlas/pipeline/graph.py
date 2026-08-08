@@ -1023,6 +1023,18 @@ def build_pipeline(deps: PipelineDeps):  # type: ignore[no-untyped-def]
                 impact_sha=state.get("change_impact_sha256"),
             )
 
+        # The threat model comes before the reviewers because its focus paths
+        # are a reviewer input — computed after them, it would aim nobody.
+        from codeatlas.pipeline.threat_stage import stage_threat_model
+
+        stage_threat_model(
+            deps,
+            ctx,
+            repository_id=state["repository_id"],
+            revision_db_id=state["revision_db_id"],
+            project_overview_sha=state["project_overview_sha256"],
+        )
+
         stage_intent(deps, ctx)
         stage_reviewers(deps, ctx)
         stage_validate(

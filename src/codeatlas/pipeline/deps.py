@@ -44,6 +44,9 @@ class PipelineDeps:
     # repository" mean "and also run four reviewers and a validator per finding".
     narration_enabled: bool = True
     review_enabled: bool = True
+    # The threat model is cached per repository; this forces a rebuild even
+    # when a cached one exists. The supersession is logged as a run event.
+    refresh_threat_model: bool = False
 
     # Publication target. Absent means the run stops after the report.
     github_owner: str | None = None

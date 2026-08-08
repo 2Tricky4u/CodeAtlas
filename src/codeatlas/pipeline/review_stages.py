@@ -39,6 +39,7 @@ from codeatlas.models.explanation import ChangeExplanation
 from codeatlas.models.findings import Finding
 from codeatlas.models.graph import ProjectGraph
 from codeatlas.models.intent import IntentPackage
+from codeatlas.models.threat import ThreatModel
 from codeatlas.pipeline.artifacts_out import adopt_artifact, publish_artifact
 from codeatlas.pipeline.deps import PipelineDeps
 from codeatlas.review.intent_node import reconstruct_intent
@@ -66,6 +67,9 @@ class ReviewContext:
     checkout: Path
     graph: ProjectGraph
     intent: IntentPackage | None = None
+    #: The repository's threat model (fresh or cache-adopted); None when the
+    #: modeler did not complete, in which case the reviewers run unaimed.
+    threat_model: ThreatModel | None = None
     findings: list[Finding] = field(default_factory=list)
     failed_skills: list[str] = field(default_factory=list)
     validation: ValidationOutcome | None = None
