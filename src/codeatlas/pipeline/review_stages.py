@@ -48,6 +48,7 @@ from codeatlas.review.reviewers import (
     build_reviewer_inputs,
     run_reviewers,
     slice_graph_for_review,
+    threat_focus_for_reviewers,
 )
 from codeatlas.review.scope import ChangedScope
 from codeatlas.review.synthesis import ReviewReport, build_report
@@ -71,6 +72,9 @@ class ReviewContext:
     #: modeler did not complete, in which case the reviewers run unaimed.
     threat_model: ThreatModel | None = None
     findings: list[Finding] = field(default_factory=list)
+    #: Attack-path receipts by finding id, for validated security findings.
+    #: A finding absent here simply has no receipt — its verdict is unchanged.
+    attack_paths: dict[str, dict[str, Any]] = field(default_factory=dict)
     failed_skills: list[str] = field(default_factory=list)
     validation: ValidationOutcome | None = None
     report: ReviewReport | None = None
@@ -149,6 +153,7 @@ def stage_reviewers(deps: PipelineDeps, ctx: ReviewContext) -> None:
         intent=ctx.intent,
         source_paths=source_paths,
         graph_slice=slice_graph_for_review(ctx.graph, source_paths),
+        threat_focus=threat_focus_for_reviewers(ctx.threat_model),
     )
     outcome: ReviewOutcome = run_reviewers(
         engine=deps.agent_engine,  # type: ignore[arg-type]
@@ -238,6 +243,29 @@ def stage_validate(
         budget=deps.budget,
         memory=memory,
     )
+
+    # Trace an attack path for each validated security finding, before
+    # persistence so the receipt lands in the same row as the verdict. This
+    # never changes a verdict: a failed or absent receipt leaves the finding
+    # exactly as validation left it.
+    from codeatlas.validation.attack_path import analyze_attack_paths
+
+    paths, failed = analyze_attack_paths(
+        findings=ctx.findings,
+        outcome=ctx.validation,
+        engine=deps.agent_engine,  # type: ignore[arg-type]
+        registry=deps.registry(),
+        run_id=ctx.run_id,
+        revision_sha=ctx.revision_sha,
+        checkout=ctx.checkout,
+        db_engine=deps.engine,
+        cas=deps.cas,
+        budget=deps.budget,
+    )
+    ctx.attack_paths = paths
+    if failed:
+        ctx.notes.append(f"{len(failed)} attack-path analysis(es) did not complete")
+
     _persist_findings(deps, ctx, memory=memory)
     if ctx.validation.suppressed:
         ctx.notes.append(
@@ -286,6 +314,13 @@ def _persist_findings(
                 )
                 continue
             result = outcome.results.get(finding.finding_id)
+            validation = result.contract_dump() if result else None
+            # The attack-path receipt rides in the validation bag, which is not
+            # schema-gated (see the suppressed branch above) — it is our record,
+            # not agent output constrained by validation-result.v1.
+            attack_path = ctx.attack_paths.get(finding.finding_id)
+            if validation is not None and attack_path is not None:
+                validation = {**validation, "attackPath": attack_path}
             session.add(
                 FindingRow(
                     run_id=ctx.run_id,
@@ -304,7 +339,7 @@ def _persist_findings(
                     introduced_by_change=result.introduced_by_change if result else None,
                     publication_eligible=bool(result and result.publication_eligible),
                     payload=finding.contract_dump(),
-                    validation=result.contract_dump() if result else None,
+                    validation=validation,
                 )
             )
         if memory is not None:

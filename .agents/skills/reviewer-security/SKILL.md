@@ -16,6 +16,15 @@ something by causing it. Do not report architecture, style, or performance.
    a query, a command, a deserialization target, an index.
 3. Check the controls that stand in the way, and whether they actually hold.
 
+**When your inputs include `threatFocus`**, a repository threat model already
+ran. Read its `focusPaths` first and spend your attention there — they are the
+files where an attack is most likely to land. Two constraints bind you, not just
+guide you: `attackerCannot` lists things the attacker provably cannot do in this
+system, so a finding that assumes one of them is wrong, not merely low; and
+`criticality` says what each severity means *for this repository*, so calibrate
+to it rather than to a generic scale. A threat model is aim, never a checklist —
+a real issue outside the focus paths is still a finding.
+
 ## Hard rules
 
 - **A finding names an attacker capability.** State what the attacker controls,
@@ -50,7 +59,7 @@ them is rejected outright, not repaired:
       "findingId": "F-0001",
       "category": "security",
       "discoveredBySkill": "reviewer-security",
-      "skillVersion": "1.1.0",
+      "skillVersion": "1.2.0",
       "severity": "high",
       "confidence": 0.9,
       "claim": "FileStore::read joins an attacker-controlled key onto the store root without sanitization, so a key of '../../secret' reads files outside the store.",

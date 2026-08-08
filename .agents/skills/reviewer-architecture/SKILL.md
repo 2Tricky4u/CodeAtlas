@@ -16,6 +16,13 @@ Architecture only. Do not report bugs, security exposure, or style.
 3. Report each place where the code contradicts a committed decision, or where a
    boundary the project clearly relies on has been crossed.
 
+**When your inputs include `threatFocus`**, a repository threat model ran, and
+its `boundaries` are the trust boundaries someone has already reasoned about.
+Where a threat model's boundary and a committed architectural boundary are the
+same line, a violation is both an architecture finding and a security-relevant
+one — say so. Its `focusPaths` mark where boundary erosion matters most. Aim,
+not a checklist.
+
 ## Hard rules
 
 - **Prefer a violated decision over an opinion.** If an ADR or spec states the
@@ -49,7 +56,7 @@ them is rejected outright, not repaired:
       "findingId": "F-0001",
       "category": "architecture",
       "discoveredBySkill": "reviewer-architecture",
-      "skillVersion": "1.1.0",
+      "skillVersion": "1.2.0",
       "severity": "medium",
       "confidence": 0.95,
       "claim": "storage.rs imports crate::api::Response, an upward dependency that contradicts ADR-0001 ('api may use cache, cache may use storage, storage depends on nothing inside this crate').",

@@ -20,6 +20,7 @@ from codeatlas.review.reviewers import (
     REVIEWER_SKILLS,
     build_reviewer_inputs,
     renumber_findings,
+    threat_focus_for_reviewers,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -111,6 +112,107 @@ class TestIsolation:
             cas=cas, intent=_intent(), source_paths=["a.rs"], graph_slice={"nodes": []}
         )
         assert first == second
+
+
+def _threat_model(with_threats: bool):  # type: ignore[no-untyped-def]
+    from codeatlas.models.threat import (
+        AttackerModel,
+        CriticalityCalibration,
+        FocusPath,
+        Threat,
+        ThreatModel,
+    )
+
+    return ThreatModel(
+        modeled_at_revision="a" * 40,
+        summary="a stdin-fed store",
+        attacker=AttackerModel(
+            capabilities=["controls stdin"],
+            non_capabilities=["cannot execute code on the host"],
+        ),
+        criticality=CriticalityCalibration(
+            critical="rce", high="data disclosure", medium="dos", low="waste"
+        ),
+        threats=(
+            [
+                Threat(
+                    id="TM-001",
+                    title="oversized input",
+                    source="stdin",
+                    action="send a huge line",
+                    impact="memory growth",
+                    likelihood="medium",
+                    severity="high",
+                )
+            ]
+            if with_threats
+            else []
+        ),
+        focus_paths=(
+            [
+                FocusPath(path="kvstore/src/api.rs", reason="parses input", threat_ids=["TM-001"]),
+                FocusPath(path="kvstore/src/storage.rs", reason="holds the asset"),
+            ]
+            if with_threats
+            else []
+        ),
+    )
+
+
+class TestThreatFocus:
+    def test_a_model_with_threats_aims_the_reviewers(self, tmp_path: Path) -> None:
+        focus = threat_focus_for_reviewers(_threat_model(with_threats=True))
+        assert focus is not None
+        assert [f["path"] for f in focus["focusPaths"]] == [
+            "kvstore/src/api.rs",
+            "kvstore/src/storage.rs",
+        ]
+        assert focus["attackerCannot"] == ["cannot execute code on the host"]
+        assert focus["criticality"]["high"] == "data disclosure"
+
+    def test_a_model_with_no_threats_aims_nothing(self) -> None:
+        """A repo with no attack surface tells the reviewers nothing extra —
+        and the bundle keeps the exact shape their cassettes were recorded on."""
+        assert threat_focus_for_reviewers(_threat_model(with_threats=False)) is None
+        assert threat_focus_for_reviewers(None) is None
+
+    def test_the_key_is_present_iff_the_focus_exists(self, tmp_path: Path) -> None:
+        cas = ArtifactStore(tmp_path / "objects")
+        aimed = build_reviewer_inputs(
+            cas=cas,
+            intent=_intent(),
+            source_paths=["a.rs"],
+            graph_slice={"nodes": []},
+            threat_focus=threat_focus_for_reviewers(_threat_model(with_threats=True)),
+        )
+        assert "threatFocus" in aimed
+
+        unaimed = build_reviewer_inputs(
+            cas=cas,
+            intent=_intent(),
+            source_paths=["a.rs"],
+            graph_slice={"nodes": []},
+            threat_focus=None,
+        )
+        assert set(unaimed) == {"intent", "sourcePaths", "graphSlice"}
+
+    def test_the_unaimed_bundle_is_byte_identical_to_the_pre_threat_bundle(
+        self, tmp_path: Path
+    ) -> None:
+        """The cassette-preservation guarantee: without a threat model, a
+        reviewer's inputs are exactly what they were before this feature."""
+        cas = ArtifactStore(tmp_path / "objects")
+        legacy = build_reviewer_inputs(
+            cas=cas, intent=_intent(), source_paths=["a.rs"], graph_slice={"nodes": []}
+        )
+        with_default = build_reviewer_inputs(
+            cas=cas,
+            intent=_intent(),
+            source_paths=["a.rs"],
+            graph_slice={"nodes": []},
+            threat_focus=None,
+        )
+        assert legacy == with_default
 
 
 class TestRenumbering:

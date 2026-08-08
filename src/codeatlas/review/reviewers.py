@@ -48,13 +48,45 @@ def build_reviewer_inputs(
     intent: IntentPackage,
     source_paths: list[str],
     graph_slice: dict[str, Any],
+    threat_focus: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """The evidence bundle every reviewer receives — and nothing else."""
-    return {
+    """The evidence bundle every reviewer receives — and nothing else.
+
+    `threatFocus` is added only when the repository's threat model actually
+    found threats: the key is absent for a repo with no attack surface, so
+    the bundle shape — and therefore the cassette key — is unchanged for those
+    repos. A model that found threats aims the reviewers; one that found none
+    tells them nothing, and pretending otherwise would be noise.
+    """
+    inputs = {
         "intent": cas.put_json(intent.contract_dump()),
         "sourcePaths": cas.put_json(sorted(source_paths)),
         "graphSlice": cas.put_json(graph_slice),
     }
+    if threat_focus is not None:
+        inputs["threatFocus"] = cas.put_json(threat_focus)
+    return inputs
+
+
+def threat_focus_for_reviewers(threat_model: object) -> dict[str, Any] | None:
+    """The aiming subset of a threat model, or None when there is nothing to aim by.
+
+    Reviewers get the focus paths, the attacker's non-capabilities (what keeps
+    them from inflating severity) and the criticality calibration — never the
+    whole model, which would bury the aim in detail they do not need.
+    """
+    from codeatlas.models.threat import ThreatModel
+
+    if not isinstance(threat_model, ThreatModel) or not threat_model.threats:
+        return None
+    focus: dict[str, Any] = {
+        "focusPaths": [f.contract_dump() for f in threat_model.focus_paths],
+    }
+    if threat_model.attacker is not None:
+        focus["attackerCannot"] = list(threat_model.attacker.non_capabilities)
+    if threat_model.criticality is not None:
+        focus["criticality"] = threat_model.criticality.contract_dump()
+    return focus
 
 
 def slice_graph_for_review(graph: ProjectGraph, source_paths: list[str]) -> dict[str, Any]:

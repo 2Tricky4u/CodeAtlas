@@ -29,7 +29,34 @@ from codeatlas.review.reviewers import (
     build_reviewer_inputs,
     run_reviewers,
     slice_graph_for_review,
+    threat_focus_for_reviewers,
 )
+
+
+def _recorded_threat_focus(checkout: Path, sha: str, graph: object) -> dict | None:
+    """The threatFocus the pipeline sends reviewers, from the threat cassette.
+
+    Mirrors `stage_threat_model`: validate the recorded threat model against
+    this run's file set, then take the aiming subset. The reviewer cassettes
+    were recorded with this key present, so the replay bundle must carry it too.
+    """
+    from codeatlas.models.graph import ProjectGraph
+    from codeatlas.models.threat import ThreatModel
+    from codeatlas.project.threat import build_threat_index, validate_threat_model
+    from codeatlas.vcs.git import GitClient
+
+    assert isinstance(graph, ProjectGraph)
+    cassette = next(CASSETTES.glob("threat-modeler-*.json"), None)
+    if cassette is None:
+        return None
+    raw = ThreatModel.model_validate(
+        json.loads(cassette.read_text(encoding="utf-8"))["result"]["output"]
+    )
+    raw = raw.model_copy(update={"modeled_at_revision": sha})
+    paths = {entry.path for entry in GitClient().ls_tree(checkout, sha)}
+    validated, _ = validate_threat_model(raw, build_threat_index(graph, paths=paths))
+    return threat_focus_for_reviewers(validated)
+
 
 pytestmark = [pytest.mark.subproc, pytest.mark.pg]
 
@@ -96,6 +123,7 @@ def review(db_engine, tmp_path_factory: pytest.TempPathFactory):  # type: ignore
         intent=intent,
         source_paths=source_paths,
         graph_slice=slice_graph_for_review(graph, source_paths),
+        threat_focus=_recorded_threat_focus(checkout, sha, graph),
     )
 
     outcome = run_reviewers(

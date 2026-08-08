@@ -32,9 +32,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-correctness
-    version: "1.1.0"
+    version: "1.2.0"
     path: reviewer-correctness/
-    content_sha256: "sha256:ef783d73a4c1e2278954ad11d038e53030cd4d14bed28471c4add5e2d7c8f928"
+    content_sha256: "sha256:ed7c151e80b4eb70f8d2e3b0b942d4b96670e751747294d405ea6e3a86c4732a"
     purpose: "Correctness review: wrong results, reachable panics, broken invariants, races"
     output_schema: findings.v1
     permissions:
@@ -45,9 +45,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-security
-    version: "1.1.0"
+    version: "1.2.0"
     path: reviewer-security/
-    content_sha256: "sha256:ef285b69c5b3ebb401643a288b5c58cfbb0c25ba33ac8ce2d8807ae05e1ec153"
+    content_sha256: "sha256:52de9fe5b9f76875765a8a33129041514005fdc45eb5452405ca27069d628df4"
     purpose: "Security review: attacker-reachable capabilities and broken controls"
     output_schema: findings.v1
     permissions:
@@ -58,9 +58,9 @@ skills:
     reviewed_by: "xaga.ogay@gmail.com"
     reviewed_at: "2026-08-05"
   - id: reviewer-architecture
-    version: "1.1.0"
+    version: "1.2.0"
     path: reviewer-architecture/
-    content_sha256: "sha256:e1c88316b5a48536819e48af8972b9d03d56c2bff307a20d551b04afc22fcbfe"
+    content_sha256: "sha256:3dfd33daf3c3ca7111671fe4736e3e03c36b57677124483ae072aeac9834fb77"
     purpose: "Architecture review: contradictions with accepted decisions and boundaries"
     output_schema: findings.v1
     permissions:
@@ -143,6 +143,19 @@ skills:
     output_schema: threat-model.v1
     permissions:
       commands: []
+      network: false
+      writes: []
+    trust: trusted
+    reviewed_by: "xaga.ogay@gmail.com"
+    reviewed_at: "2026-08-05"
+  - id: attack-path-analyst
+    version: "1.0.0"
+    path: attack-path-analyst/
+    content_sha256: "sha256:43736c012f3dcbb3ab3940d66e312af7ff39adbee3966526c151673f8bad8695"
+    purpose: "Trace the attack path behind a validated security finding, gaps admitted"
+    output_schema: attack-path.v1
+    permissions:
+      commands: ["rg"]
       network: false
       writes: []
     trust: trusted

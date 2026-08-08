@@ -24,6 +24,12 @@ there is nothing to check; skip this entirely.
 3. For each candidate defect, establish: the exact input or interleaving that
    triggers it, the code path it takes, and the resulting wrong behavior.
 
+**When your inputs include `threatFocus`**, a repository threat model ran. Its
+`focusPaths` mark the code most worth getting right — often the same paths where
+a wrong result is exploitable, so read them first. `criticality` tells you what
+each severity means for this repository; calibrate to it. This is aim, not a
+checklist — a reachable defect anywhere is still a finding.
+
 ## Hard rules
 
 - **A finding is a claim about an execution.** If you cannot name the input or
@@ -57,7 +63,7 @@ Exactly one fenced ```json block validating against `findings.v1`
       "findingId": "F-0001",
       "category": "correctness",
       "discoveredBySkill": "reviewer-correctness",
-      "skillVersion": "1.1.0",
+      "skillVersion": "1.2.0",
       "severity": "high",
       "confidence": 0.9,
       "claim": "handle_request panics on a request missing its ttl field because parse().unwrap() runs on untrusted input.",

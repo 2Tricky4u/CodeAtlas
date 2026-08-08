@@ -35,24 +35,24 @@ SKILLS: list[dict[str, Any]] = [
     },
     {
         "id": "reviewer-correctness",
-        # 1.1.0: linter-territory exclusion, certainty bar, scope-creep check.
-        "version": "1.1.0",
+        # 1.2.0: threatFocus input aims and calibrates; 1.1.0 was the certainty bar.
+        "version": "1.2.0",
         "purpose": "Correctness review: wrong results, reachable panics, broken invariants, races",
         "output_schema": REVIEWER,
         "commands": [],
     },
     {
         "id": "reviewer-security",
-        # 1.1.0: linter-territory exclusion and certainty bar.
-        "version": "1.1.0",
+        # 1.2.0: threatFocus input aims and calibrates; 1.1.0 was the certainty bar.
+        "version": "1.2.0",
         "purpose": "Security review: attacker-reachable capabilities and broken controls",
         "output_schema": REVIEWER,
         "commands": [],
     },
     {
         "id": "reviewer-architecture",
-        # 1.1.0: linter-territory exclusion and certainty bar.
-        "version": "1.1.0",
+        # 1.2.0: threatFocus input aims and calibrates; 1.1.0 was the certainty bar.
+        "version": "1.2.0",
         "purpose": "Architecture review: contradictions with accepted decisions and boundaries",
         "output_schema": REVIEWER,
         "commands": [],
@@ -99,6 +99,13 @@ SKILLS: list[dict[str, Any]] = [
         "purpose": "Model a repository's trust boundaries and abuse paths, or say it has none",
         "output_schema": "threat-model.v1",
         "commands": [],
+    },
+    {
+        "id": "attack-path-analyst",
+        "version": "1.0.0",
+        "purpose": "Trace the attack path behind a validated security finding, gaps admitted",
+        "output_schema": "attack-path.v1",
+        "commands": ["rg"],
     },
 ]
 
