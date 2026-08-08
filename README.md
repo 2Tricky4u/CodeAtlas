@@ -121,6 +121,30 @@ its questions.
 
 ![The validation funnel: 12 proposed, what each verdict was, and why](docs/screenshots/review.png)
 
+### A threat model that aims the review
+
+Before the reviewers run, a **threats** tab lays out what an attacker could do here:
+trust boundaries with the data that crosses them, assets with the properties that
+actually matter, and — given equal space — what the attacker provably **cannot** do,
+because that is what keeps severity honest. Abuse paths are numbered `TM-nnn`; each names
+its existing controls and says whether their evidence checked out. A repository with no
+meaningful attack surface says so, rather than inventing a boundary to fill the page.
+
+The model is **built once per repository and reused** — it describes what a system *is*,
+which changes far more slowly than its code — so a second review on the same repo pays
+nothing to know where to look. Its focus paths feed forward into the reviewers, which
+weight them and calibrate severity to what "high" means *for this repository*. A model
+reused from an earlier revision says which one; `--refresh-threat-model` rebuilds it.
+
+A validated security finding then carries its own **attack-path receipt**: how
+attacker-influenced data reaches the flaw (source → sink → outcome), who can drive it from
+where, impact and likelihood each with a reason — and what the analysis could not
+establish, because a receipt that hides its gaps is a confidence trick.
+
+![The threats tab: boundaries, assets, and abuse paths with their controls](docs/screenshots/threats.png)
+
+![An attack path under a validated security finding](docs/screenshots/attack-path.png)
+
 ### Architecture and decisions
 
 A C4 container view derived from the measured graph (every box names the node it came
@@ -252,7 +276,9 @@ source_lock -> extract -> build_graph -> base_revision -> api_change -> graph_di
 which symbols the public-API delta named, and "changed but not exported" is only
 expressible once that delta exists. `project_overview`, `architecture` and `narrate` are
 the deterministic half of the comprehension features — the overview, files, map,
-architecture, decisions, protocol and flows tabs all come from them.)
+architecture, decisions, protocol and flows tabs all come from them. The `threats` tab
+comes from the review half, where the threat model is built before the reviewers so its
+focus paths can aim them.)
 
 `source_lock` pins the revisions under analysis and, in pull-request mode, resolves the base
 and derives the changed-path and added-line sets from the mirror. `base_revision` analyzes
@@ -286,6 +312,10 @@ the one artifact a model writes, and what makes it usable is not the model's car
 validator behind it: each claim must cite something this run measured, and a claim whose
 citations do not resolve is removed and listed in `droppedClaims`. A softened false claim is
 still a false claim, and it keeps the authority of appearing in the report.
+
+The stage also builds (or reuses) the repository threat model first, so its focus paths can
+aim the reviewers, and traces an attack path for each validated security finding after
+validation — both cached and fail-open, so a review is never blocked on them (ADR-0017).
 
 ## Design principle
 

@@ -23,6 +23,13 @@ border-width channel); evidence-density floor notes on the narrative (§3.5); an
 `llms-txt` artifact (§3.7). Sections below are kept for their unshipped remainders —
 §2.5's cost-tiering experiment and §3.1's changed-in-PR filter are still open.
 
+Shipped in the Z phase (2026-08-08): the repository threat model (§2.1 — `threat-model.v1`,
+cached per repository in one replaceable row, its focus paths feeding `threatFocus` into
+the reviewers, ADR-0017) and the attack-path receipts on validated security findings
+(§2.3 — `attack-path.v1` in the finding's validation bag; rejected-candidate receipts
+deferred as a cost decision). Both sections below are marked SHIPPED with their original
+text kept for the deferred remainders.
+
 ---
 
 ## 1. Publication UX — SHIPPED (Y phase, 2026-08-08)
@@ -68,7 +75,15 @@ mr-adversarial-review.* Size: small-medium.
 
 ## 2. Review depth
 
-### 2.1 Threat-model stage — the next big capability
+### 2.1 Threat-model stage — SHIPPED (Z phase, 2026-08-08)
+Landed as designed: `threat-model.v1` with components, boundaries, assets (per-property
+CIA), attacker capabilities and non-capabilities, `TM-nnn` abuse paths, criticality
+calibration and 2–30 focus paths; cached per repository in one replaceable
+`threat_model_cache` row (`--refresh-threat-model` to rebuild, supersession logged);
+focus paths feed `threatFocus` into the reviewer bundle (absent when no threats, so
+no-surface repos keep their cassettes); new `threat-modeler` skill and a `threats`
+dashboard tab. See ADR-0017. Original section text follows.
+
 A repository-wide artifact: components, trust boundaries (with the data that crosses
 each: types, channel, guarantees, validation), assets with C/I/A objectives, attacker
 capabilities *and explicit non-capabilities* (to deflate severity honestly), abuse
@@ -90,7 +105,14 @@ shows coverage instead of implying it. The truest-to-CLAUDE.md item on this list
 rather than improving results. *Source: codex-security work ledger + coverage.json.*
 Size: 1–1.5 milestones.
 
-### 2.3 Attack-path phase for security findings
+### 2.3 Attack-path phase for security findings — SHIPPED (Z phase, 2026-08-08)
+Landed for validated security findings: `attack-path.v1` (dataflow source→sink→outcome,
+reachability with attacker/entrypoint/preconditions, impact and likelihood each with a
+required why, and `limitations`), produced by a new `attack-path-analyst` skill and
+carried in the finding's validation bag, rendered under the finding in the dashboard.
+**Deferred:** receipts for *rejected* candidates (why no path exists) — a cost decision,
+since it multiplies agent calls across every dismissed finding. Original text follows.
+
 Post-validation, per surviving security finding: dataflow (source → sink → outcome),
 reachability (attacker, entrypoint, preconditions), impact and likelihood with
 reasons, limitations. Even rejected candidates get a receipt saying why no path

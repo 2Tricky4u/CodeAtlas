@@ -15,3 +15,4 @@
 | [ADR-0014](adr-0014-the-read-only-api-restated.md) | The read-only API restated: no external writes, no approval decisions | Accepted | 2026-08-07 |
 | [ADR-0015](adr-0015-publication-enabled-by-environment.md) | Publication is enabled by environment, default off | Accepted | 2026-08-07 |
 | [ADR-0016](adr-0016-cross-run-finding-memory.md) | Cross-run finding memory | Accepted | 2026-08-07 |
+| [ADR-0017](adr-0017-threat-model-and-attack-paths.md) | Repository threat model, cached and feeding the reviewers | Accepted | 2026-08-08 |
