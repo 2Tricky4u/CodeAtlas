@@ -25,12 +25,17 @@ border-width channel); evidence-density floor notes on the narrative (§3.5); an
 
 ---
 
-## 1. Publication UX (blocked on arming publication)
+## 1. Publication UX — SHIPPED (Y phase, 2026-08-08)
 
-These are the highest-value items *the day publication is actually used* — building
-them for a dormant path would be effort in the wrong order. Prerequisite for all:
-a GitHub fine-grained PAT, `CODEATLAS_PUBLISH_ENABLED=1`, and the M12 live posting
-test executed once.
+The whole tier landed once publication was armed: line-in-diff anchoring with the
+outside-diff body fallback and full-SHA permalinks (§1.1, minus suggestion blocks —
+still blocked on a fix-proposal field findings don't have), the gate-enforced
+AI-provenance marker (§1.2), proof-of-reading approval adapted from the VERIFY-marker
+idea (§1.3 — `approve --payload <sha prefix>`), draft/closed-PR gating and
+marker-recognized prior-discussion dedup (§1.4), and the M12 live posting test, which
+first passed on 2026-08-08: posted through the full gate, verified on GitHub, published
+twice to prove exactly-once. The original section text follows for the unshipped
+remainder (committable suggestion blocks).
 
 ### 1.1 Positioned inline comments
 One comment per validated finding, anchored to file + line range on the head SHA,

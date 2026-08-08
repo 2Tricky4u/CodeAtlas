@@ -46,6 +46,10 @@ clean secret scan, and no prior publication — each re-checked at post time.
   machine, symmetrical with the kill switch being an explicit stop.
 - The live posting test (M12's one outstanding item) must set the variable —
   which is the point: the test then exercises the same gate production uses.
+  It exists as `tests/integration/test_publication_live.py` (`github_live`
+  marker) and **first passed live on 2026-08-08**: one review posted through
+  the full gate, read back with the provenance marker at the diff-anchored
+  line, and published twice to prove exactly-once against the real API.
 - CLI-level tests drive `approve --publish` and `publish` with a recording
   writer, so the shipped path — not just the gate function — is pinned.
 

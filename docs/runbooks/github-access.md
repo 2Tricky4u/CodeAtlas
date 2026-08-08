@@ -20,8 +20,25 @@ Go to <https://github.com/settings/personal-access-tokens/new>.
 
 Do not grant write permissions. CodeAtlas posts a review through this token only
 after you approve a specific payload, and read-only is enough for everything up
-to that point. When you later want the live posting test, temporarily set
-**Pull requests: Read and write**.
+to that point. When you want the live posting test (below), temporarily set
+**Pull requests: Read and write**, and drop it back afterwards.
+
+## The live posting test (M12)
+
+`tests/integration/test_publication_live.py` (`-m github_live`) drives one real
+publication end to end: request → `approve --payload <prefix> --publish` →
+verify the review on GitHub → publish again to prove exactly-once. It skips
+unless every safety is deliberately off, in one shell only:
+
+```powershell
+$env:CODEATLAS_SCRATCH_REPO = "owner/scratch-repo"   # must have an OPEN PR #1
+$env:CODEATLAS_PUBLISH_ENABLED = "1"
+uv run pytest tests/integration/test_publication_live.py -m github_live
+```
+
+It anchors its inline comment on a line the PR's diff actually added (parsed
+from the diff — never assumed), and every posted byte carries the AI-provenance
+marker the gate enforces. First passed 2026-08-08 against a scratch PR.
 
 Copy the token once — GitHub will not show it again.
 

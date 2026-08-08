@@ -219,13 +219,20 @@ uv run codeatlas compare <run-id> <run-id>      # exits nonzero if two runs are 
 
 ```powershell
 uv run codeatlas request-approval <run-id>
-uv run codeatlas show-approval <approval-id>    # read the exact payload first
+uv run codeatlas show-approval <approval-id>    # read the exact payload; prints the --payload value
 $env:CODEATLAS_PUBLISH_ENABLED = "1"            # default off — publication is an explicit act
-uv run codeatlas approve <approval-id> --by "<you>" [--note "..."] --publish
+uv run codeatlas approve <approval-id> --by "<you>" --payload <12-char-sha> [--note "..."] --publish
 # or the two-step flow:
-uv run codeatlas approve <approval-id> --by "<you>"
+uv run codeatlas approve <approval-id> --by "<you>" --payload <12-char-sha>
 uv run codeatlas publish <approval-id>
 ```
+
+`--payload` is proof of reading: the value only exists in `show-approval` output or the
+dashboard, so you cannot approve bytes you have not looked at. What posts is a real PR
+review — inline comments anchored on lines the diff added (findings outside the diff fold
+into the body with permalinks), every byte carrying the AI-provenance marker the gate
+enforces, findings already posted by an earlier run deduplicated by that same marker. The
+posting path itself is live-tested (`-m github_live`, see `docs/runbooks/github-access.md`).
 
 `CODEATLAS_KILL_SWITCH=1` stops every agent invocation and every publication, everywhere,
 immediately. Database overrides: `CODEATLAS_DB_URL` / `CODEATLAS_DB_HOST` /

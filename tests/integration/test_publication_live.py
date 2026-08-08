@@ -77,6 +77,7 @@ def test_the_first_real_publication(armed, db_engine, tmp_path) -> None:  # type
     """Request → approve (with proof of reading) → publish → verify → re-publish."""
     from codeatlas.db import repositories as repo
     from codeatlas.db.tables import ApprovalRow, PublicationRow
+    from codeatlas.review.scope import parse_added_lines
     from codeatlas.vcs.github.client import GitHubReader, token_from_keyring
 
     owner, repo_name = armed
@@ -84,9 +85,12 @@ def test_the_first_real_publication(armed, db_engine, tmp_path) -> None:  # type
     pr = reader.pull_request(owner, repo_name, 1)
     assert pr.state == "open", "the scratch PR must be open; re-run seed_scratch_pr.py"
 
-    # The seeded PR adds lines to its known file; anchor the inline comment at
-    # the first changed file's first line — the diff is entirely additions.
-    anchor_path = pr.changed_paths[0]
+    # Anchor where the diff actually added lines — the exact rule Y1 gives the
+    # payload builder; hardcoding line 1 here would be the 422 it prevents.
+    added = parse_added_lines(reader.diff(owner, repo_name, 1))
+    assert added, "the scratch PR has no added lines to anchor on"
+    anchor_path = sorted(added)[0]
+    anchor_line = min(added[anchor_path])
 
     workdir = tmp_path / "wd"
     cas = ArtifactStore(workdir / "objects")
@@ -114,7 +118,7 @@ def test_the_first_real_publication(armed, db_engine, tmp_path) -> None:  # type
         comments=[
             ReviewComment(
                 path=anchor_path,
-                line=1,
+                line=anchor_line,
                 body=f"Anchored inline comment from the live posting test.\n\n{PROVENANCE}",
             )
         ],
@@ -152,7 +156,7 @@ def test_the_first_real_publication(armed, db_engine, tmp_path) -> None:  # type
     # The review is really there, marker and all, comment at the right line.
     posted = reader.review_comments(owner, repo_name, 1)
     ours = [c for c in posted if PROVENANCE in c["body"]]
-    assert any(c["path"] == anchor_path and c["line"] == 1 for c in ours), posted
+    assert any(c["path"] == anchor_path and c["line"] == anchor_line for c in ours), posted
 
     # Exactly-once, live: a second publish returns the same external ref and
     # creates no second review.
