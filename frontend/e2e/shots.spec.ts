@@ -16,6 +16,7 @@ import {
   RUN,
   RUN_ID,
   SOURCE,
+  THREAT_MODEL,
   VIEWS,
 } from "./fixtures";
 
@@ -38,6 +39,9 @@ async function mockApi(page: Page) {
   // two claims can still be unusable with that many.
   await page.route(`**/api/runs/${RUN_ID}/artifact/project-explanation`, (r) =>
     r.fulfill({ json: recordedNarrative() }),
+  );
+  await page.route(`**/api/runs/${RUN_ID}/artifact/threat-model`, (r) =>
+    r.fulfill({ json: THREAT_MODEL }),
   );
 }
 
@@ -68,3 +72,26 @@ for (const tab of ["overview", "change", "map", "findings", "detail"]) {
     await page.screenshot({ path: `../var/ui-shots/${tab}.png`, fullPage: false });
   });
 }
+
+// The two README screenshots for the Z-phase threat model. Written straight to
+// docs/screenshots because — unlike the live-data shots in readme-shots.mjs —
+// these come from fixtures, so they are reproducible with `npx playwright test
+// shots` and need no serve stack.
+test("readme threats tab", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/#/runs/${RUN_ID}/threats`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: "../docs/screenshots/threats.png", fullPage: true });
+});
+
+test("readme attack path", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/#/runs/${RUN_ID}/findings`);
+  await page
+    .locator("tr", { hasText: "FileStore::read joins an untrusted key" })
+    .getByTestId("validation-toggle")
+    .click();
+  await page.getByTestId("attack-path").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "../docs/screenshots/attack-path.png", fullPage: false });
+});
