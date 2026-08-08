@@ -6,6 +6,7 @@ from codeatlas.models.adr_audit import AdrAudit
 from codeatlas.models.agent import AgentResult, AgentTask
 from codeatlas.models.api import ApiChange, ApiSurface
 from codeatlas.models.architecture import Architecture
+from codeatlas.models.attack_path import AttackPath
 from codeatlas.models.base import ContractModel
 from codeatlas.models.code_answer import CodeAnswer
 from codeatlas.models.coverage import ReviewCoverage
@@ -21,6 +22,7 @@ from codeatlas.models.payload import ReviewPayload
 from codeatlas.models.project_explanation import ProjectExplanation
 from codeatlas.models.protocol import ProtocolModel
 from codeatlas.models.receipts import ExtractorReceipt
+from codeatlas.models.threat import ThreatModel
 from codeatlas.models.validation import ValidationResult
 from codeatlas.models.views import GraphViews
 
@@ -48,6 +50,8 @@ CONTRACT_MODELS: dict[str, type[ContractModel]] = {
     "graph-view.v1.json": GraphViews,
     "review-coverage.v1.json": ReviewCoverage,
     "review-payload.v1.json": ReviewPayload,
+    "threat-model.v1.json": ThreatModel,
+    "attack-path.v1.json": AttackPath,
 }
 
 __all__ = [
@@ -58,6 +62,7 @@ __all__ = [
     "ApiChange",
     "ApiSurface",
     "Architecture",
+    "AttackPath",
     "ChangeExplanation",
     "ChangeImpact",
     "CodeAnswer",
@@ -73,5 +78,6 @@ __all__ = [
     "ProtocolModel",
     "RunManifest",
     "SourceLock",
+    "ThreatModel",
     "ValidationResult",
 ]

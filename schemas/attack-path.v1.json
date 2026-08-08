@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schemas/attack-path.v1.json",
+  "title": "Attack Path",
+  "description": "The receipt behind a validated security finding: how attacker-influenced data reaches the flaw (dataflow), who can drive it from where (reachability), and what it costs (impact and likelihood, each with a written why). `limitations` records what the analysis could not establish — an attack path that hides its own gaps is a confidence trick, not a receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "findingId", "dataflow", "reachability", "impact", "likelihood"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "findingId": { "type": "string", "minLength": 1 },
+    "dataflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "sink", "outcome"],
+      "properties": {
+        "source": {
+          "description": "Where attacker-influenced data enters, named concretely (file:line when possible).",
+          "type": "string",
+          "minLength": 1
+        },
+        "sink": { "type": "string", "minLength": 1 },
+        "outcome": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reachability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attacker", "entrypoint"],
+      "properties": {
+        "attacker": {
+          "description": "Who can drive this path, phrased against the repo's attacker model.",
+          "type": "string",
+          "minLength": 1
+        },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "impact": { "$ref": "#/$defs/judgement4" },
+    "likelihood": { "$ref": "#/$defs/judgement3" },
+    "limitations": {
+      "description": "What was not established. Required to be honest, not required to be present.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "judgement4": {
+      "description": "A level is only as good as its rationale; `why` is what a human reviews.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "why"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high", "critical"] },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    },
+    "judgement3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "why"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high"] },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

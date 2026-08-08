@@ -43,6 +43,8 @@ EXPECTED_SCHEMAS = {
     "graph-view.v1.json",
     "review-coverage.v1.json",
     "review-payload.v1.json",
+    "threat-model.v1.json",
+    "attack-path.v1.json",
 }
 
 
@@ -199,6 +201,127 @@ PROTOCOL_NONE_EXAMPLE: dict[str, Any] = {
     "schemaVersion": "1.0.0",
     "protocol": None,
     "notes": ["this project is a batch tool; nothing is exchanged with another party"],
+}
+
+THREAT_MODEL_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "modeledAtRevision": "a" * 40,
+    "summary": "kvstore exposes a TCP wire protocol; untrusted bytes cross into the parser.",
+    "components": [
+        {
+            "name": "wire-listener",
+            "description": "accepts TCP connections and reads frames",
+            "evidence": {"path": "src/main.rs", "symbol": "main"},
+        },
+        {
+            "name": "store",
+            "description": "owns the on-disk state",
+            "evidence": {"path": "src/storage.rs"},
+        },
+    ],
+    "boundaries": [
+        {
+            "name": "network-to-parser",
+            "between": ["wire-listener", "store"],
+            "dataCrossing": {
+                "types": ["length-prefixed JSON commands"],
+                "channel": "tcp",
+                "guarantees": "none: any peer that can reach the port can connect",
+                "validation": "declared length checked against a cap before allocation",
+            },
+            "evidence": [{"path": "src/proto.rs", "startLine": 12, "endLine": 40}],
+        }
+    ],
+    "assets": [
+        {
+            "name": "stored values",
+            "whyItMatters": "user data at rest; the reason the process exists",
+            "cia": ["confidentiality", "integrity"],
+        }
+    ],
+    "attacker": {
+        "capabilities": ["can open TCP connections and send arbitrary bytes"],
+        "nonCapabilities": [
+            "no filesystem access on the host",
+            "cannot read process memory",
+        ],
+    },
+    "threats": [
+        {
+            "id": "TM-001",
+            "title": "Oversized frame exhausts memory",
+            "source": "any network peer",
+            "prerequisites": ["listener reachable from the attacker's network"],
+            "action": "send a frame with a huge declared length",
+            "impact": "allocation of attacker-chosen size before the body arrives",
+            "impactedAssets": ["stored values"],
+            "existingControls": [
+                {
+                    "description": "declared length capped before allocation",
+                    "evidence": {"path": "src/proto.rs", "startLine": 18, "endLine": 20},
+                    "verified": True,
+                }
+            ],
+            "gaps": [],
+            "mitigations": ["reject frames above the cap before reading the body"],
+            "likelihood": "medium",
+            "severity": "high",
+        }
+    ],
+    "criticality": {
+        "critical": "remote code execution or arbitrary file read on the host",
+        "high": "corruption or disclosure of stored values",
+        "medium": "denial of service to other connected clients",
+        "low": "resource waste bounded by a single connection",
+    },
+    "focusPaths": [
+        {
+            "path": "src/proto.rs",
+            "reason": "every untrusted byte is parsed here",
+            "threatIds": ["TM-001"],
+        },
+        {
+            "path": "src/storage.rs",
+            "reason": "integrity of the primary asset at rest",
+            "threatIds": ["TM-001"],
+        },
+    ],
+    "droppedElements": [
+        {
+            "kind": "boundary",
+            "name": "admin-socket",
+            "reason": "src/admin.rs does not exist at this revision",
+        }
+    ],
+    "notes": [],
+}
+
+# The honest-empty shape: a repo with no meaningful attack surface says so
+# instead of inventing boundaries.
+THREAT_MODEL_EMPTY_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "modeledAtRevision": "a" * 40,
+    "summary": "a pure batch formatter; no input crosses a trust boundary at runtime",
+    "threats": [],
+    "notes": ["no listener, no IPC, and no file formats parsed from untrusted sources"],
+}
+
+ATTACK_PATH_EXAMPLE: dict[str, Any] = {
+    "schemaVersion": "1.0.0",
+    "findingId": "F-0002",
+    "dataflow": {
+        "source": "frame length field read from the socket in src/proto.rs:14",
+        "sink": "Vec::with_capacity in src/proto.rs:19",
+        "outcome": "allocation of attacker-chosen size before any bound check",
+    },
+    "reachability": {
+        "attacker": "any peer able to open a TCP connection to the listener",
+        "entrypoint": "handle_connection (src/main.rs:42)",
+        "preconditions": ["listener bound to a non-loopback interface"],
+    },
+    "impact": {"level": "high", "why": "one connection can take the whole process down"},
+    "likelihood": {"level": "medium", "why": "needs network reachability; no authentication"},
+    "limitations": ["did not confirm the default bind address"],
 }
 
 AGENT_TASK_EXAMPLE: dict[str, Any] = {
@@ -774,6 +897,8 @@ EXAMPLES: dict[str, dict[str, Any]] = {
     "graph-view.v1.json": GRAPH_VIEW_EXAMPLE,
     "review-coverage.v1.json": REVIEW_COVERAGE_EXAMPLE,
     "review-payload.v1.json": REVIEW_PAYLOAD_EXAMPLE,
+    "threat-model.v1.json": THREAT_MODEL_EXAMPLE,
+    "attack-path.v1.json": ATTACK_PATH_EXAMPLE,
 }
 
 
@@ -822,6 +947,47 @@ def test_a_project_with_no_protocol_is_expressible() -> None:
 
     model = CONTRACT_MODELS["protocol-model.v1.json"].model_validate(PROTOCOL_NONE_EXAMPLE)
     assert not sorted(validator.iter_errors(model.contract_dump()), key=str)
+
+
+def test_a_threat_model_with_no_threats_is_expressible() -> None:
+    """The honest-empty shape: `threats: []` plus a written reason in notes.
+
+    A repo with no meaningful attack surface must be able to say so without
+    inventing boundaries — the protocol model's refusal design, adapted.
+    """
+    validator = Draft202012Validator(_load_schema("threat-model.v1.json"))
+    assert not sorted(validator.iter_errors(THREAT_MODEL_EMPTY_EXAMPLE), key=str)
+
+    model = CONTRACT_MODELS["threat-model.v1.json"].model_validate(THREAT_MODEL_EMPTY_EXAMPLE)
+    assert not sorted(validator.iter_errors(model.contract_dump()), key=str)
+
+
+def test_a_single_focus_path_is_rejected() -> None:
+    """Focus paths are empty or 2-30: one is a token gesture, not an aiming aid.
+
+    Both directions must refuse it — the schema (what a producer may emit) and
+    the model (what the pipeline will carry forward to the reviewers).
+    """
+    from pydantic import ValidationError
+
+    single = json.loads(json.dumps(THREAT_MODEL_EXAMPLE))
+    single["focusPaths"] = single["focusPaths"][:1]
+    validator = Draft202012Validator(_load_schema("threat-model.v1.json"))
+    assert sorted(validator.iter_errors(single), key=str), "one focus path must be invalid"
+    with pytest.raises(ValidationError):
+        CONTRACT_MODELS["threat-model.v1.json"].model_validate(single)
+
+
+def test_an_attack_path_level_requires_a_why() -> None:
+    """A severity level without a written rationale is unreviewable.
+
+    The attack path exists to justify the verdict a human reads; a bare
+    `high` with no why is exactly the unsupported claim it replaces.
+    """
+    validator = Draft202012Validator(_load_schema("attack-path.v1.json"))
+    whyless = json.loads(json.dumps(ATTACK_PATH_EXAMPLE))
+    del whyless["impact"]["why"]
+    assert sorted(validator.iter_errors(whyless), key=str), "impact.why must be required"
 
 
 def test_a_validation_verdict_requires_a_written_reason() -> None:
